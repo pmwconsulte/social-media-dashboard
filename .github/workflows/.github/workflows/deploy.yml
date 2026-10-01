@@ -1,0 +1,29 @@
+name: Deploy to Heroku
+ 
+on:
+push:
+branches:
+- main
+ 
+jobs:
+build:
+runs-on: ubuntu-latest
+ 
+steps:
+- name: Checkout código
+uses: actions/checkout@v3
+ 
+- name: Configurar Python
+uses: actions/setup-python@v4
+with:
+python-version: "3.10"
+ 
+- name: Instalar dependências
+run: pip install -r requirements.txt
+ 
+- name: Deploy para Heroku
+uses: akhileshns/heroku-deploy@v3.12.12
+with:
+heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+heroku_app_name: "social-media-dashboard"
+heroku_email: ${{ secrets.EMAIL_USER }}
