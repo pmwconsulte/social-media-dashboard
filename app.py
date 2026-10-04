@@ -3,25 +3,25 @@ import pandas as pd
 import plotly.express as px
 import dash
  
-from dash import html
-from dash import dcc
+from dash import html, dcc
 from dash.dependencies import Input, Output
- 
 from dotenv import load_dotenv
  
-from database import (
-get_connection,
-create_tables
-)
+from database import get_connection, create_tables
  
+# Carregar variáveis de ambiente
 load_dotenv()
  
+# Criar tabelas se não existirem
 create_tables()
  
+# Inicializar aplicação Dash
 app = dash.Dash(__name__)
+server = app.server
+ 
  
 def carregar_dados():
- 
+try:
 conn = get_connection()
  
 df = pd.read_sql_query(
@@ -33,10 +33,23 @@ conn.close()
  
 return df
  
+except Exception as e:
+print(f"Erro ao carregar dados: {e}")
+ 
+return pd.DataFrame({
+"data": ["2026-01-01"],
+"plataforma": ["Instagram"],
+"seguidores": [0],
+"engajamento": [0],
+"alcance": [0]
+})
+ 
+ 
+# Carregar dados
 df = carregar_dados()
  
+# Garantir dados mínimos
 if df.empty:
- 
 df = pd.DataFrame({
 "data": ["2026-01-01"],
 "plataforma": ["Instagram"],
@@ -45,20 +58,16 @@ df = pd.DataFrame({
 "alcance": [0]
 })
  
+# Converter datas
+df["data"] = pd.to_datetime(df["data"])
+ 
 app.layout = html.Div([
+html.H1("Social Media Dashboard"),
  
-html.H1(
-"Social Media Dashboard"
-),
- 
-html.H3(
-"Instagram | YouTube Analytics"
-),
+html.H3("Instagram | YouTube Analytics"),
  
 dcc.Dropdown(
- 
 id="plataforma",
- 
 options=[
 {
 "label": p,
@@ -66,42 +75,23 @@ options=[
 }
 for p in df["plataforma"].unique()
 ],
- 
 value=df["plataforma"].unique()[0]
- 
 ),
  
-dcc.Graph(
-id="grafico_seguidores"
-),
+dcc.Graph(id="grafico_seguidores"),
  
-dcc.Graph(
-id="grafico_alcance"
-)
- 
+dcc.Graph(id="grafico_alcance")
 ])
  
+ 
 @app.callback(
- 
 [
-Output(
-"grafico_seguidores",
-"figure"
-),
- 
-Output(
-"grafico_alcance",
-"figure"
-)
+Output("grafico_seguidores", "figure"),
+Output("grafico_alcance", "figure")
 ],
- 
 [
-Input(
-"plataforma",
-"value"
-)
+Input("plataforma", "value")
 ]
- 
 )
 def atualizar_graficos(plataforma):
  
@@ -127,17 +117,10 @@ markers=True
  
 return fig1, fig2
  
-server = app.server
  
 if __name__ == "__main__":
- 
-app.run_server(
+app.run(
 host="0.0.0.0",
-port=int(
-os.environ.get(
-"PORT",
-8050
-)
-),
+port=int(os.environ.get("PORT", 8050)),
 debug=False
 )
