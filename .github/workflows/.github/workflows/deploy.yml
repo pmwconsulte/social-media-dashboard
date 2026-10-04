@@ -25,5 +25,5 @@ run: pip install -r requirements.txt
 uses: akhileshns/heroku-deploy@v3.12.12
 with:
 heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
-heroku_app_name: ${{ vars.HEROKU_APP_NAME }}
+heroku_app_name: "social-media-dashboard-moz"
 heroku_email: ${{ secrets.EMAIL_USER }}
