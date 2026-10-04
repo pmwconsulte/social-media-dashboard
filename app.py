@@ -9,13 +9,10 @@ from dotenv import load_dotenv
  
 from database import get_connection, create_tables
  
-# Carregar variáveis de ambiente
 load_dotenv()
  
-# Criar tabelas se não existirem
 create_tables()
  
-# Inicializar aplicação Dash
 app = dash.Dash(__name__)
 server = app.server
  
@@ -45,10 +42,8 @@ return pd.DataFrame({
 })
  
  
-# Carregar dados
 df = carregar_dados()
  
-# Garantir dados mínimos
 if df.empty:
 df = pd.DataFrame({
 "data": ["2026-01-01"],
@@ -58,8 +53,8 @@ df = pd.DataFrame({
 "alcance": [0]
 })
  
-# Converter datas
 df["data"] = pd.to_datetime(df["data"])
+ 
  
 app.layout = html.Div([
 html.H1("Social Media Dashboard"),
@@ -95,9 +90,7 @@ Input("plataforma", "value")
 )
 def atualizar_graficos(plataforma):
  
-dados = df[
-df["plataforma"] == plataforma
-]
+dados = df[df["plataforma"] == plataforma]
  
 fig1 = px.line(
 dados,
