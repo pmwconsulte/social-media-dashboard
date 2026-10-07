@@ -162,6 +162,10 @@ def create_tables():
                         REFERENCES users(id)
                         ON DELETE CASCADE,
 
+                    organization_id UUID
+                        REFERENCES organizations(id)
+                        ON DELETE CASCADE,
+
                     platform VARCHAR(50)
                         NOT NULL,
 
@@ -172,6 +176,15 @@ def create_tables():
                     created_at TIMESTAMP
                         DEFAULT NOW()
                 );
+                """
+            )
+
+            cur.execute(
+                """
+                ALTER TABLE social_accounts
+                ADD COLUMN IF NOT EXISTS organization_id UUID
+                REFERENCES organizations(id)
+                ON DELETE CASCADE;
                 """
             )
 
