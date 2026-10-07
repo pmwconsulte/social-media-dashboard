@@ -2,15 +2,14 @@
 import numpy as np
 import pandas as pd
 
+from sklearn.linear_model import LinearRegression
+
 
 # ============================================================
-# PREVISÃO DE CRESCIMENTO
+# PREVISÃO IA
 # ============================================================
 
-def prever_crescimento(df, dias=7):
-
-    if dias < 1:
-        return []
+def prever_crescimento(df, dias=30):
 
     if df is None or df.empty:
         return [0] * dias
@@ -29,57 +28,34 @@ def prever_crescimento(df, dias=7):
         subset=["seguidores"]
     )
 
-    if dados.empty:
+    if len(dados) < 2:
         return [0] * dias
 
-    if "data" in dados.columns:
-        dados = dados.sort_values("data")
+    y = dados["seguidores"].values
 
-    valores = dados["seguidores"].to_numpy(
-        dtype=float
-    )
+    X = np.arange(
+        len(y)
+    ).reshape(-1, 1)
 
-    # Apenas um registo
-    if len(valores) == 1:
-        valor = max(0, float(valores[0]))
+    modelo = LinearRegression()
 
-        return [
-            round(valor, 2)
-            for _ in range(dias)
-        ]
+    modelo.fit(X, y)
 
-    # Tendência linear
-    x = np.arange(
-        len(valores),
-        dtype=float
-    )
+    futuro = np.arange(
+        len(y),
+        len(y) + dias
+    ).reshape(-1, 1)
 
-    inclinacao, intercepto = np.polyfit(
-        x,
-        valores,
-        1
-    )
+    previsao = modelo.predict(futuro)
 
-    x_futuro = np.arange(
-        len(valores),
-        len(valores) + dias,
-        dtype=float
-    )
-
-    previsoes = (
-        inclinacao * x_futuro
-        + intercepto
-    )
-
-    # Nunca permitir previsão negativa
-    previsoes = np.maximum(
-        previsoes,
+    previsao = np.maximum(
+        previsao,
         0
     )
 
     return [
-        round(float(valor), 2)
-        for valor in previsoes
+        round(float(v), 2)
+        for v in previsao
     ]
 
 
@@ -94,11 +70,13 @@ def calcular_score(df):
 
     dados = df.copy()
 
-    for coluna in [
+    colunas = [
         "seguidores",
         "engajamento",
         "alcance"
-    ]:
+    ]
+
+    for coluna in colunas:
 
         if coluna not in dados.columns:
             return 0
@@ -108,111 +86,108 @@ def calcular_score(df):
             errors="coerce"
         )
 
-    dados = dados.dropna(
-        subset=[
-            "seguidores",
-            "engajamento",
-            "alcance"
-        ]
-    )
+    dados = dados.dropna()
 
     if dados.empty:
         return 0
 
-    if "data" in dados.columns:
-        dados = dados.sort_values("data")
+    seguidores = dados["seguidores"]
 
-    engajamento = max(
-        0,
-        float(
-            dados["engajamento"].mean()
-        )
-    )
+    crescimento = 0
 
-    alcance = max(
-        0,
-        float(
-            dados["alcance"].mean()
-        )
-    )
-
-    primeiro = float(
-        dados["seguidores"].iloc[0]
-    )
-
-    ultimo = float(
-        dados["seguidores"].iloc[-1]
-    )
-
-    if primeiro > 0:
+    if seguidores.iloc[0] > 0:
 
         crescimento = (
-            (ultimo - primeiro)
-            / primeiro
+            (
+                seguidores.iloc[-1]
+                - seguidores.iloc[0]
+            )
+            /
+            seguidores.iloc[0]
         ) * 100
 
-    else:
-
-        crescimento = 0
-
-    # Até 40 pontos
-    pontos_engajamento = min(
-        (engajamento / 10) * 40,
-        40
+    engajamento = float(
+        dados["engajamento"].mean()
     )
 
-    # Até 30 pontos
-    pontos_crescimento = min(
-        max(crescimento, 0) / 20 * 30,
-        30
+    alcance = float(
+        dados["alcance"].mean()
     )
 
-    # Até 30 pontos
-    pontos_alcance = min(
-        alcance / 100000 * 30,
-        30
-    )
+    likes = dados.get(
+        "likes",
+        pd.Series([0])
+    ).mean()
+
+    comentarios = dados.get(
+        "comentarios",
+        pd.Series([0])
+    ).mean()
+
+    partilhas = dados.get(
+        "partilhas",
+        pd.Series([0])
+    ).mean()
 
     score = (
-        pontos_engajamento
-        + pontos_crescimento
-        + pontos_alcance
+        min(engajamento * 3.5, 35)
+        +
+        min(crescimento / 4, 20)
+        +
+        min(alcance / 5000, 15)
+        +
+        min(likes / 200, 10)
+        +
+        min(comentarios / 50, 10)
+        +
+        min(partilhas / 20, 10)
     )
 
-    return round(
-        min(
-            max(score, 0),
-            100
-        )
+    return min(
+        round(score),
+        100
     )
 
 
 # ============================================================
-# ALERTA IA
+# CLASSIFICAÇÃO
+# ============================================================
+
+def classificar_score(score):
+
+    if score >= 90:
+        return "🏆 Excelente"
+
+    if score >= 75:
+        return "🟢 Muito Bom"
+
+    if score >= 50:
+        return "🟡 Regular"
+
+    return "🔴 Crítico"
+
+
+# ============================================================
+# ALERTAS IA
 # ============================================================
 
 def gerar_alerta(df):
 
     if df is None or df.empty:
+
         return (
-            "⚠️ Não existem dados suficientes "
-            "para análise."
+            "⚠️ Dados insuficientes."
         )
 
     dados = df.copy()
 
-    if "data" in dados.columns:
-        dados = dados.sort_values("data")
-
     mensagens = []
 
-    indicadores = [
-        ("engajamento", "engajamento"),
-        ("seguidores", "seguidores"),
-        ("alcance", "alcance")
-    ]
-
-    for coluna, nome in indicadores:
+    for coluna in [
+        "engajamento",
+        "seguidores",
+        "alcance"
+    \]:
 
         if coluna not in dados.columns:
             continue
@@ -222,43 +197,29 @@ def gerar_alerta(df):
             errors="coerce"
         ).dropna()
 
-        if len(serie) < 2:
+        if len(serie) < 3:
             continue
 
-        atual = float(
-            serie.iloc[-1]
-        )
+        atual = serie.iloc[-1]
 
-        anterior = float(
-            serie.iloc[-2]
-        )
+        media = serie.mean()
 
-        if atual > anterior:
+        if atual < media * 0.8:
 
             mensagens.append(
-                f"✅ O {nome} aumentou "
-                "no último registo."
+                f"🚨 Queda crítica no {coluna}"
             )
 
-        elif atual < anterior:
+        elif atual > media:
 
             mensagens.append(
-                f"⚠️ O {nome} diminuiu "
-                "no último registo."
-            )
-
-        else:
-
-            mensagens.append(
-                f"ℹ️ O {nome} manteve-se "
-                "estável no último registo."
+                f"✅ {coluna} acima da média"
             )
 
     if not mensagens:
 
-        return (
-            "ℹ️ Não existem dados suficientes "
-            "para identificar alterações recentes."
+        mensagens.append(
+            "✅ Indicadores estáveis."
         )
 
     return "\n".join(mensagens)
@@ -271,101 +232,40 @@ def gerar_alerta(df):
 def gerar_recomendacao(df):
 
     if df is None or df.empty:
+
         return (
-            "Adiciona dados para receber "
-            "recomendações."
+            "Adicionar mais dados."
         )
 
-    dados = df.copy()
+    score = calcular_score(df)
 
-    if "data" in dados.columns:
-        dados = dados.sort_values("data")
+    if score >= 90:
 
-    recomendacoes = []
-
-    engajamento = pd.to_numeric(
-        dados["engajamento"],
-        errors="coerce"
-    ).dropna()
-
-    seguidores = pd.to_numeric(
-        dados["seguidores"],
-        errors="coerce"
-    ).dropna()
-
-    alcance = pd.to_numeric(
-        dados["alcance"],
-        errors="coerce"
-    ).dropna()
-
-    # Engajamento
-    if not engajamento.empty:
-
-        media = float(
-            engajamento.mean()
+        return (
+            "💡 Desempenho excelente. "
+            "Escalar campanhas pagas e "
+            "replicar conteúdos de maior sucesso."
         )
 
-        if media < 3:
+    if score >= 75:
 
-            recomendacoes.append(
-                "Melhora a relevância dos conteúdos, "
-                "testa novos formatos e utiliza "
-                "chamadas à ação."
-            )
-
-        elif media < 6:
-
-            recomendacoes.append(
-                "Testa diferentes horários, formatos "
-                "e temas para aumentar o engajamento."
-            )
-
-        else:
-
-            recomendacoes.append(
-                "O engajamento apresenta um bom nível. "
-                "Identifica os conteúdos com melhor "
-                "desempenho e replica os padrões."
-            )
-
-    # Seguidores
-    if len(seguidores) >= 2:
-
-        if seguidores.iloc[-1] < seguidores.iloc[-2]:
-
-            recomendacoes.append(
-                "Analisa as causas da redução de "
-                "seguidores e revê a estratégia "
-                "de conteúdo."
-            )
-
-        elif seguidores.iloc[-1] > seguidores.iloc[-2]:
-
-            recomendacoes.append(
-                "Mantém a consistência dos conteúdos "
-                "que estão associados ao crescimento."
-            )
-
-    # Alcance
-    if len(alcance) >= 2:
-
-        if alcance.iloc[-1] < alcance.iloc[-2]:
-
-            recomendacoes.append(
-                "Reavalia a distribuição das publicações "
-                "e testa conteúdos com maior potencial "
-                "de partilha."
-            )
-
-    if not recomendacoes:
-
-        recomendacoes.append(
-            "Continua a monitorizar os KPIs "
-            "e compara o desempenho ao longo do tempo."
+        return (
+            "💡 Crescimento saudável. "
+            "Aumentar frequência de conteúdos "
+            "e testar novos formatos."
         )
 
-    return "💡 " + " ".join(
-        recomendacoes
+    if score >= 50:
+
+        return (
+            "💡 Melhorar engagement. "
+            "Publicar vídeos curtos e "
+            "usar chamadas para ação."
+        )
+
+    return (
+        "💡 Rever estratégia de conteúdo, "
+        "horários de publicação e segmentação."
     )
 
 
@@ -378,144 +278,67 @@ def gerar_relatorio_executivo(df):
     if df is None or df.empty:
 
         return (
-            "RELATÓRIO EXECUTIVO\n\n"
-            "Não existem dados disponíveis "
-            "para análise."
+            "Sem dados disponíveis."
         )
 
-    dados = df.copy()
+    score = calcular_score(df)
 
-    if "data" in dados.columns:
-        dados = dados.sort_values("data")
-
-    seguidores = pd.to_numeric(
-        dados["seguidores"],
-        errors="coerce"
-    ).dropna()
-
-    alcance = pd.to_numeric(
-        dados["alcance"],
-        errors="coerce"
-    ).dropna()
-
-    engajamento = pd.to_numeric(
-        dados["engajamento"],
-        errors="coerce"
-    ).dropna()
-
-    primeiro = (
-        float(seguidores.iloc[0])
-        if not seguidores.empty
-        else 0
+    classificacao = (
+        classificar_score(score)
     )
 
-    ultimo = (
-        float(seguidores.iloc[-1])
-        if not seguidores.empty
-        else 0
+    seguidores = int(
+        df["seguidores"].iloc[-1]
     )
 
-    if primeiro > 0:
-
-        crescimento = (
-            (ultimo - primeiro)
-            / primeiro
-        ) * 100
-
-    else:
-
-        crescimento = 0
-
-    media_engajamento = (
-        float(engajamento.mean())
-        if not engajamento.empty
-        else 0
+    alcance = int(
+        df["alcance"].max()
     )
 
-    alcance_maximo = (
-        float(alcance.max())
-        if not alcance.empty
-        else 0
+    engajamento = round(
+        df["engajamento"].mean(),
+        2
     )
 
-    score = calcular_score(
-        dados
+    previsao = prever_crescimento(
+        df,
+        dias=30
     )
 
-    if score >= 75:
-
-        avaliacao = (
-            "Desempenho elevado"
-        )
-
-    elif score >= 50:
-
-        avaliacao = (
-            "Desempenho moderado"
-        )
-
-    else:
-
-        avaliacao = (
-            "Desempenho a melhorar"
-        )
-
-    if "data" in dados.columns:
-
-        data_inicio = (
-            dados["data"]
-            .min()
-            .strftime("%d/%m/%Y")
-        )
-
-        data_fim = (
-            dados["data"]
-            .max()
-            .strftime("%d/%m/%Y")
-        )
-
-    else:
-
-        data_inicio = "N/D"
-        data_fim = "N/D"
-
-    recomendacao = gerar_recomendacao(
-        dados
+    seguidores_30 = int(
+        previsao[-1]
     )
 
     return f"""
-RELATÓRIO EXECUTIVO DE REDES SOCIAIS
-====================================
+RELATÓRIO EXECUTIVO IA
 
-PERÍODO ANALISADO
------------------
-Início: {data_inicio}
-Fim: {data_fim}
-Registos analisados: {len(dados)}
+=================================================
 
-INDICADORES PRINCIPAIS
-----------------------
-Seguidores inicial: {primeiro:,.0f}
-Seguidores atual: {ultimo:,.0f}
-Crescimento: {crescimento:.2f}%
-Engajamento médio: {media_engajamento:.2f}%
-Alcance máximo: {alcance_maximo:,.0f}
+Seguidores atuais: {seguidores:,}
 
-AVALIAÇÃO IA
-------------
+Alcance máximo: {alcance:,}
+
+Engajamento médio: {engajamento:.2f}%
+
 Score IA: {score}/100
-Classificação: {avaliacao}
+
+Classificação: {classificacao}
+
+=================================================
+
+PREVISÃO IA 30 DIAS
+
+Seguidores estimados:
+{seguidores_30:,}
+
+=================================================
 
 RECOMENDAÇÃO
-------------
-{recomendacao}
 
-NOTA
-----
-O Score IA é um indicador heurístico baseado
-nos dados disponíveis.
+{gerar_recomendacao(df)}
 
-A previsão de crescimento utiliza uma tendência
-linear histórica e não representa uma garantia
-de resultados futuros.
-""".strip()
+=================================================
+
+PMW Consultoria & Tecnologia
+Social Media Analytics SaaS
+"""
