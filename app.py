@@ -58,6 +58,7 @@ app = dash.Dash(
 
 server = app.server
 server.secret_key = FLASK_SECRET_KEY
+server.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true")
 
 # ============================================================
 # DATABASE
@@ -1048,6 +1049,60 @@ dashboard_layout = html.Div(
 
 
 app.layout = html.Div([dcc.Location(id="url"), html.Div(id="page-content")])
+
+
+@app.callback(
+    Output("page-content", "children"),
+    Input("url", "pathname")
+)
+def render_page(pathname):
+    if session.get("user_id"):
+        return dashboard_page(session["user_id"])
+    return login_layout()
+
+
+@app.callback(
+    Output("auth-message", "children"),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("login-button", "n_clicks"),
+    Input("register-button", "n_clicks"),
+    [dash.dependencies.State("login-email", "value"), dash.dependencies.State("login-password", "value"), dash.dependencies.State("register-name", "value"), dash.dependencies.State("register-email", "value"), dash.dependencies.State("register-password", "value")],
+    prevent_initial_call=True,
+)
+def autenticar(login_clicks, register_clicks, login_email, login_password, register_name, register_email, register_password):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return "", dash.no_update
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    try:
+        if trigger == "register-button":
+            ok, result = criar_utilizador(register_name, register_email, register_password)
+            if ok:
+                session["user_id"] = result
+                return "Conta criada com sucesso.", "/"
+            return result, dash.no_update
+        user = autenticar_utilizador(login_email, login_password)
+        if not user:
+            return "Email ou palavra-passe inválidos.", dash.no_update
+        session["user_id"] = user["id"]
+        return f"Bem-vindo, {user['name']}.", "/"
+    except Exception as erro:
+        print(f"[AUTH ERROR] {erro}")
+        traceback.print_exc()
+        return "Não foi possível concluir a operação. Verifique a configuração do PostgreSQL.", dash.no_update
+
+
+@app.callback(
+    Output("url", "pathname", allow_duplicate=True),
+    Input("logout-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def logout(n_clicks):
+    if n_clicks:
+        session.clear()
+        return "/"
+    return dash.no_update
+
 # ============================================================
 # CALLBACK
 # ============================================================
