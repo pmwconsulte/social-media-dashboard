@@ -1,145 +1,117 @@
-import sqlite3
-from contextlib import closing
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-DATABASE = "social_media.db"
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
+    name VARCHAR(255) NOT NULL,
 
-def get_connection():
-    return sqlite3.connect(DATABASE)
+    email VARCHAR(255) UNIQUE NOT NULL,
 
+    password_hash VARCHAR(255),
 
-def create_tables():
+    plan_type VARCHAR(50) DEFAULT 'free',
 
-    with closing(get_connection()) as conn:
+    stripe_customer_id VARCHAR(255),
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS historico (
-
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            data TEXT NOT NULL,
-
-            plataforma TEXT NOT NULL,
-
-            seguidores INTEGER DEFAULT 0,
-
-            engajamento REAL DEFAULT 0,
-
-            alcance INTEGER DEFAULT 0,
-
-            likes INTEGER DEFAULT 0,
-
-            comentarios INTEGER DEFAULT 0,
-
-            partilhas INTEGER DEFAULT 0,
-
-            visualizacoes INTEGER DEFAULT 0,
-
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        conn.commit()
+    created_at TIMESTAMP DEFAULT NOW()
+);
 
 
-def inserir_metrica(
-    data,
-    plataforma,
-    seguidores,
-    engajamento,
-    alcance,
-    likes=0,
-    comentarios=0,
-    partilhas=0,
-    visualizacoes=0
-):
+CREATE TABLE IF NOT EXISTS social_accounts (
 
-    with closing(get_connection()) as conn:
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-        conn.execute(
-            """
-            INSERT INTO historico (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
 
-                data,
-                plataforma,
-                seguidores,
-                engajamento,
-                alcance,
-                likes,
-                comentarios,
-                partilhas,
-                visualizacoes
+    platform VARCHAR(50) NOT NULL,
 
-            )
+    platform_account_id VARCHAR(255) NOT NULL,
 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                data,
-                plataforma,
-                seguidores,
-                engajamento,
-                alcance,
-                likes,
-                comentarios,
-                partilhas,
-                visualizacoes
-            )
-        )
+    username VARCHAR(255),
 
-        conn.commit()
+    access_token TEXT,
+
+    token_expires_at TIMESTAMP,
+
+    is_active BOOLEAN DEFAULT TRUE,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    UNIQUE(
+        platform,
+        platform_account_id
+    )
+);
 
 
-def carregar_historico():
+CREATE TABLE IF NOT EXISTS daily_metrics (
 
-    with closing(get_connection()) as conn:
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-        cursor = conn.cursor()
+    social_account_id UUID NOT NULL
+        REFERENCES social_accounts(id)
+        ON DELETE CASCADE,
 
-        cursor.execute("""
-            SELECT *
-            FROM historico
-            ORDER BY data ASC
-        """)
+    date DATE NOT NULL,
 
-        return cursor.fetchall()
+    followers INT DEFAULT 0,
+
+    reach INT DEFAULT 0,
+
+    impressions INT DEFAULT 0,
+
+    engagement_rate DECIMAL(8,2) DEFAULT 0,
+
+    profile_views INT DEFAULT 0,
+
+    website_clicks INT DEFAULT 0,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    UNIQUE(
+        social_account_id,
+        date
+    )
+);
 
 
-def apagar_historico():
+CREATE TABLE IF NOT EXISTS ai_reports (
 
-    with closing(get_connection()) as conn:
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-        conn.execute(
-            "DELETE FROM historico"
-        )
+    social_account_id UUID NOT NULL
+        REFERENCES social_accounts(id)
+        ON DELETE CASCADE,
 
-        conn.commit()
+    report_type VARCHAR(50)
+        DEFAULT 'executive',
+
+    content TEXT NOT NULL,
+
+    period_start DATE,
+
+    period_end DATE,
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
 
 
-def obter_kpis():
+CREATE TABLE IF NOT EXISTS subscriptions (
 
-    with closing(get_connection()) as conn:
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-        cursor = conn.cursor()
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
 
-        cursor.execute("""
-            SELECT
+    status VARCHAR(50)
+        DEFAULT 'active',
 
-                MAX(seguidores),
+    plan_type VARCHAR(50),
 
-                MAX(alcance),
+    current_period_end TIMESTAMP,
 
-                AVG(engajamento),
-
-                SUM(likes),
-
-                SUM(comentarios),
-
-                SUM(partilhas),
-
-                SUM(visualizacoes)
-
-            FROM historico
-        """)
-
-        return cursor.fetchone()
+    created_at TIMESTAMP DEFAULT NOW()
+);
