@@ -261,3 +261,189 @@ def create_tables():
 
         if conn:
             conn.close()
+
+
+# ============================================================
+# WORKSPACES / MIGRAÇÃO / DADOS INICIAIS
+# ============================================================
+
+def initialize_database():
+    """
+    Inicializa o schema de produção de forma idempotente.
+    Também cria um workspace padrão e um dataset inicial apenas
+    quando a base ainda não possui contas sociais.
+    """
+    create_tables()
+
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            # Workspace base para preparar isolamento por cliente.
+            cur.execute(
+                """
+                INSERT INTO workspaces (name, slug)
+                VALUES ('PMW Default Workspace', 'pmw-default')
+                ON CONFLICT (slug) DO NOTHING;
+                """
+            )
+
+            cur.execute(
+                """
+                SELECT id
+                FROM workspaces
+                WHERE slug = 'pmw-default'
+                LIMIT 1;
+                """
+            )
+            workspace_id = cur.fetchone()[0]
+
+            # Migração segura para instalações existentes.
+            cur.execute(
+                """
+                ALTER TABLE social_accounts
+                ADD COLUMN IF NOT EXISTS workspace_id UUID
+                REFERENCES workspaces(id)
+                ON DELETE CASCADE;
+                """
+            )
+
+            cur.execute(
+                """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS workspace_id UUID
+                REFERENCES workspaces(id)
+                ON DELETE SET NULL;
+                """
+            )
+
+            cur.execute(
+                """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS role VARCHAR(50)
+                DEFAULT 'viewer';
+                """
+            )
+
+            cur.execute(
+                """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS is_active BOOLEAN
+                DEFAULT TRUE;
+                """
+            )
+
+            cur.execute(
+                """
+                UPDATE social_accounts
+                SET workspace_id = %s
+                WHERE workspace_id IS NULL;
+                """,
+                (workspace_id,),
+            )
+
+            cur.execute(
+                """
+                UPDATE users
+                SET workspace_id = %s
+                WHERE workspace_id IS NULL;
+                """,
+                (workspace_id,),
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_social_accounts_workspace
+                ON social_accounts(workspace_id);
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_users_workspace
+                ON users(workspace_id);
+                """
+            )
+
+            # Evita duplicação de métricas para a mesma conta/data.
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                uq_daily_metrics_account_date
+                ON daily_metrics(social_account_id, report_date);
+                """
+            )
+
+            # Dataset inicial controlado: só entra se a base ainda estiver vazia.
+            cur.execute("SELECT COUNT(*) FROM social_accounts;")
+            total_accounts = cur.fetchone()[0]
+
+            if total_accounts == 0:
+                cur.execute(
+                    """
+                    INSERT INTO social_accounts
+                        (workspace_id, platform, username)
+                    VALUES
+                        (%s, 'Instagram', '@pmw_demo')
+                    RETURNING id;
+                    """,
+                    (workspace_id,),
+                )
+                social_account_id = cur.fetchone()[0]
+
+                cur.execute(
+                    """
+                    INSERT INTO daily_metrics
+                        (
+                            social_account_id,
+                            report_date,
+                            followers,
+                            reach,
+                            impressions,
+                            engagement_rate,
+                            profile_views,
+                            website_clicks
+                        )
+                    SELECT
+                        %s,
+                        CURRENT_DATE - gs,
+                        1200 + (29 - gs) * 58,
+                        9000 + (29 - gs) * 410,
+                        14000 + (29 - gs) * 620,
+                        ROUND((3.4 + (29 - gs) * 0.10)::numeric, 2),
+                        120 + (29 - gs) * 7,
+                        18 + (29 - gs) * 2
+                    FROM generate_series(0, 29) AS gs;
+                    """,
+                    (social_account_id,),
+                )
+
+                print(
+                    "[DATABASE] Dataset inicial criado: "
+                    "PMW Default Workspace / @pmw_demo."
+                )
+
+        conn.commit()
+        print("[DATABASE] Inicialização de produção concluída.")
+        return True
+
+    except Exception as erro:
+        if conn:
+            conn.rollback()
+        print(f"[DATABASE ERROR] Falha na inicialização: {erro}")
+        traceback = __import__("traceback")
+        traceback.print_exc()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+# Executado também quando o serviço é iniciado por Gunicorn.
+# O bloco if __name__ == '__main__' do app.py não é executado pelo Gunicorn.
+try:
+    initialize_database()
+except Exception as erro:
+    print(f"[DATABASE WARNING] Inicialização automática ignorada: {erro}")
