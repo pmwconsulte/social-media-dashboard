@@ -130,6 +130,29 @@ def create_tables():
 
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS organizations (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    name VARCHAR(255) NOT NULL,
+                    owner_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS organization_members (
+                    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+                    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                    role VARCHAR(50) NOT NULL DEFAULT 'member',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    PRIMARY KEY (organization_id, user_id)
+                );
+                """
+            )
+
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS social_accounts (
 
                     id UUID PRIMARY KEY
@@ -137,6 +160,10 @@ def create_tables():
 
                     user_id UUID
                         REFERENCES users(id)
+                        ON DELETE CASCADE,
+
+                    organization_id UUID
+                        REFERENCES organizations(id)
                         ON DELETE CASCADE,
 
                     platform VARCHAR(50)
@@ -149,6 +176,15 @@ def create_tables():
                     created_at TIMESTAMP
                         DEFAULT NOW()
                 );
+                """
+            )
+
+            cur.execute(
+                """
+                ALTER TABLE social_accounts
+                ADD COLUMN IF NOT EXISTS organization_id UUID
+                REFERENCES organizations(id)
+                ON DELETE CASCADE;
                 """
             )
 

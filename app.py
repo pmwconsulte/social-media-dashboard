@@ -7,9 +7,11 @@ import dash
 
 from dash import html, dcc
 from dash.dependencies import Input, Output
+from flask import session
 from dotenv import load_dotenv
 
 from database import get_connection, create_tables
+from auth import criar_utilizador, autenticar_utilizador
 
 from ai_engine import (
     prever_crescimento,
@@ -24,6 +26,9 @@ from ai_engine import (
 # ============================================================
 
 load_dotenv()
+
+ALLOW_DEMO_DATA = os.getenv("ALLOW_DEMO_DATA", "false").lower() == "true"
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY") or "change-me-in-production"
 
 APP_TITLE = "PMW Social Media Dashboard AI"
 
@@ -52,6 +57,8 @@ app = dash.Dash(
 )
 
 server = app.server
+server.secret_key = FLASK_SECRET_KEY
+server.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true")
 
 # ============================================================
 # DATABASE
@@ -66,6 +73,8 @@ def testar_database():
     """
 
     try:
+
+        inicializar_database()
 
         conn = get_connection()
 
@@ -125,7 +134,7 @@ def inicializar_database():
 # DADOS
 # ============================================================
 
-def carregar_dados():
+def carregar_dados(user_id=None):
 
     """
     Carrega os dados reais do PostgreSQL.
@@ -171,14 +180,19 @@ def carregar_dados():
 
                 ON sa.id = dm.social_account_id
 
+            WHERE sa.user_id = %s
             ORDER BY
                 dm.report_date ASC
 
         """
 
+        if not user_id:
+            return pd.DataFrame()
+
         dados = pd.read_sql_query(
             query,
-            conn
+            conn,
+            params=(user_id,)
         )
 
         print(
@@ -263,114 +277,32 @@ def preparar_dados(dados):
     return dados
 
 
-df = preparar_dados(
-    carregar_dados()
-)
-
-# ============================================================
-# DADOS DEMONSTRATIVOS
-# ============================================================
-
-# Só utilizados se a base de dados ainda não tiver dados.
-
-if df.empty:
-
-    print(
-        "[INFO] Nenhum dado encontrado. "
-        "A utilizar dados demonstrativos."
-    )
-
-    df = pd.DataFrame({
-
-        "data": pd.date_range(
-            start="2026-01-01",
-            periods=7,
-            freq="D"
-        ),
-
-        "plataforma": [
-            "Instagram",
-            "Instagram",
-            "Instagram",
-            "Instagram",
-            "Instagram",
-            "Instagram",
-            "Instagram",
-        ],
-
-        "username": [
-            "@demo",
-            "@demo",
-            "@demo",
-            "@demo",
-            "@demo",
-            "@demo",
-            "@demo",
-        ],
-
-        "seguidores": [
-            1200,
-            1400,
-            1650,
-            1900,
-            2150,
-            2500,
-            2900,
-        ],
-
-        "alcance": [
-            10000,
-            12500,
-            14500,
-            18000,
-            23000,
-            28000,
-            35000,
-        ],
-
-        "impressoes": [
-            15000,
-            18000,
-            22000,
-            27000,
-            33000,
-            40000,
-            50000,
-        ],
-
-        "engajamento": [
-            3.5,
-            4.2,
-            4.8,
-            5.2,
-            5.9,
-            6.4,
-            8.1,
-        ],
-
-        "visualizacoes_perfil": [
-            150,
-            180,
-            210,
-            250,
-            300,
-            350,
-            430,
-        ],
-
-        "cliques_site": [
-            20,
-            25,
-            30,
-            38,
-            45,
-            52,
-            65,
-        ],
+def gerar_dados_demo():
+    return pd.DataFrame({
+        "data": pd.date_range(start="2026-01-01", periods=7, freq="D"),
+        "plataforma": ["Instagram"] * 7,
+        "username": ["@demo"] * 7,
+        "seguidores": [1200, 1400, 1650, 1900, 2150, 2500, 2900],
+        "alcance": [10000, 12500, 14500, 18000, 23000, 28000, 35000],
+        "impressoes": [15000, 18000, 22000, 27000, 33000, 40000, 50000],
+        "engajamento": [3.5, 4.2, 4.8, 5.2, 5.9, 6.4, 8.1],
+        "visualizacoes_perfil": [150, 180, 210, 250, 300, 350, 430],
+        "cliques_site": [20, 25, 30, 38, 45, 52, 65],
     })
 
 
-# ============================================================
+def obter_dados_dashboard(user_id=None):
+    dados = preparar_dados(carregar_dados(user_id))
+    if dados.empty and ALLOW_DEMO_DATA:
+        print("[INFO] PostgreSQL sem dados. ALLOW_DEMO_DATA=true: a utilizar dados demonstrativos.")
+        return preparar_dados(gerar_dados_demo())
+    if dados.empty:
+        print("[INFO] Nenhum dado real encontrado no PostgreSQL. Dashboard sem dados.")
+    return dados
+
+
+df = pd.DataFrame()
+
 # KPI
 # ============================================================
 
@@ -643,20 +575,54 @@ def grafico_sem_dados(titulo):
 # LAYOUT
 # ============================================================
 
-plataformas = sorted(
-    df["plataforma"]
-    .dropna()
-    .astype(str)
-    .unique()
-    .tolist()
-)
+plataformas = ["Instagram", "Facebook", "LinkedIn", "YouTube", "TikTok", "X"]
 
 if not plataformas:
 
     plataformas = ["Instagram"]
 
 
-app.layout = html.Div(
+def login_layout():
+    return html.Div([
+        html.H1("📊 Social Media Dashboard AI", style={"color": "white"}),
+        html.P("Acesso seguro à sua área de analytics.", style={"color": COLORS["muted"]}),
+        dcc.Input(id="login-email", type="email", placeholder="Email", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        dcc.Input(id="login-password", type="password", placeholder="Palavra-passe", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        html.Button("Entrar", id="login-button", n_clicks=0, style={"width":"100%","padding":"12px","marginBottom":"10px"}),
+        html.Hr(),
+        dcc.Input(id="register-name", type="text", placeholder="Nome", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        dcc.Input(id="register-email", type="email", placeholder="Email para registo", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        dcc.Input(id="register-password", type="password", placeholder="Palavra-passe (mín. 8 caracteres)", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        html.Button("Criar conta", id="register-button", n_clicks=0, style={"width":"100%","padding":"12px"}),
+        html.Div(id="auth-message", style={"marginTop":"15px","color":COLORS["warning"],"whiteSpace":"pre-wrap"}),
+    ], style={"maxWidth":"420px","margin":"80px auto","padding":"30px","background":COLORS["card"],"borderRadius":"16px","color":"white"})
+
+
+def dashboard_page(user_id):
+    dados = obter_dados_dashboard(user_id)
+    if dados.empty:
+        dados = pd.DataFrame(columns=["data","plataforma","username","seguidores","alcance","impressoes","engajamento","visualizacoes_perfil","cliques_site"])
+    return html.Div([
+        html.Div(
+            html.Button(
+                "🚪 Sair",
+                id="logout-button",
+                n_clicks=0,
+                style={
+                    "padding": "10px 18px",
+                    "borderRadius": "10px",
+                    "border": "1px solid rgba(148,163,184,0.25)",
+                    "background": COLORS["card"],
+                    "color": COLORS["text"],
+                    "cursor": "pointer",
+                },
+            ),
+            style={"textAlign": "right", "marginBottom": "10px"},
+        ),
+        dashboard_layout,
+    ])
+
+dashboard_layout = html.Div(
 
     [
 
@@ -1098,6 +1064,63 @@ app.layout = html.Div(
 )
 
 
+
+
+app.layout = html.Div([dcc.Location(id="url"), html.Div(id="page-content")])
+
+
+@app.callback(
+    Output("page-content", "children"),
+    Input("url", "pathname")
+)
+def render_page(pathname):
+    if session.get("user_id"):
+        return dashboard_page(session["user_id"])
+    return login_layout()
+
+
+@app.callback(
+    Output("auth-message", "children"),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("login-button", "n_clicks"),
+    Input("register-button", "n_clicks"),
+    [dash.dependencies.State("login-email", "value"), dash.dependencies.State("login-password", "value"), dash.dependencies.State("register-name", "value"), dash.dependencies.State("register-email", "value"), dash.dependencies.State("register-password", "value")],
+    prevent_initial_call=True,
+)
+def autenticar(login_clicks, register_clicks, login_email, login_password, register_name, register_email, register_password):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return "", dash.no_update
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    try:
+        if trigger == "register-button":
+            ok, result = criar_utilizador(register_name, register_email, register_password)
+            if ok:
+                session["user_id"] = result
+                return "Conta criada com sucesso.", "/"
+            return result, dash.no_update
+        user = autenticar_utilizador(login_email, login_password)
+        if not user:
+            return "Email ou palavra-passe inválidos.", dash.no_update
+        session["user_id"] = user["id"]
+        return f"Bem-vindo, {user['name']}.", "/"
+    except Exception as erro:
+        print(f"[AUTH ERROR] {erro}")
+        traceback.print_exc()
+        return "Não foi possível concluir a operação. Verifique a configuração do PostgreSQL.", dash.no_update
+
+
+@app.callback(
+    Output("url", "pathname", allow_duplicate=True),
+    Input("logout-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def logout(n_clicks):
+    if n_clicks:
+        session.clear()
+        return "/"
+    return dash.no_update
+
 # ============================================================
 # CALLBACK
 # ============================================================
@@ -1177,8 +1200,14 @@ app.layout = html.Div(
 )
 def atualizar(plataforma):
 
-    dados = df[
-        df["plataforma"].astype(str)
+    if not session.get("user_id"):
+        vazio = grafico_sem_dados("Sessão não autenticada")
+        return ("0","0","0%","0%","0/100","🔒 Faça login para consultar os dados.","","Sessão não autenticada.",vazio,vazio,vazio,vazio)
+
+    dados_atuais = obter_dados_dashboard(session["user_id"])
+
+    dados = dados_atuais[
+        dados_atuais["plataforma"].astype(str)
         == str(plataforma)
     ].copy()
 
@@ -1510,3 +1539,44 @@ if __name__ == "__main__":
         port=port,
         debug=False
     )
+@app.callback(
+    Output("page-content", "children"),
+    Input("url", "pathname")
+)
+def render_page(pathname):
+    if session.get("user_id"):
+        return dashboard_page(session["user_id"])
+    return login_layout()
+
+
+@app.callback(
+    Output("auth-message", "children"),
+    Output("url", "pathname"),
+    Input("login-button", "n_clicks"),
+    Input("register-button", "n_clicks"),
+    [dash.dependencies.State("login-email", "value"), dash.dependencies.State("login-password", "value"), dash.dependencies.State("register-name", "value"), dash.dependencies.State("register-email", "value"), dash.dependencies.State("register-password", "value")],
+    prevent_initial_call=True,
+)
+def autenticar(login_clicks, register_clicks, login_email, login_password, register_name, register_email, register_password):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return "", dash.no_update
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    try:
+        if trigger == "register-button":
+            ok, result = criar_utilizador(register_name, register_email, register_password)
+            if ok:
+                session["user_id"] = result
+                return "Conta criada com sucesso.", "/"
+            return result, dash.no_update
+        user = autenticar_utilizador(login_email, login_password)
+        if not user:
+            return "Email ou palavra-passe inválidos.", dash.no_update
+        session["user_id"] = user["id"]
+        return f"Bem-vindo, {user['name']}.", "/"
+    except Exception as erro:
+        print(f"[AUTH ERROR] {erro}")
+        traceback.print_exc()
+        return "Não foi possível concluir a operação. Verifique a configuração do PostgreSQL.", dash.no_update
+
+
