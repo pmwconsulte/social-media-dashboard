@@ -94,9 +94,13 @@ def carregar_dados():
             FROM daily_metrics dm
             INNER JOIN social_accounts sa
                 ON sa.id = dm.social_account_id
+            INNER JOIN workspaces w
+                ON w.id = sa.workspace_id
+            WHERE w.slug = %s
             ORDER BY dm.report_date ASC
         """
-        dados = pd.read_sql_query(query, conn)
+        workspace_slug = os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+        dados = pd.read_sql_query(query, conn, params=(workspace_slug,))
         print(f"[DATABASE] {len(dados)} registos carregados.")
         return dados
     except Exception as erro:
@@ -298,9 +302,25 @@ app.layout = html.Div(
                     ],
                     style={"flex": "1"},
                 ),
-                html.A(
-                    "🚪 Logout",
-                    href="/logout",
+                html.Div(
+                    [
+                        html.A(
+                            "💳 Plano",
+                            href="/billing",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": COLORS["primary"],
+                                "color": COLORS["background"],
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
+                            },
+                        ),
+                        html.A(
+                            "🚪 Logout",
+                            href="/logout",
                     style={
                         "display": "inline-block",
                         "padding": "9px 14px",
