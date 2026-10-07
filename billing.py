@@ -78,7 +78,8 @@ def ensure_billing_schema(conn):
 
 
 def get_workspace_billing(conn, workspace_slug=None):
-    ensure_billing_schema(conn)
+    # O schema é criado/migrado no arranque em database.initialize_database().
+    # Não executar DDL (CREATE/ALTER) em cada pedido web.
     slug = workspace_slug or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
     with conn.cursor() as cur:
         cur.execute(
