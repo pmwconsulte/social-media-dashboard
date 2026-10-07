@@ -1,4 +1,4 @@
-
+```python
 import numpy as np
 import pandas as pd
 
@@ -86,7 +86,9 @@ def calcular_score(df):
             errors="coerce"
         )
 
-    dados = dados.dropna()
+    dados = dados.dropna(
+        subset=colunas
+    )
 
     if dados.empty:
         return 0
@@ -102,8 +104,7 @@ def calcular_score(df):
                 seguidores.iloc[-1]
                 - seguidores.iloc[0]
             )
-            /
-            seguidores.iloc[0]
+            / seguidores.iloc[0]
         ) * 100
 
     engajamento = float(
@@ -116,17 +117,17 @@ def calcular_score(df):
 
     likes = dados.get(
         "likes",
-        pd.Series([0])
+        pd.Series(0, index=dados.index)
     ).mean()
 
     comentarios = dados.get(
         "comentarios",
-        pd.Series([0])
+        pd.Series(0, index=dados.index)
     ).mean()
 
     partilhas = dados.get(
         "partilhas",
-        pd.Series([0])
+        pd.Series(0, index=dados.index)
     ).mean()
 
     score = (
@@ -175,9 +176,7 @@ def gerar_alerta(df):
 
     if df is None or df.empty:
 
-        return (
-            "⚠️ Dados insuficientes."
-        )
+        return "⚠️ Dados insuficientes."
 
     dados = df.copy()
 
@@ -187,7 +186,7 @@ def gerar_alerta(df):
         "engajamento",
         "seguidores",
         "alcance"
-    \]:
+    ]:
 
         if coluna not in dados.columns:
             continue
@@ -233,9 +232,7 @@ def gerar_recomendacao(df):
 
     if df is None or df.empty:
 
-        return (
-            "Adicionar mais dados."
-        )
+        return "Adicionar mais dados."
 
     score = calcular_score(df)
 
@@ -277,26 +274,33 @@ def gerar_relatorio_executivo(df):
 
     if df is None or df.empty:
 
-        return (
-            "Sem dados disponíveis."
-        )
+        return "Sem dados disponíveis."
 
     score = calcular_score(df)
 
-    classificacao = (
-        classificar_score(score)
+    classificacao = classificar_score(
+        score
     )
 
     seguidores = int(
-        df["seguidores"].iloc[-1]
+        pd.to_numeric(
+            df["seguidores"],
+            errors="coerce"
+        ).dropna().iloc[-1]
     )
 
     alcance = int(
-        df["alcance"].max()
+        pd.to_numeric(
+            df["alcance"],
+            errors="coerce"
+        ).max()
     )
 
     engajamento = round(
-        df["engajamento"].mean(),
+        pd.to_numeric(
+            df["engajamento"],
+            errors="coerce"
+        ).mean(),
         2
     )
 
@@ -342,3 +346,5 @@ RECOMENDAÇÃO
 PMW Consultoria & Tecnologia
 Social Media Analytics SaaS
 """
+```
+
