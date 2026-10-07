@@ -1,196 +1,249 @@
 import os
 import psycopg2
-from psycopg2.extras import RealDictCursor
 
+
+# ============================================================
+# CONFIGURAÇÃO
+# ============================================================
 
 def get_database_url():
-    """
-    Obtém a DATABASE_URL do ambiente.
-    """
 
-    database_url = os.getenv("DATABASE_URL")
+    database_url = os.getenv(
+        "DATABASE_URL"
+    )
 
     if not database_url:
         raise RuntimeError(
-            "DATABASE_URL não está definida nas variáveis "
-            "de ambiente do servidor."
+            "DATABASE_URL não está definida."
         )
 
     return database_url
 
 
+# ============================================================
+# CONEXÃO
+# ============================================================
+
 def get_connection():
-    """
-    Cria uma ligação ao PostgreSQL.
-    """
 
     database_url = get_database_url()
 
     try:
 
-        conn = psycopg2.connect(
+        return psycopg2.connect(
             database_url,
-            cursor_factory=RealDictCursor,
-            connect_timeout=10
+            connect_timeout=10,
+            sslmode=os.getenv(
+                "PGSSLMODE",
+                "require"
+            ),
         )
-
-        return conn
 
     except Exception as erro:
 
         print(
-            f"ERRO PostgreSQL: {erro}"
+            f"[DATABASE ERROR] "
+            f"{erro}"
         )
 
         raise
 
 
-def create_tables():
-    """
-    Cria as tabelas necessárias para a aplicação.
-    """
+# ============================================================
+# TESTE
+# ============================================================
+
+def test_connection():
 
     conn = None
-    cur = None
 
     try:
 
         conn = get_connection()
 
-        cur = conn.cursor()
+        with conn.cursor() as cur:
 
-        # --------------------------------------------------
-        # Extensão para UUID
-        # --------------------------------------------------
+            cur.execute(
+                "SELECT 1"
+            )
 
-        cur.execute("""
-            CREATE EXTENSION IF NOT EXISTS pgcrypto;
-        """)
+            return cur.fetchone()[0] == 1
 
-        # --------------------------------------------------
-        # USERS
-        # --------------------------------------------------
+    except Exception as erro:
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
+        print(
+            f"[DATABASE TEST ERROR] "
+            f"{erro}"
+        )
 
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        return False
 
-                name VARCHAR(255) NOT NULL,
+    finally:
 
-                email VARCHAR(255) UNIQUE NOT NULL,
+        if conn:
+            conn.close()
 
-                password_hash TEXT,
 
-                plan_type VARCHAR(50) DEFAULT 'free',
+# ============================================================
+# CRIAÇÃO DAS TABELAS
+# ============================================================
 
-                created_at TIMESTAMP DEFAULT NOW()
+def create_tables():
 
-            );
-        """)
+    conn = None
 
-        # --------------------------------------------------
-        # SOCIAL ACCOUNTS
-        # --------------------------------------------------
+    try:
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS social_accounts (
+        conn = get_connection()
 
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        with conn.cursor() as cur:
 
-                user_id UUID
-                    REFERENCES users(id)
-                    ON DELETE CASCADE,
+            cur.execute(
+                """
+                CREATE EXTENSION IF NOT EXISTS pgcrypto;
+                """
+            )
 
-                platform VARCHAR(50) NOT NULL,
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
 
-                username VARCHAR(255),
+                    id UUID PRIMARY KEY
+                        DEFAULT gen_random_uuid(),
 
-                access_token TEXT,
+                    name VARCHAR(255)
+                        NOT NULL,
 
-                created_at TIMESTAMP DEFAULT NOW()
+                    email VARCHAR(255)
+                        UNIQUE NOT NULL,
 
-            );
-        """)
+                    password_hash TEXT,
 
-        # --------------------------------------------------
-        # DAILY METRICS
-        # --------------------------------------------------
+                    plan_type VARCHAR(50)
+                        DEFAULT 'free',
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS daily_metrics (
+                    created_at TIMESTAMP
+                        DEFAULT NOW()
+                );
+                """
+            )
 
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_accounts (
 
-                social_account_id UUID
-                    REFERENCES social_accounts(id)
-                    ON DELETE CASCADE,
+                    id UUID PRIMARY KEY
+                        DEFAULT gen_random_uuid(),
 
-                report_date DATE NOT NULL,
+                    user_id UUID
+                        REFERENCES users(id)
+                        ON DELETE CASCADE,
 
-                followers INTEGER DEFAULT 0,
+                    platform VARCHAR(50)
+                        NOT NULL,
 
-                reach INTEGER DEFAULT 0,
+                    username VARCHAR(255),
 
-                impressions INTEGER DEFAULT 0,
+                    access_token TEXT,
 
-                engagement_rate NUMERIC(10,2) DEFAULT 0,
+                    created_at TIMESTAMP
+                        DEFAULT NOW()
+                );
+                """
+            )
 
-                profile_views INTEGER DEFAULT 0,
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS daily_metrics (
 
-                website_clicks INTEGER DEFAULT 0,
+                    id UUID PRIMARY KEY
+                        DEFAULT gen_random_uuid(),
 
-                created_at TIMESTAMP DEFAULT NOW()
+                    social_account_id UUID
+                        REFERENCES social_accounts(id)
+                        ON DELETE CASCADE,
 
-            );
-        """)
+                    report_date DATE NOT NULL,
 
-        # --------------------------------------------------
-        # AI REPORTS
-        # --------------------------------------------------
+                    followers INTEGER
+                        DEFAULT 0,
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS ai_reports (
+                    reach INTEGER
+                        DEFAULT 0,
 
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    impressions INTEGER
+                        DEFAULT 0,
 
-                social_account_id UUID
-                    REFERENCES social_accounts(id)
-                    ON DELETE CASCADE,
+                    engagement_rate NUMERIC(10,2)
+                        DEFAULT 0,
 
-                report_type VARCHAR(50),
+                    profile_views INTEGER
+                        DEFAULT 0,
 
-                content TEXT,
+                    website_clicks INTEGER
+                        DEFAULT 0,
 
-                created_at TIMESTAMP DEFAULT NOW()
+                    created_at TIMESTAMP
+                        DEFAULT NOW()
+                );
+                """
+            )
 
-            );
-        """)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ai_reports (
 
-        # --------------------------------------------------
-        # ÍNDICES
-        # --------------------------------------------------
+                    id UUID PRIMARY KEY
+                        DEFAULT gen_random_uuid(),
 
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_daily_metrics_date
-            ON daily_metrics(report_date);
-        """)
+                    social_account_id UUID
+                        REFERENCES social_accounts(id)
+                        ON DELETE CASCADE,
 
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_daily_metrics_account
-            ON daily_metrics(social_account_id);
-        """)
+                    report_type VARCHAR(50),
 
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_social_accounts_platform
-            ON social_accounts(platform);
-        """)
+                    content TEXT,
+
+                    created_at TIMESTAMP
+                        DEFAULT NOW()
+                );
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_daily_metrics_date
+                ON daily_metrics(report_date);
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_daily_metrics_account
+                ON daily_metrics(
+                    social_account_id
+                );
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_social_accounts_platform
+                ON social_accounts(platform);
+                """
+            )
 
         conn.commit()
 
         print(
-            "PostgreSQL: tabelas verificadas/criadas com sucesso."
+            "[DATABASE] "
+            "Tabelas verificadas com sucesso."
         )
+
+        return True
 
     except Exception as erro:
 
@@ -198,15 +251,13 @@ def create_tables():
             conn.rollback()
 
         print(
-            f"ERRO ao criar tabelas PostgreSQL: {erro}"
+            f"[DATABASE ERROR] "
+            f"{erro}"
         )
 
         raise
 
     finally:
-
-        if cur:
-            cur.close()
 
         if conn:
             conn.close()
