@@ -25,6 +25,8 @@ from ai_engine import (
 
 load_dotenv()
 
+ALLOW_DEMO_DATA = os.getenv("ALLOW_DEMO_DATA", "false").lower() == "true"
+
 APP_TITLE = "PMW Social Media Dashboard AI"
 
 COLORS = {
@@ -66,6 +68,8 @@ def testar_database():
     """
 
     try:
+
+        inicializar_database()
 
         conn = get_connection()
 
@@ -263,114 +267,32 @@ def preparar_dados(dados):
     return dados
 
 
-df = preparar_dados(
-    carregar_dados()
-)
-
-# ============================================================
-# DADOS DEMONSTRATIVOS
-# ============================================================
-
-# Só utilizados se a base de dados ainda não tiver dados.
-
-if df.empty:
-
-    print(
-        "[INFO] Nenhum dado encontrado. "
-        "A utilizar dados demonstrativos."
-    )
-
-    df = pd.DataFrame({
-
-        "data": pd.date_range(
-            start="2026-01-01",
-            periods=7,
-            freq="D"
-        ),
-
-        "plataforma": [
-            "Instagram",
-            "Instagram",
-            "Instagram",
-            "Instagram",
-            "Instagram",
-            "Instagram",
-            "Instagram",
-        ],
-
-        "username": [
-            "@demo",
-            "@demo",
-            "@demo",
-            "@demo",
-            "@demo",
-            "@demo",
-            "@demo",
-        ],
-
-        "seguidores": [
-            1200,
-            1400,
-            1650,
-            1900,
-            2150,
-            2500,
-            2900,
-        ],
-
-        "alcance": [
-            10000,
-            12500,
-            14500,
-            18000,
-            23000,
-            28000,
-            35000,
-        ],
-
-        "impressoes": [
-            15000,
-            18000,
-            22000,
-            27000,
-            33000,
-            40000,
-            50000,
-        ],
-
-        "engajamento": [
-            3.5,
-            4.2,
-            4.8,
-            5.2,
-            5.9,
-            6.4,
-            8.1,
-        ],
-
-        "visualizacoes_perfil": [
-            150,
-            180,
-            210,
-            250,
-            300,
-            350,
-            430,
-        ],
-
-        "cliques_site": [
-            20,
-            25,
-            30,
-            38,
-            45,
-            52,
-            65,
-        ],
+def gerar_dados_demo():
+    return pd.DataFrame({
+        "data": pd.date_range(start="2026-01-01", periods=7, freq="D"),
+        "plataforma": ["Instagram"] * 7,
+        "username": ["@demo"] * 7,
+        "seguidores": [1200, 1400, 1650, 1900, 2150, 2500, 2900],
+        "alcance": [10000, 12500, 14500, 18000, 23000, 28000, 35000],
+        "impressoes": [15000, 18000, 22000, 27000, 33000, 40000, 50000],
+        "engajamento": [3.5, 4.2, 4.8, 5.2, 5.9, 6.4, 8.1],
+        "visualizacoes_perfil": [150, 180, 210, 250, 300, 350, 430],
+        "cliques_site": [20, 25, 30, 38, 45, 52, 65],
     })
 
 
-# ============================================================
+def obter_dados_dashboard():
+    dados = preparar_dados(carregar_dados())
+    if dados.empty and ALLOW_DEMO_DATA:
+        print("[INFO] PostgreSQL sem dados. ALLOW_DEMO_DATA=true: a utilizar dados demonstrativos.")
+        return preparar_dados(gerar_dados_demo())
+    if dados.empty:
+        print("[INFO] Nenhum dado real encontrado no PostgreSQL. Dashboard sem dados.")
+    return dados
+
+
+df = obter_dados_dashboard()
+
 # KPI
 # ============================================================
 
@@ -1177,8 +1099,10 @@ app.layout = html.Div(
 )
 def atualizar(plataforma):
 
-    dados = df[
-        df["plataforma"].astype(str)
+    dados_atuais = obter_dados_dashboard()
+
+    dados = dados_atuais[
+        dados_atuais["plataforma"].astype(str)
         == str(plataforma)
     ].copy()
 
