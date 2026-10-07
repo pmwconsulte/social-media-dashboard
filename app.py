@@ -259,9 +259,12 @@ def grafico_sem_dados(titulo):
     return configurar_grafico(fig)
 
 
-plataformas = sorted(
-    df["plataforma"].dropna().astype(str).unique().tolist()
-)
+if "plataforma" in df.columns:
+    plataformas = sorted(
+        df["plataforma"].dropna().astype(str).unique().tolist()
+    )
+else:
+    plataformas = []
 
 if not plataformas:
     plataformas = ["Instagram"]
