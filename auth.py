@@ -24,6 +24,15 @@ def criar_utilizador(nome, email, password):
                 (nome, email, password_hash),
             )
             user_id = str(cur.fetchone()[0])
+            cur.execute(
+                "INSERT INTO organizations (name, owner_user_id) VALUES (%s, %s) RETURNING id",
+                (f"Organização de {nome}", user_id),
+            )
+            organization_id = str(cur.fetchone()[0])
+            cur.execute(
+                "INSERT INTO organization_members (organization_id, user_id, role) VALUES (%s, %s, 'owner')",
+                (organization_id, user_id),
+            )
         conn.commit()
         return True, user_id
     except Exception:
