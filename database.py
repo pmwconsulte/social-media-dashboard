@@ -282,6 +282,30 @@ def initialize_database():
             # Workspace base para preparar isolamento por cliente.
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS workspaces (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    name VARCHAR(255) NOT NULL,
+                    slug VARCHAR(255) UNIQUE NOT NULL,
+                    trial_started_at TIMESTAMP DEFAULT NOW(),
+                    trial_ends_at TIMESTAMP DEFAULT (NOW() + INTERVAL '30 days'),
+                    subscription_status VARCHAR(30) DEFAULT 'trialing',
+                    subscription_plan VARCHAR(50) DEFAULT 'trial',
+                    payment_provider VARCHAR(50),
+                    subscription_id VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+                """
+            )
+
+            cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMP DEFAULT NOW();")
+            cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP DEFAULT (NOW() + INTERVAL '30 days');")
+            cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(30) DEFAULT 'trialing';")
+            cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(50) DEFAULT 'trial';")
+            cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(50);")
+            cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS subscription_id VARCHAR(255);")
+
+            cur.execute(
+                """
                 INSERT INTO workspaces (name, slug)
                 VALUES ('PMW Default Workspace', 'pmw-default')
                 ON CONFLICT (slug) DO NOTHING;
