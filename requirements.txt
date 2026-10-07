@@ -1,9 +1,15 @@
 ﻿dash
 plotly
 pandas
+numpy
 requests
 python-dotenv
+sqlalchemy
+psycopg2-binary
 reportlab
 gunicorn
 kaleido
-
+scikit-learn
+flask-caching
+bcrypt
+PyJWT
