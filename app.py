@@ -602,7 +602,25 @@ def dashboard_page(user_id):
     dados = obter_dados_dashboard(user_id)
     if dados.empty:
         dados = pd.DataFrame(columns=["data","plataforma","username","seguidores","alcance","impressoes","engajamento","visualizacoes_perfil","cliques_site"])
-    return dashboard_layout
+    return html.Div([
+        html.Div(
+            html.Button(
+                "🚪 Sair",
+                id="logout-button",
+                n_clicks=0,
+                style={
+                    "padding": "10px 18px",
+                    "borderRadius": "10px",
+                    "border": "1px solid rgba(148,163,184,0.25)",
+                    "background": COLORS["card"],
+                    "color": COLORS["text"],
+                    "cursor": "pointer",
+                },
+            ),
+            style={"textAlign": "right", "marginBottom": "10px"},
+        ),
+        dashboard_layout,
+    ])
 
 dashboard_layout = html.Div(
 
