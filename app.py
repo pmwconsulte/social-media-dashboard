@@ -7,9 +7,11 @@ import dash
 
 from dash import html, dcc
 from dash.dependencies import Input, Output
+from flask import session
 from dotenv import load_dotenv
 
 from database import get_connection, create_tables
+from auth import criar_utilizador, autenticar_utilizador
 
 from ai_engine import (
     prever_crescimento,
@@ -26,6 +28,7 @@ from ai_engine import (
 load_dotenv()
 
 ALLOW_DEMO_DATA = os.getenv("ALLOW_DEMO_DATA", "false").lower() == "true"
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY") or "change-me-in-production"
 
 APP_TITLE = "PMW Social Media Dashboard AI"
 
@@ -54,6 +57,7 @@ app = dash.Dash(
 )
 
 server = app.server
+server.secret_key = FLASK_SECRET_KEY
 
 # ============================================================
 # DATABASE
@@ -129,7 +133,7 @@ def inicializar_database():
 # DADOS
 # ============================================================
 
-def carregar_dados():
+def carregar_dados(user_id=None):
 
     """
     Carrega os dados reais do PostgreSQL.
@@ -175,14 +179,19 @@ def carregar_dados():
 
                 ON sa.id = dm.social_account_id
 
+            WHERE sa.user_id = %s
             ORDER BY
                 dm.report_date ASC
 
         """
 
+        if not user_id:
+            return pd.DataFrame()
+
         dados = pd.read_sql_query(
             query,
-            conn
+            conn,
+            params=(user_id,)
         )
 
         print(
@@ -281,8 +290,8 @@ def gerar_dados_demo():
     })
 
 
-def obter_dados_dashboard():
-    dados = preparar_dados(carregar_dados())
+def obter_dados_dashboard(user_id=None):
+    dados = preparar_dados(carregar_dados(user_id))
     if dados.empty and ALLOW_DEMO_DATA:
         print("[INFO] PostgreSQL sem dados. ALLOW_DEMO_DATA=true: a utilizar dados demonstrativos.")
         return preparar_dados(gerar_dados_demo())
@@ -291,7 +300,7 @@ def obter_dados_dashboard():
     return dados
 
 
-df = obter_dados_dashboard()
+df = pd.DataFrame()
 
 # KPI
 # ============================================================
@@ -578,448 +587,31 @@ if not plataformas:
     plataformas = ["Instagram"]
 
 
-app.layout = html.Div(
-
-    [
-
-        # ----------------------------------------------------
-        # HEADER
-        # ----------------------------------------------------
-
-        html.Div(
-
-            [
-
-                html.H1(
-
-                    "📊 Social Media Dashboard AI",
-
-                    style={
-
-                        "textAlign": "center",
-
-                        "fontSize": (
-                            "clamp(26px, 4vw, 40px)"
-                        ),
-
-                        "margin": "5px 0 10px",
-
-                        "color": "white",
-
-                    },
-                ),
-
-                html.P(
-
-                    "Social Media Analytics • "
-                    "Artificial Intelligence",
-
-                    style={
-
-                        "textAlign": "center",
-
-                        "color": COLORS["muted"],
-
-                        "fontSize": "15px",
-
-                        "marginBottom": "30px",
-
-                    },
-                ),
-            ]
-        ),
-
-        # ----------------------------------------------------
-        # KPIs
-        # ----------------------------------------------------
-
-        html.Div(
-
-            [
-
-                criar_kpi(
-                    numero(
-                        calcular_kpis(df)[
-                            "seguidores"
-                        ]
-                    ),
-                    "Seguidores",
-                    COLORS["primary"],
-                    "kpi-seguidores",
-                ),
-
-                criar_kpi(
-                    numero(
-                        calcular_kpis(df)[
-                            "alcance"
-                        ]
-                    ),
-                    "Alcance",
-                    COLORS["success"],
-                    "kpi-alcance",
-                ),
-
-                criar_kpi(
-                    (
-                        f'{calcular_kpis(df)["engajamento"]}%'
-                    ),
-                    "Engajamento Médio",
-                    COLORS["warning"],
-                    "kpi-engajamento",
-                ),
-
-                criar_kpi(
-                    (
-                        f'{calcular_kpis(df)["crescimento"]}%'
-                    ),
-                    "Crescimento",
-                    COLORS["purple"],
-                    "kpi-crescimento",
-                ),
-
-                criar_kpi(
-                    (
-                        f'{calcular_kpis(df)["score"]}/100'
-                    ),
-                    "Score IA",
-                    COLORS["danger"],
-                    "kpi-score",
-                ),
-
-            ],
-
-            style={
-
-                "display": "grid",
-
-                "gridTemplateColumns": (
-                    "repeat("
-                    "auto-fit, "
-                    "minmax(180px, 1fr)"
-                    ")"
-                ),
-
-                "gap": "15px",
-
-                "width": "100%",
-
-                "marginBottom": "25px",
-
-            },
-        ),
-
-        # ----------------------------------------------------
-        # FILTRO
-        # ----------------------------------------------------
-
-        html.Div(
-
-            [
-
-                html.Label(
-
-                    "🔎 Selecionar plataforma",
-
-                    style={
-
-                        "color": COLORS["text"],
-
-                        "fontWeight": "600",
-
-                        "display": "block",
-
-                        "marginBottom": "8px",
-
-                    },
-                ),
-
-                dcc.Dropdown(
-
-                    id="plataforma",
-
-                    options=[
-
-                        {
-                            "label": p,
-                            "value": p,
-                        }
-
-                        for p in plataformas
-
-                    ],
-
-                    value=plataformas[0],
-
-                    clearable=False,
-
-                    searchable=True,
-
-                ),
-            ],
-
-            style={
-
-                "background": COLORS["card"],
-
-                "padding": "20px",
-
-                "borderRadius": "16px",
-
-                "marginBottom": "20px",
-
-                "border": (
-                    "1px solid "
-                    "rgba(148,163,184,0.10)"
-                ),
-            },
-        ),
-
-        # ----------------------------------------------------
-        # ASSISTENTE IA
-        # ----------------------------------------------------
-
-        html.Div(
-
-            [
-
-                html.H2(
-
-                    "🤖 Assistente IA",
-
-                    style={
-                        "color": COLORS["primary"],
-                        "marginTop": "0",
-                    },
-                ),
-
-                html.Div(
-                    id="alerta-ia",
-                    style={
-                        "color": "#facc15",
-                        "whiteSpace": "pre-wrap",
-                        "lineHeight": "1.7",
-                    },
-                ),
-
-                html.Div(
-                    id="recomendacao-ia",
-                    style={
-                        "color": COLORS["success"],
-                        "whiteSpace": "pre-wrap",
-                        "lineHeight": "1.7",
-                        "marginTop": "10px",
-                    },
-                ),
-
-            ],
-
-            style={
-
-                "background": "#172554",
-
-                "padding": "22px",
-
-                "borderRadius": "16px",
-
-                "marginBottom": "20px",
-
-                "border": (
-                    "1px solid "
-                    "rgba(56,189,248,0.15)"
-                ),
-            },
-        ),
-
-        # ----------------------------------------------------
-        # RELATÓRIO EXECUTIVO
-        # ----------------------------------------------------
-
-        html.Div(
-
-            [
-
-                html.H2(
-
-                    "📋 Relatório Executivo IA",
-
-                    style={
-                        "marginTop": "0",
-                        "color": "white",
-                    },
-                ),
-
-                html.Pre(
-
-                    id="relatorio-ia",
-
-                    style={
-
-                        "whiteSpace": "pre-wrap",
-
-                        "overflowWrap": "anywhere",
-
-                        "color": "#e2e8f0",
-
-                        "fontFamily": (
-                            "Arial, sans-serif"
-                        ),
-
-                        "fontSize": "14px",
-
-                        "lineHeight": "1.6",
-
-                        "margin": "0",
-
-                    },
-                ),
-
-            ],
-
-            style={
-
-                "background": COLORS["card"],
-
-                "padding": "22px",
-
-                "borderRadius": "16px",
-
-                "marginBottom": "20px",
-
-            },
-        ),
-
-        # ----------------------------------------------------
-        # GRÁFICOS
-        # ----------------------------------------------------
-
-        html.Div(
-
-            [
-
-                html.Div(
-                    dcc.Graph(
-                        id="grafico_seguidores",
-                        config={
-                            "responsive": True,
-                            "displaylogo": False,
-                        },
-                        style={
-                            "height": "380px"
-                        },
-                    )
-                ),
-
-                html.Div(
-                    dcc.Graph(
-                        id="grafico_alcance",
-                        config={
-                            "responsive": True,
-                            "displaylogo": False,
-                        },
-                        style={
-                            "height": "380px"
-                        },
-                    )
-                ),
-
-                html.Div(
-                    dcc.Graph(
-                        id="grafico_engajamento",
-                        config={
-                            "responsive": True,
-                            "displaylogo": False,
-                        },
-                        style={
-                            "height": "380px"
-                        },
-                    )
-                ),
-
-                html.Div(
-                    dcc.Graph(
-                        id="grafico_previsao",
-                        config={
-                            "responsive": True,
-                            "displaylogo": False,
-                        },
-                        style={
-                            "height": "380px"
-                        },
-                    )
-                ),
-
-            ],
-
-            style={
-
-                "display": "grid",
-
-                "gridTemplateColumns": (
-                    "repeat("
-                    "auto-fit, "
-                    "minmax(400px, 1fr)"
-                    ")"
-                ),
-
-                "gap": "20px",
-
-                "width": "100%",
-
-            },
-        ),
-
-        # ----------------------------------------------------
-        # FOOTER
-        # ----------------------------------------------------
-
-        html.Hr(
-            style={
-                "borderColor": COLORS["border"],
-                "marginTop": "35px",
-            }
-        ),
-
-        html.P(
-
-            "© 2026 PMW Consultoria & Tecnologia",
-
-            style={
-
-                "textAlign": "center",
-
-                "color": COLORS["muted"],
-
-                "fontSize": "13px",
-
-                "padding": "15px",
-
-            },
-        ),
-
-    ],
-
-    style={
-
-        "backgroundColor": COLORS["background"],
-
-        "minHeight": "100vh",
-
-        "width": "100%",
-
-        "boxSizing": "border-box",
-
-        "padding": (
-            "clamp(12px, 2vw, 28px)"
-        ),
-
-        "fontFamily": "Arial, sans-serif",
-
-        "overflowX": "hidden",
-
-    },
-)
-
-
+def login_layout():
+    return html.Div([
+        html.H1("📊 Social Media Dashboard AI", style={"color": "white"}),
+        html.P("Acesso seguro à sua área de analytics.", style={"color": COLORS["muted"]}),
+        dcc.Input(id="login-email", type="email", placeholder="Email", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        dcc.Input(id="login-password", type="password", placeholder="Palavra-passe", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        html.Button("Entrar", id="login-button", n_clicks=0, style={"width":"100%","padding":"12px","marginBottom":"10px"}),
+        html.Hr(),
+        dcc.Input(id="register-name", type="text", placeholder="Nome", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        dcc.Input(id="register-email", type="email", placeholder="Email para registo", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        dcc.Input(id="register-password", type="password", placeholder="Palavra-passe (mín. 8 caracteres)", style={"width":"100%","marginBottom":"10px","padding":"12px","boxSizing":"border-box"}),
+        html.Button("Criar conta", id="register-button", n_clicks=0, style={"width":"100%","padding":"12px"}),
+        html.Div(id="auth-message", style={"marginTop":"15px","color":COLORS["warning"],"whiteSpace":"pre-wrap"}),
+    ], style={"maxWidth":"420px","margin":"80px auto","padding":"30px","background":COLORS["card"],"borderRadius":"16px","color":"white"})
+
+
+def dashboard_page(user_id):
+    dados = obter_dados_dashboard(user_id)
+    if dados.empty:
+        dados = pd.DataFrame(columns=["data","plataforma","username","seguidores","alcance","impressoes","engajamento","visualizacoes_perfil","cliques_site"])
+    plataformas_local = sorted(dados["plataforma"].dropna().astype(str).unique().tolist()) or ["Instagram"]
+    layout = dashboard
+    return layout
+
+app.layout = html.Div([dcc.Location(id="url"), html.Div(id="page-content")])
 # ============================================================
 # CALLBACK
 # ============================================================
@@ -1099,7 +691,11 @@ app.layout = html.Div(
 )
 def atualizar(plataforma):
 
-    dados_atuais = obter_dados_dashboard()
+    if not session.get("user_id"):
+        vazio = grafico_sem_dados("Sessão não autenticada")
+        return ("0","0","0%","0%","0/100","🔒 Faça login para consultar os dados.","","Sessão não autenticada.",vazio,vazio,vazio,vazio)
+
+    dados_atuais = obter_dados_dashboard(session["user_id"])
 
     dados = dados_atuais[
         dados_atuais["plataforma"].astype(str)
@@ -1434,3 +1030,43 @@ if __name__ == "__main__":
         port=port,
         debug=False
     )
+@app.callback(
+    Output("page-content", "children"),
+    Input("url", "pathname")
+)
+def render_page(pathname):
+    if session.get("user_id"):
+        return dashboard_page(session["user_id"])
+    return login_layout()
+
+
+@app.callback(
+    Output("auth-message", "children"),
+    Input("login-button", "n_clicks"),
+    Input("register-button", "n_clicks"),
+    [dash.dependencies.State("login-email", "value"), dash.dependencies.State("login-password", "value"), dash.dependencies.State("register-name", "value"), dash.dependencies.State("register-email", "value"), dash.dependencies.State("register-password", "value")],
+    prevent_initial_call=True,
+)
+def autenticar(login_clicks, register_clicks, login_email, login_password, register_name, register_email, register_password):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return ""
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    try:
+        if trigger == "register-button":
+            ok, result = criar_utilizador(register_name, register_email, register_password)
+            if ok:
+                session["user_id"] = result
+                return "Conta criada com sucesso. A carregar o dashboard..."
+            return result
+        user = autenticar_utilizador(login_email, login_password)
+        if not user:
+            return "Email ou palavra-passe inválidos."
+        session["user_id"] = user["id"]
+        return f"Bem-vindo, {user['name']}."
+    except Exception as erro:
+        print(f"[AUTH ERROR] {erro}")
+        traceback.print_exc()
+        return "Não foi possível concluir a operação. Verifique a configuração do PostgreSQL."
+
+
