@@ -1,8 +1,10 @@
 
 
 import os
+
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import dash
 
 from dash import html, dcc
@@ -21,826 +23,1433 @@ from ai_engine import (
 
 
 # ============================================================
-# 1. CONFIGURAÇÃO
+# CONFIGURAÇÃO
 # ============================================================
 
 load_dotenv()
+
 create_tables()
 
 app = dash.Dash(
     __name__,
-    title="Social Media Dashboard IA",
-    update_title="A atualizar dashboard..."
+    title="Social Media Dashboard com IA",
+    suppress_callback_exceptions=True
 )
 
 server = app.server
 
-COR_FUNDO = "#020617"
-COR_CARTAO = "#111827"
-COR_CARTAO_KPI = "#172554"
-COR_TEXTO = "#f8fafc"
-COR_SECUNDARIA = "#94a3b8"
-COR_AZUL = "#38bdf8"
-COR_VERDE = "#22c55e"
-COR_AMARELO = "#f59e0b"
-COR_ROXO = "#a855f7"
-COR_VERMELHO = "#ef4444"
+
+# ============================================================
+# ESTILO GLOBAL
+# ============================================================
+
+PAGE_STYLE = {
+    "backgroundColor": "#020617",
+    "minHeight": "100vh",
+    "padding": "24px",
+    "fontFamily": "Arial, sans-serif",
+    "color": "#e2e8f0"
+}
+
+CARD_STYLE = {
+    "background": "#172554",
+    "borderRadius": "16px",
+    "padding": "22px",
+    "boxShadow": "0 8px 25px rgba(0,0,0,0.25)",
+    "border": "1px solid rgba(255,255,255,0.05)"
+}
+
+SECTION_STYLE = {
+    "background": "#111827",
+    "borderRadius": "16px",
+    "padding": "22px",
+    "marginTop": "22px",
+    "boxShadow": "0 8px 25px rgba(0,0,0,0.20)"
+}
 
 
 # ============================================================
-# 2. CARREGAR DADOS
+# DADOS
 # ============================================================
 
 def carregar_dados():
-    """Carrega os registos da tabela historico."""
 
     try:
+
         conn = get_connection()
 
-        try:
-            dados = pd.read_sql_query(
-                "SELECT * FROM historico",
-                conn
-            )
-        finally:
-            conn.close()
+        df = pd.read_sql_query(
+            "SELECT * FROM historico",
+            conn
+        )
 
-        return dados
+        conn.close()
+
+        return df
 
     except Exception as erro:
-        print(f"Erro ao carregar dados: {erro}")
+
+        print(
+            f"Erro ao carregar dados: {erro}"
+        )
+
         return pd.DataFrame()
 
 
-def preparar_dados(dados):
-    """Valida, converte e ordena os dados."""
-
-    colunas = [
-        "data",
-        "plataforma",
-        "seguidores",
-        "engajamento",
-        "alcance"
-    ]
-
-    if dados.empty:
-        return pd.DataFrame(columns=colunas)
-
-    dados = dados.copy()
-
-    faltantes = [
-        coluna for coluna in colunas
-        if coluna not in dados.columns
-    ]
-
-    if faltantes:
-        raise ValueError(
-            "Colunas em falta na tabela historico: "
-            + ", ".join(faltantes)
-        )
-
-    dados["data"] = pd.to_datetime(
-        dados["data"],
-        errors="coerce"
-    )
-
-    for coluna in [
-        "seguidores",
-        "engajamento",
-        "alcance"
-    ]:
-        dados[coluna] = pd.to_numeric(
-            dados[coluna],
-            errors="coerce"
-        )
-
-    dados["plataforma"] = (
-        dados["plataforma"].astype("string").str.strip()
-    )
-
-    dados = dados.dropna(
-        subset=colunas
-    )
-
-    dados = dados[
-        dados["plataforma"] != ""
-    ]
-
-    return dados.sort_values(
-        "data"
-    ).reset_index(drop=True)
-
-
-df = preparar_dados(carregar_dados())
+df = carregar_dados()
 
 
 # ============================================================
-# 3. DADOS DEMONSTRATIVOS
+# DADOS DEMONSTRATIVOS
 # ============================================================
-
-# Utilizados apenas quando a base de dados não contém
-# registos válidos. Não representam dados reais.
 
 if df.empty:
+
     df = pd.DataFrame({
-        "data": pd.date_range(
-            start="2026-01-01",
-            periods=7,
-            freq="D"
-        ),
-        "plataforma": ["Instagram"] * 7,
+
+        "data": [
+            "2026-01-01",
+            "2026-01-02",
+            "2026-01-03",
+            "2026-01-04",
+            "2026-01-05",
+            "2026-01-06",
+            "2026-01-07"
+        ],
+
+        "plataforma": [
+            "Instagram",
+            "Instagram",
+            "Instagram",
+            "Instagram",
+            "Instagram",
+            "Instagram",
+            "Instagram"
+        ],
+
         "seguidores": [
-            1200, 1400, 1650, 1900,
-            2150, 2500, 2900
+            1200,
+            1400,
+            1650,
+            1900,
+            2150,
+            2500,
+            2900
         ],
+
         "engajamento": [
-            3.5, 4.2, 4.8, 5.2,
-            5.9, 6.4, 8.1
+            3.5,
+            4.2,
+            4.8,
+            5.2,
+            5.9,
+            6.4,
+            8.1
         ],
+
         "alcance": [
-            10000, 12500, 14500, 18000,
-            23000, 28000, 35000
+            10000,
+            12500,
+            14500,
+            18000,
+            23000,
+            28000,
+            35000
         ]
     })
 
 
 # ============================================================
-# 4. FUNÇÕES AUXILIARES
+# PREPARAÇÃO
 # ============================================================
 
-def calcular_kpis(dados):
-    """Calcula os indicadores para o conjunto recebido."""
+df["data"] = pd.to_datetime(
+    df["data"],
+    errors="coerce"
+)
 
-    if dados.empty:
-        return {
-            "seguidores": 0,
-            "alcance": 0,
-            "engajamento": 0,
-            "crescimento": 0,
-            "score": 0
-        }
+df = df.dropna(
+    subset=["data"]
+)
 
-    dados = dados.sort_values("data")
+for coluna in [
+    "seguidores",
+    "engajamento",
+    "alcance"
+]:
 
-    primeiro = float(dados["seguidores"].iloc[0])
-    ultimo = float(dados["seguidores"].iloc[-1])
+    if coluna in df.columns:
 
-    if primeiro > 0:
-        crescimento = (
-            (ultimo - primeiro) / primeiro
-        ) * 100
-    else:
-        crescimento = 0
+        df[coluna] = pd.to_numeric(
+            df[coluna],
+            errors="coerce"
+        )
 
-    return {
-        "seguidores": int(dados["seguidores"].max()),
-        "alcance": int(dados["alcance"].max()),
-        "engajamento": round(
-            float(dados["engajamento"].mean()), 2
-        ),
-        "crescimento": round(crescimento, 2),
-        "score": calcular_score(dados)
-    }
+df = df.dropna(
+    subset=[
+        "seguidores",
+        "engajamento",
+        "alcance"
+    ]
+)
+
+df = df.sort_values(
+    "data"
+).reset_index(
+    drop=True
+)
 
 
-def criar_kpi(valor, titulo, cor, identificador=None):
-    """Cria um cartão KPI responsivo."""
+# ============================================================
+# KPIs GLOBAIS
+# ============================================================
+
+seguidores_total = int(
+    df["seguidores"].max()
+)
+
+alcance_total = int(
+    df["alcance"].max()
+)
+
+engajamento_medio = round(
+    df["engajamento"].mean(),
+    2
+)
+
+if (
+    not df.empty
+    and df["seguidores"].iloc[0] > 0
+):
+
+    crescimento = round(
+        (
+            (
+                df["seguidores"].iloc[-1]
+                - df["seguidores"].iloc[0]
+            )
+            /
+            df["seguidores"].iloc[0]
+        )
+        * 100,
+        2
+    )
+
+else:
+
+    crescimento = 0
+
+
+# ============================================================
+# IA GLOBAL
+# ============================================================
+
+try:
+
+    score_ia = calcular_score(df)
+
+except Exception as erro:
+
+    print(
+        f"Erro no Score IA: {erro}"
+    )
+
+    score_ia = 0
+
+
+try:
+
+    alerta_ia = gerar_alerta(df)
+
+except Exception as erro:
+
+    print(
+        f"Erro no alerta IA: {erro}"
+    )
+
+    alerta_ia = (
+        "Não foi possível gerar o alerta IA."
+    )
+
+
+try:
+
+    recomendacao_ia = gerar_recomendacao(df)
+
+except Exception as erro:
+
+    print(
+        f"Erro na recomendação IA: {erro}"
+    )
+
+    recomendacao_ia = (
+        "Não foi possível gerar a recomendação IA."
+    )
+
+
+try:
+
+    relatorio_ia = gerar_relatorio_executivo(df)
+
+except Exception as erro:
+
+    print(
+        f"Erro no relatório IA: {erro}"
+    )
+
+    relatorio_ia = (
+        "Não foi possível gerar o relatório executivo."
+    )
+
+
+# ============================================================
+# FUNÇÕES AUXILIARES
+# ============================================================
+
+def formatar_numero(valor):
+
+    try:
+
+        return f"{int(valor):,}".replace(
+            ",",
+            "."
+        )
+
+    except Exception:
+
+        return "0"
+
+
+def cor_score(score):
+
+    if score >= 75:
+        return "#22c55e"
+
+    if score >= 50:
+        return "#f59e0b"
+
+    return "#ef4444"
+
+
+def criar_kpi(
+    valor,
+    titulo,
+    cor,
+    icone
+):
 
     return html.Div(
+
         [
+
+            html.Div(
+                icone,
+                style={
+                    "fontSize": "24px",
+                    "marginBottom": "8px"
+                }
+            ),
+
             html.H2(
-                str(valor),
-                id=identificador,
+                valor,
                 style={
                     "color": cor,
-                    "fontSize": "clamp(22px, 2.2vw, 30px)",
+                    "fontSize": "30px",
                     "fontWeight": "700",
-                    "margin": "0 0 10px 0",
-                    "overflowWrap": "anywhere"
+                    "margin": "0 0 8px 0"
                 }
             ),
 
             html.P(
                 titulo,
                 style={
-                    "color": COR_TEXTO,
+                    "color": "#e2e8f0",
                     "fontSize": "15px",
                     "margin": "0"
                 }
             )
+
         ],
+
         style={
-            "background": COR_CARTAO_KPI,
-            "padding": "24px 12px",
-            "borderRadius": "16px",
-            "width": "100%",
-            "minWidth": "0",
-            "boxSizing": "border-box",
+            **CARD_STYLE,
             "textAlign": "center",
-            "boxShadow": "0 5px 18px rgba(0,0,0,0.22)",
-            "border": "1px solid rgba(148,163,184,0.10)"
+            "flex": "1 1 180px",
+            "minWidth": "160px"
         }
     )
 
 
-def criar_cartao(titulo, conteudo, cor_borda=None):
-    """Cria um contentor visual consistente."""
+def criar_gauge(score):
 
-    estilo = {
-        "background": COR_CARTAO,
-        "padding": "22px",
-        "borderRadius": "16px",
-        "minWidth": "0",
-        "boxSizing": "border-box",
-        "boxShadow": "0 5px 18px rgba(0,0,0,0.18)",
-        "marginBottom": "20px"
-    }
+    fig = go.Figure(
 
-    if cor_borda:
-        estilo["borderLeft"] = f"4px solid {cor_borda}"
+        go.Indicator(
 
-    return html.Div(
-        [
-            html.H3(
-                titulo,
-                style={
-                    "color": COR_TEXTO,
-                    "fontSize": "20px",
-                    "marginTop": "0",
-                    "marginBottom": "18px"
+            mode="gauge+number",
+
+            value=score,
+
+            number={
+                "suffix": "/100",
+                "font": {
+                    "size": 30,
+                    "color": "white"
                 }
-            ),
-            conteudo
-        ],
-        style=estilo
-    )
+            },
 
+            gauge={
 
-def figura_vazia(titulo, mensagem):
-    """Cria um gráfico informativo quando faltam dados."""
+                "axis": {
+                    "range": [0, 100],
+                    "tickcolor": "#94a3b8"
+                },
 
-    fig = px.scatter(
-        title=titulo
-    )
+                "bar": {
+                    "color": cor_score(score)
+                },
 
-    fig.add_annotation(
-        text=mensagem,
-        x=0.5,
-        y=0.5,
-        xref="paper",
-        yref="paper",
-        showarrow=False,
-        font={"color": COR_SECUNDARIA, "size": 14}
+                "bgcolor": "#020617",
+
+                "borderwidth": 0,
+
+                "steps": [
+
+                    {
+                        "range": [0, 40],
+                        "color": "#450a0a"
+                    },
+
+                    {
+                        "range": [40, 70],
+                        "color": "#422006"
+                    },
+
+                    {
+                        "range": [70, 100],
+                        "color": "#052e16"
+                    }
+
+                ]
+            }
+        )
     )
 
     fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor=COR_CARTAO,
-        plot_bgcolor=COR_CARTAO,
-        margin={"l": 30, "r": 20, "t": 65, "b": 35}
-    )
 
-    return fig
+        height=190,
 
-
-def formatar_numero(valor):
-    return f"{valor:,}"
-
-
-# ============================================================
-# 5. INDICADORES INICIAIS
-# ============================================================
-
-kpis_iniciais = calcular_kpis(df)
-
-plataformas = sorted(
-    df["plataforma"].astype(str).unique().tolist()
-)
-
-plataforma_inicial = plataformas[0]
-
-
-# ============================================================
-# 6. ESTILOS DOS GRÁFICOS
-# ============================================================
-
-def estilizar_figura(fig):
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor=COR_CARTAO,
-        plot_bgcolor=COR_CARTAO,
-        font={
-            "family": "Arial, sans-serif",
-            "color": COR_TEXTO,
-            "size": 12
-        },
-        title={
-            "x": 0.02,
-            "xanchor": "left",
-            "font": {"size": 18}
-        },
         margin={
-            "l": 45,
+            "l": 20,
             "r": 20,
-            "t": 70,
-            "b": 45
+            "t": 20,
+            "b": 10
         },
-        hovermode="x unified",
-        legend={
-            "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.02,
-            "xanchor": "right",
-            "x": 1
+
+        paper_bgcolor="#111827",
+
+        font={
+            "color": "white"
         }
     )
 
-    fig.update_xaxes(
-        showgrid=False,
-        automargin=True
-    )
-
-    fig.update_yaxes(
-        gridcolor="rgba(148,163,184,0.12)",
-        automargin=True
-    )
-
     return fig
 
 
 # ============================================================
-# 7. LAYOUT PRINCIPAL
+# LAYOUT
 # ============================================================
 
 app.layout = html.Div(
-    style={
-        "backgroundColor": COR_FUNDO,
-        "minHeight": "100vh",
-        "width": "100%",
-        "maxWidth": "100%",
-        "boxSizing": "border-box",
-        "padding": "clamp(12px, 2vw, 28px)",
-        "fontFamily": "Arial, sans-serif",
-        "color": COR_TEXTO,
-        "overflowX": "hidden"
-    },
+
+    style=PAGE_STYLE,
 
     children=[
 
+        # ====================================================
         # CABEÇALHO
+        # ====================================================
+
         html.Div(
+
             [
+
                 html.H1(
                     "📊 Social Media Dashboard com IA",
                     style={
                         "textAlign": "center",
-                        "fontSize": "clamp(25px, 3vw, 38px)",
                         "color": "white",
-                        "margin": "8px 0 14px 0",
-                        "overflowWrap": "anywhere"
+                        "fontSize": "clamp(28px, 4vw, 42px)",
+                        "margin": "5px 0 10px 0",
+                        "fontWeight": "700"
                     }
                 ),
 
                 html.P(
-                    "Análise de desempenho, crescimento e recomendações inteligentes",
+                    "Análise inteligente de desempenho, crescimento e recomendações",
                     style={
                         "textAlign": "center",
-                        "color": "#94b8d8",
-                        "fontSize": "16px",
-                        "lineHeight": "1.6",
-                        "margin": "0 0 28px 0"
+                        "color": "#94a3b8",
+                        "fontSize": "17px",
+                        "marginBottom": "28px"
                     }
                 )
+
             ]
         ),
 
-        # CINCO KPIs
+
+        # ====================================================
+        # KPI CARDS
+        # ====================================================
+
         html.Div(
+
             [
+
                 criar_kpi(
-                    formatar_numero(kpis_iniciais["seguidores"]),
+                    formatar_numero(
+                        seguidores_total
+                    ),
                     "Seguidores",
-                    COR_AZUL,
-                    "kpi-seguidores"
+                    "#38bdf8",
+                    "👥"
                 ),
 
                 criar_kpi(
-                    formatar_numero(kpis_iniciais["alcance"]),
-                    "Alcance máximo",
-                    COR_VERDE,
-                    "kpi-alcance"
+                    formatar_numero(
+                        alcance_total
+                    ),
+                    "Alcance Máximo",
+                    "#22c55e",
+                    "📢"
                 ),
 
                 criar_kpi(
-                    f'{kpis_iniciais["engajamento"]:.2f}%',
+                    f"{engajamento_medio}%",
                     "Engajamento Médio",
-                    COR_AMARELO,
-                    "kpi-engajamento"
+                    "#f59e0b",
+                    "💬"
                 ),
 
                 criar_kpi(
-                    f'{kpis_iniciais["crescimento"]:.2f}%',
+                    f"{crescimento}%",
                     "Crescimento",
-                    COR_ROXO,
-                    "kpi-crescimento"
+                    "#a855f7",
+                    "📈"
                 ),
 
                 criar_kpi(
-                    f'{kpis_iniciais["score"]}/100',
+                    f"{score_ia}/100",
                     "Score IA",
-                    COR_VERMELHO,
-                    "kpi-score"
+                    cor_score(score_ia),
+                    "🤖"
                 )
+
             ],
+
             style={
-                "display": "grid",
-                "gridTemplateColumns": (
-                    "repeat(auto-fit, minmax(min(100%, 180px), 1fr))"
-                ),
-                "gap": "16px",
-                "width": "100%",
-                "boxSizing": "border-box",
-                "marginBottom": "24px"
+                "display": "flex",
+                "gap": "18px",
+                "flexWrap": "wrap"
             }
         ),
 
+
+        # ====================================================
         # FILTROS
-        criar_cartao(
-            "🔎 Filtros de análise",
+        # ====================================================
 
-            html.Div(
-                [
-                    html.Label(
-                        "Plataforma",
-                        style={
-                            "display": "block",
-                            "color": COR_SECUNDARIA,
-                            "marginBottom": "8px"
-                        }
-                    ),
+        html.Div(
 
-                    dcc.Dropdown(
-                        id="plataforma",
-                        options=[
-                            {
-                                "label": p,
-                                "value": p
-                            }
-                            for p in plataformas
-                        ],
-                        value=plataforma_inicial,
-                        clearable=False,
-                        searchable=True,
-                        style={
-                            "color": "#111827",
-                            "width": "100%"
+            [
+
+                html.H3(
+                    "🔎 Filtros de Análise",
+                    style={
+                        "color": "white",
+                        "marginTop": "0"
+                    }
+                ),
+
+                html.Label(
+                    "Plataforma",
+                    style={
+                        "color": "#94a3b8",
+                        "fontSize": "14px"
+                    }
+                ),
+
+                dcc.Dropdown(
+
+                    id="plataforma",
+
+                    options=[
+
+                        {
+                            "label": plataforma,
+                            "value": plataforma
                         }
-                    )
-                ]
-            )
+
+                        for plataforma
+                        in sorted(
+                            df[
+                                "plataforma"
+                            ].dropna().unique()
+                        )
+                    ],
+
+                    value=df[
+                        "plataforma"
+                    ].dropna().unique()[0],
+
+                    clearable=False,
+
+                    style={
+                        "marginTop": "8px",
+                        "color": "#111827"
+                    }
+                )
+
+            ],
+
+            style=SECTION_STYLE
         ),
 
+
+        # ====================================================
         # ASSISTENTE IA
+        # ====================================================
+
         html.Div(
-            id="painel-assistente",
-            style={
-                "background": "#172554",
-                "padding": "22px",
-                "borderRadius": "16px",
-                "marginBottom": "20px",
-                "boxSizing": "border-box",
-                "border": "1px solid rgba(56,189,248,0.18)"
-            },
-            children=[
+
+            [
+
                 html.H2(
                     "🤖 Assistente IA",
                     style={
-                        "color": COR_AZUL,
-                        "fontSize": "23px",
+                        "color": "#38bdf8",
                         "marginTop": "0"
                     }
                 ),
 
                 html.Div(
-                    id="alerta-ia",
-                    style={
-                        "color": "#facc15",
-                        "fontSize": "15px",
-                        "lineHeight": "1.7",
-                        "whiteSpace": "pre-wrap",
-                        "overflowWrap": "anywhere"
-                    }
-                ),
 
-                html.Div(
-                    id="recomendacao-ia",
+                    [
+
+                        html.Div(
+
+                            [
+
+                                html.H3(
+                                    "🚨 Alertas",
+                                    style={
+                                        "color": "#facc15"
+                                    }
+                                ),
+
+                                html.Div(
+                                    id="alerta-ia",
+                                    children=alerta_ia,
+                                    style={
+                                        "color": "#facc15",
+                                        "lineHeight": "1.7",
+                                        "whiteSpace": "pre-wrap"
+                                    }
+                                )
+
+                            ],
+
+                            style={
+                                "background": "#0f172a",
+                                "borderRadius": "12px",
+                                "padding": "18px",
+                                "flex": "1 1 350px"
+                            }
+                        ),
+
+                        html.Div(
+
+                            [
+
+                                html.H3(
+                                    "💡 Recomendações",
+                                    style={
+                                        "color": "#22c55e"
+                                    }
+                                ),
+
+                                html.Div(
+                                    id="recomendacao-ia",
+                                    children=recomendacao_ia,
+                                    style={
+                                        "color": "#22c55e",
+                                        "lineHeight": "1.7",
+                                        "whiteSpace": "pre-wrap"
+                                    }
+                                )
+
+                            ],
+
+                            style={
+                                "background": "#0f172a",
+                                "borderRadius": "12px",
+                                "padding": "18px",
+                                "flex": "1 1 350px"
+                            }
+                        )
+
+                    ],
+
                     style={
-                        "color": COR_VERDE,
-                        "fontSize": "15px",
-                        "lineHeight": "1.7",
-                        "whiteSpace": "pre-wrap",
-                        "overflowWrap": "anywhere",
-                        "marginTop": "12px"
+                        "display": "flex",
+                        "gap": "18px",
+                        "flexWrap": "wrap"
                     }
                 )
-            ]
-        ),
 
-        # RELATÓRIO EXECUTIVO
-        criar_cartao(
-            "📋 Relatório Executivo IA",
-
-            html.Pre(
-                id="relatorio-ia",
-                children="A preparar relatório...",
-                style={
-                    "whiteSpace": "pre-wrap",
-                    "overflowWrap": "anywhere",
-                    "wordBreak": "normal",
-                    "color": "#e2e8f0",
-                    "fontFamily": "Arial, sans-serif",
-                    "fontSize": "14px",
-                    "lineHeight": "1.65",
-                    "margin": "0",
-                    "padding": "0",
-                    "maxWidth": "100%"
-                }
-            )
-        ),
-
-        # GRÁFICOS: DUAS COLUNAS EM ECRÃS LARGOS
-        html.Div(
-            [
-                html.Div(
-                    dcc.Graph(
-                        id="grafico_seguidores",
-                        config={"responsive": True, "displaylogo": False},
-                        style={"height": "380px"}
-                    ),
-                    style={"minWidth": "0"}
-                ),
-
-                html.Div(
-                    dcc.Graph(
-                        id="grafico_alcance",
-                        config={"responsive": True, "displaylogo": False},
-                        style={"height": "380px"}
-                    ),
-                    style={"minWidth": "0"}
-                ),
-
-                html.Div(
-                    dcc.Graph(
-                        id="grafico_engajamento",
-                        config={"responsive": True, "displaylogo": False},
-                        style={"height": "380px"}
-                    ),
-                    style={"minWidth": "0"}
-                ),
-
-                html.Div(
-                    dcc.Graph(
-                        id="grafico_previsao",
-                        config={"responsive": True, "displaylogo": False},
-                        style={"height": "380px"}
-                    ),
-                    style={"minWidth": "0"}
-                )
             ],
+
             style={
-                "display": "grid",
-                "gridTemplateColumns": (
-                    "repeat(auto-fit, minmax(min(100%, 420px), 1fr))"
-                ),
-                "gap": "20px",
-                "width": "100%",
-                "minWidth": "0"
+                **SECTION_STYLE,
+                "background": "#172554"
             }
         ),
 
-        # RODAPÉ
-        html.Hr(
-            style={
-                "borderColor": "#1e293b",
-                "marginTop": "30px"
-            }
-        ),
 
-        html.Footer(
+        # ====================================================
+        # GRÁFICOS
+        # ====================================================
+
+        html.Div(
+
             [
+
+                html.H2(
+                    "📈 Análise de Desempenho",
+                    style={
+                        "color": "white",
+                        "marginTop": "0"
+                    }
+                ),
+
+                html.Div(
+
+                    [
+
+                        dcc.Graph(
+                            id="grafico_seguidores",
+                            style={
+                                "flex": "1 1 480px"
+                            }
+                        ),
+
+                        dcc.Graph(
+                            id="grafico_alcance",
+                            style={
+                                "flex": "1 1 480px"
+                            }
+                        )
+
+                    ],
+
+                    style={
+                        "display": "flex",
+                        "gap": "18px",
+                        "flexWrap": "wrap"
+                    }
+                ),
+
+                html.Div(
+
+                    [
+
+                        dcc.Graph(
+                            id="grafico_engajamento",
+                            style={
+                                "flex": "1 1 480px"
+                            }
+                        ),
+
+                        dcc.Graph(
+                            id="grafico_previsao",
+                            style={
+                                "flex": "1 1 480px"
+                            }
+                        )
+
+                    ],
+
+                    style={
+                        "display": "flex",
+                        "gap": "18px",
+                        "flexWrap": "wrap"
+                    }
+                )
+
+            ],
+
+            style=SECTION_STYLE
+        ),
+
+
+        # ====================================================
+        # SCORE IA
+        # ====================================================
+
+        html.Div(
+
+            [
+
+                html.H2(
+                    "🧠 Inteligência de Desempenho",
+                    style={
+                        "color": "white",
+                        "marginTop": "0"
+                    }
+                ),
+
+                html.Div(
+
+                    [
+
+                        html.Div(
+
+                            [
+
+                                html.H3(
+                                    "Score IA",
+                                    style={
+                                        "color": "#38bdf8"
+                                    }
+                                ),
+
+                                dcc.Graph(
+                                    id="score-gauge",
+                                    figure=criar_gauge(
+                                        score_ia
+                                    ),
+                                    config={
+                                        "displayModeBar": False
+                                    }
+                                )
+
+                            ],
+
+                            style={
+                                "flex": "1 1 300px",
+                                "background": "#111827",
+                                "borderRadius": "12px",
+                                "padding": "15px"
+                            }
+                        ),
+
+                        html.Div(
+
+                            [
+
+                                html.H3(
+                                    "📊 Interpretação",
+                                    style={
+                                        "color": "white"
+                                    }
+                                ),
+
+                                html.P(
+                                    id="score-descricao",
+                                    children=(
+                                        "O Score IA combina "
+                                        "crescimento, alcance "
+                                        "e engajamento para "
+                                        "produzir um indicador "
+                                        "global de desempenho."
+                                    ),
+                                    style={
+                                        "color": "#cbd5e1",
+                                        "lineHeight": "1.8"
+                                    }
+                                )
+
+                            ],
+
+                            style={
+                                "flex": "1 1 300px",
+                                "background": "#111827",
+                                "borderRadius": "12px",
+                                "padding": "20px"
+                            }
+                        )
+
+                    ],
+
+                    style={
+                        "display": "flex",
+                        "gap": "18px",
+                        "flexWrap": "wrap"
+                    }
+                )
+
+            ],
+
+            style=SECTION_STYLE
+        ),
+
+
+        # ====================================================
+        # RELATÓRIO EXECUTIVO
+        # ====================================================
+
+        html.Div(
+
+            [
+
+                html.H2(
+                    "📋 Relatório Executivo IA",
+                    style={
+                        "color": "white",
+                        "marginTop": "0"
+                    }
+                ),
+
+                html.Div(
+                    id="relatorio-ia",
+                    children=relatorio_ia,
+                    style={
+                        "background": "#020617",
+                        "borderRadius": "12px",
+                        "padding": "20px",
+                        "color": "#cbd5e1",
+                        "whiteSpace": "pre-wrap",
+                        "lineHeight": "1.7",
+                        "fontFamily": "Arial, sans-serif",
+                        "fontSize": "14px",
+                        "overflowX": "auto"
+                    }
+                )
+
+            ],
+
+            style=SECTION_STYLE
+        ),
+
+
+        # ====================================================
+        # FOOTER
+        # ====================================================
+
+        html.Div(
+
+            [
+
+                html.Hr(
+                    style={
+                        "borderColor": "#1e293b"
+                    }
+                ),
+
                 html.P(
                     "© 2026 PMW Consultoria & Tecnologia",
                     style={
-                        "color": COR_SECUNDARIA,
+                        "color": "#64748b",
                         "textAlign": "center",
                         "fontSize": "13px",
-                        "margin": "18px 0 5px 0"
+                        "margin": "20px 0 5px 0"
                     }
                 ),
 
                 html.P(
-                    "Social Media Analytics • Inteligência Artificial",
+                    "Social Media Analytics • AI Insights • Predictive Analysis",
                     style={
-                        "color": "#64748b",
+                        "color": "#475569",
                         "textAlign": "center",
-                        "fontSize": "12px",
-                        "margin": "0 0 10px 0"
+                        "fontSize": "12px"
                     }
                 )
-            ]
+
+            ],
+
+            style={
+                "marginTop": "30px"
+            }
         )
+
     ]
 )
 
 
 # ============================================================
-# 8. CALLBACK: ATUALIZA KPIs, IA E GRÁFICOS
+# CALLBACK
 # ============================================================
 
 @app.callback(
+
     [
-        Output("kpi-seguidores", "children"),
-        Output("kpi-alcance", "children"),
-        Output("kpi-engajamento", "children"),
-        Output("kpi-crescimento", "children"),
-        Output("kpi-score", "children"),
 
-        Output("alerta-ia", "children"),
-        Output("recomendacao-ia", "children"),
-        Output("relatorio-ia", "children"),
+        Output(
+            "grafico_seguidores",
+            "figure"
+        ),
 
-        Output("grafico_seguidores", "figure"),
-        Output("grafico_alcance", "figure"),
-        Output("grafico_engajamento", "figure"),
-        Output("grafico_previsao", "figure")
+        Output(
+            "grafico_alcance",
+            "figure"
+        ),
+
+        Output(
+            "grafico_engajamento",
+            "figure"
+        ),
+
+        Output(
+            "grafico_previsao",
+            "figure"
+        ),
+
+        Output(
+            "alerta-ia",
+            "children"
+        ),
+
+        Output(
+            "recomendacao-ia",
+            "children"
+        ),
+
+        Output(
+            "relatorio-ia",
+            "children"
+        ),
+
+        Output(
+            "score-gauge",
+            "figure"
+        ),
+
+        Output(
+            "score-descricao",
+            "children"
+        )
+
     ],
 
     [
-        Input("plataforma", "value")
+
+        Input(
+            "plataforma",
+            "value"
+        )
+
     ]
+
 )
 def atualizar(plataforma):
 
+    # ========================================================
+    # FILTRAR DADOS
+    # ========================================================
+
     dados = df[
-        df["plataforma"].astype(str) == str(plataforma)
+        df["plataforma"] == plataforma
     ].copy()
 
-    dados = dados.sort_values("data").reset_index(drop=True)
+    dados = dados.sort_values(
+        "data"
+    )
+
+
+    # ========================================================
+    # FALLBACK
+    # ========================================================
 
     if dados.empty:
-        fig = figura_vazia(
-            "Sem dados",
-            "Não existem registos para esta plataforma."
+
+        figura_vazia = go.Figure()
+
+        figura_vazia.update_layout(
+            template="plotly_dark",
+            title="Sem dados disponíveis",
+            paper_bgcolor="#111827",
+            plot_bgcolor="#111827"
         )
 
         return (
-            "0", "0", "0.00%", "0.00%", "0/100",
-            "Não existem dados disponíveis.",
-            "Adiciona registos para receber recomendações.",
-            "Relatório indisponível: sem dados.",
-            fig, fig, fig, fig
+            figura_vazia,
+            figura_vazia,
+            figura_vazia,
+            figura_vazia,
+            "⚠️ Não existem dados para esta plataforma.",
+            "💡 Adicione dados para obter recomendações.",
+            "Não existem dados suficientes para gerar o relatório.",
+            criar_gauge(0),
+            "Não existem dados suficientes para calcular o Score IA."
         )
 
-    # KPIs da plataforma selecionada
-    kpis = calcular_kpis(dados)
 
-    # Assistente IA
-    try:
-        alerta = gerar_alerta(dados)
-    except Exception as erro:
-        print(f"Erro no alerta IA: {erro}")
-        alerta = "Não foi possível gerar o alerta."
+    # ========================================================
+    # IA
+    # ========================================================
 
     try:
-        recomendacao = gerar_recomendacao(dados)
-    except Exception as erro:
-        print(f"Erro na recomendação IA: {erro}")
-        recomendacao = "Não foi possível gerar recomendações."
+
+        score = calcular_score(
+            dados
+        )
+
+    except Exception:
+
+        score = 0
+
 
     try:
-        relatorio = gerar_relatorio_executivo(dados)
-    except Exception as erro:
-        print(f"Erro no relatório IA: {erro}")
-        relatorio = "Não foi possível gerar o relatório executivo."
 
-    # Gráfico 1: Seguidores
+        alerta = gerar_alerta(
+            dados
+        )
+
+    except Exception:
+
+        alerta = (
+            "Não foi possível gerar o alerta."
+        )
+
+
+    try:
+
+        recomendacao = gerar_recomendacao(
+            dados
+        )
+
+    except Exception:
+
+        recomendacao = (
+            "Não foi possível gerar a recomendação."
+        )
+
+
+    try:
+
+        relatorio = gerar_relatorio_executivo(
+            dados
+        )
+
+    except Exception:
+
+        relatorio = (
+            "Não foi possível gerar o relatório."
+        )
+
+
+    # ========================================================
+    # GRÁFICO 1 - SEGUIDORES
+    # ========================================================
+
     fig1 = px.line(
+
         dados,
+
         x="data",
+
         y="seguidores",
+
         markers=True,
-        title=f"📈 Evolução de Seguidores — {plataforma}",
-        labels={
-            "data": "Data",
-            "seguidores": "Seguidores"
-        }
+
+        title=(
+            f"👥 Evolução de Seguidores — "
+            f"{plataforma}"
+        )
     )
 
     fig1.update_traces(
-        line={"width": 3},
-        marker={"size": 7}
+        line_width=3
     )
 
-    estilizar_figura(fig1)
+    fig1.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#111827",
+        plot_bgcolor="#111827",
+        hovermode="x unified",
+        margin={
+            "l": 40,
+            "r": 20,
+            "t": 60,
+            "b": 40
+        }
+    )
 
-    # Gráfico 2: Alcance
+
+    # ========================================================
+    # GRÁFICO 2 - ALCANCE
+    # ========================================================
+
     fig2 = px.bar(
+
         dados,
+
         x="data",
+
         y="alcance",
-        title=f"📊 Alcance — {plataforma}",
-        labels={
-            "data": "Data",
-            "alcance": "Alcance"
+
+        title=(
+            f"📢 Alcance — "
+            f"{plataforma}"
+        )
+    )
+
+    fig2.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#111827",
+        plot_bgcolor="#111827",
+        hovermode="x unified",
+        margin={
+            "l": 40,
+            "r": 20,
+            "t": 60,
+            "b": 40
         }
     )
 
-    estilizar_figura(fig2)
 
-    # Gráfico 3: Engajamento
+    # ========================================================
+    # GRÁFICO 3 - ENGAJAMENTO
+    # ========================================================
+
     fig3 = px.area(
+
         dados,
+
         x="data",
+
         y="engajamento",
+
         markers=True,
-        title=f"💬 Evolução do Engajamento — {plataforma}",
-        labels={
-            "data": "Data",
-            "engajamento": "Engajamento (%)"
+
+        title=(
+            f"💬 Engajamento — "
+            f"{plataforma}"
+        )
+    )
+
+    fig3.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#111827",
+        plot_bgcolor="#111827",
+        hovermode="x unified",
+        margin={
+            "l": 40,
+            "r": 20,
+            "t": 60,
+            "b": 40
         }
     )
 
-    estilizar_figura(fig3)
 
-    # Gráfico 4: Previsão para os próximos sete dias
+    # ========================================================
+    # GRÁFICO 4 - PREVISÃO IA
+    # ========================================================
+
     try:
+
         previsao = prever_crescimento(
             dados,
             dias=7
         )
 
-        previsao = list(previsao)
+    except TypeError:
 
-        if not previsao:
-            raise ValueError("A previsão não devolveu resultados.")
+        previsao = prever_crescimento(
+            dados
+        )
+
+    except Exception:
+
+        previsao = []
+
+
+    if previsao:
+
+        ultima_data = dados[
+            "data"
+        ].max()
 
         datas_futuras = pd.date_range(
-            start=dados["data"].max() + pd.Timedelta(days=1),
+
+            start=ultima_data
+            + pd.Timedelta(days=1),
+
             periods=len(previsao),
+
             freq="D"
         )
 
-        fig4 = px.line(
-            x=datas_futuras,
-            y=previsao,
-            markers=True,
-            title=f"🤖 Previsão de Seguidores — {plataforma}",
-            labels={
-                "x": "Data prevista",
-                "y": "Seguidores previstos"
+        fig4 = go.Figure()
+
+        fig4.add_trace(
+
+            go.Scatter(
+
+                x=dados["data"],
+
+                y=dados["seguidores"],
+
+                mode="lines+markers",
+
+                name="Histórico",
+
+                line={
+                    "width": 3
+                }
+            )
+        )
+
+        fig4.add_trace(
+
+            go.Scatter(
+
+                x=datas_futuras,
+
+                y=previsao,
+
+                mode="lines+markers",
+
+                name="Previsão IA",
+
+                line={
+                    "width": 3,
+                    "dash": "dash"
+                }
+            )
+        )
+
+        fig4.update_layout(
+
+            title=(
+                "🤖 Previsão IA — "
+                "Próximos 7 Dias"
+            ),
+
+            template="plotly_dark",
+
+            paper_bgcolor="#111827",
+
+            plot_bgcolor="#111827",
+
+            hovermode="x unified",
+
+            margin={
+                "l": 40,
+                "r": 20,
+                "t": 60,
+                "b": 40
+            },
+
+            legend={
+                "orientation": "h",
+                "y": 1.1
             }
         )
 
-        fig4.update_traces(
-            line={"width": 3, "dash": "dash"},
-            marker={"size": 8}
+    else:
+
+        fig4 = go.Figure()
+
+        fig4.update_layout(
+
+            title=(
+                "🤖 Previsão IA "
+                "indisponível"
+            ),
+
+            template="plotly_dark",
+
+            paper_bgcolor="#111827",
+
+            plot_bgcolor="#111827"
         )
 
-        estilizar_figura(fig4)
 
-    except Exception as erro:
-        print(f"Erro na previsão IA: {erro}")
+    # ========================================================
+    # DESCRIÇÃO DO SCORE
+    # ========================================================
 
-        fig4 = figura_vazia(
-            "🤖 Previsão para os próximos 7 dias",
-            "Não foi possível calcular a previsão."
+    if score >= 75:
+
+        score_descricao = (
+            f"🟢 Score {score}/100 — "
+            "Excelente desempenho. "
+            "Os principais indicadores apresentam "
+            "uma tendência positiva."
         )
+
+    elif score >= 50:
+
+        score_descricao = (
+            f"🟡 Score {score}/100 — "
+            "Desempenho moderado. "
+            "Existem oportunidades para melhorar "
+            "o alcance e o envolvimento."
+        )
+
+    else:
+
+        score_descricao = (
+            f"🔴 Score {score}/100 — "
+            "Desempenho abaixo do ideal. "
+            "Recomenda-se rever a estratégia "
+            "de conteúdo e distribuição."
+        )
+
+
+    # ========================================================
+    # GAUGE
+    # ========================================================
+
+    gauge = criar_gauge(
+        score
+    )
+
+
+    # ========================================================
+    # RETURN
+    # ========================================================
 
     return (
-        formatar_numero(kpis["seguidores"]),
-        formatar_numero(kpis["alcance"]),
-        f'{kpis["engajamento"]:.2f}%',
-        f'{kpis["crescimento"]:.2f}%',
-        f'{kpis["score"]}/100',
-
-        str(alerta),
-        str(recomendacao),
-        str(relatorio),
 
         fig1,
+
         fig2,
+
         fig3,
-        fig4
+
+        fig4,
+
+        alerta,
+
+        recomendacao,
+
+        relatorio,
+
+        gauge,
+
+        score_descricao
     )
 
 
 # ============================================================
-# 9. INICIAR A APLICAÇÃO
+# START
 # ============================================================
 
 if __name__ == "__main__":
+
     app.run(
+
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8050)),
+
+        port=int(
+            os.environ.get(
+                "PORT",
+                8050
+            )
+        ),
+
         debug=False
     )
