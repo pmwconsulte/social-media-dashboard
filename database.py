@@ -1,42 +1,113 @@
-import sqlite3
-from contextlib import closing
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-DATABASE = "social_media.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_connection():
-    return sqlite3.connect(DATABASE)
+
+    return psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=RealDictCursor
+    )
 
 
 def create_tables():
 
-    with closing(get_connection()) as conn:
+    conn = get_connection()
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS historico (
+    cur = conn.cursor()
 
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cur.execute("""
 
-            data TEXT NOT NULL,
+    CREATE TABLE IF NOT EXISTS users (
 
-            plataforma TEXT NOT NULL,
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-            seguidores INTEGER DEFAULT 0,
+        name VARCHAR(255) NOT NULL,
 
-            engajamento REAL DEFAULT 0,
+        email VARCHAR(255) UNIQUE NOT NULL,
 
-            alcance INTEGER DEFAULT 0,
+        password_hash TEXT,
 
-            likes INTEGER DEFAULT 0,
+        plan_type VARCHAR(50) DEFAULT 'free',
 
-            comentarios INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
 
-            partilhas INTEGER DEFAULT 0,
+    )
 
-            visualizacoes INTEGER DEFAULT 0,
+    """)
 
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
+    cur.execute("""
 
-        conn.commit()
+    CREATE TABLE IF NOT EXISTS social_accounts (
+
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+        user_id UUID REFERENCES users(id),
+
+        platform VARCHAR(50),
+
+        username VARCHAR(255),
+
+        access_token TEXT,
+
+        created_at TIMESTAMP DEFAULT NOW()
+
+    )
+
+    """)
+
+    cur.execute("""
+
+    CREATE TABLE IF NOT EXISTS daily_metrics (
+
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+        social_account_id UUID REFERENCES social_accounts(id),
+
+        report_date DATE,
+
+        followers INTEGER DEFAULT 0,
+
+        reach INTEGER DEFAULT 0,
+
+        impressions INTEGER DEFAULT 0,
+
+        engagement_rate NUMERIC(10,2) DEFAULT 0,
+
+        profile_views INTEGER DEFAULT 0,
+
+        website_clicks INTEGER DEFAULT 0,
+
+        created_at TIMESTAMP DEFAULT NOW()
+
+    )
+
+    """)
+
+    cur.execute("""
+
+    CREATE TABLE IF NOT EXISTS ai_reports (
+
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+        social_account_id UUID REFERENCES social_accounts(id),
+
+        report_type VARCHAR(50),
+
+        content TEXT,
+
+        created_at TIMESTAMP DEFAULT NOW()
+
+    )
+
+    """)
+
+    conn.commit()
+
+    cur.close()
+
+    conn.close()
+
