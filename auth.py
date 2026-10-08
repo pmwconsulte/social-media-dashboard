@@ -703,18 +703,93 @@ def setup_auth(server: Flask):
 
     @server.post("/social-accounts/add")
     def add_social_account():
-        if not session.get("authenticated"): return redirect(url_for("login"))
-        platform=request.form.get("platform","").strip(); username=request.form.get("username","").strip(); display_name=request.form.get("display_name","").strip() or username
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+
+        platform = request.form.get("platform", "").strip()
+        username = request.form.get("username", "").strip()
+        display_name = request.form.get("display_name", "").strip() or username
+
         if platform == "Instagram":
             return redirect(url_for("instagram_oauth"))
-        if platform not in {"Facebook","LinkedIn","TikTok"} or not username:
-            return redirect(url_for("account",error="Plataforma ou conta inválida."))
-        conn=None
+
+        if platform not in {"Facebook", "LinkedIn", "TikTok"} or not username:
+            return redirect(url_for("account", error="Plataforma ou conta inválida."))
+
+        conn = None
         try:
-            conn=get_connection()
+            conn = get_connection()
             with conn.cursor() as cur:
-                cur.execute("SELECT id,subscription_plan FROM workspaces WHERE slug=%s LIMIT 1",(session.get("workspace_slug"),)); workspace=cur.fetchone()
-                if not workspace: return redirect(url_for("account",error="Workspace não encontrado."))
-                plan=workspace[1] or "trial"; limit=PLANS.get(plan,PLANS["trial"])["accounts"]
-                cur.execute("SELECT COUNT(*) FROM social_accounts WHERE workspace_id=%s AND COALESCE(is_active,TRUE)",(workspace[0],)); count=cur.fetchone()[0]
-                if isinstance(limit,int) and count>=limit: return redirect(url_for("account",error=f"O plano {PLANS.get(plan,PLANS['trial'])['name']} permite no máximo {limit} contas sociais ativas."))
+                cur.execute(
+                    "SELECT id, subscription_plan FROM workspaces WHERE slug=%s LIMIT 1",
+                    (session.get("workspace_slug"),),
+                )
+                workspace = cur.fetchone()
+                if not workspace:
+                    return redirect(url_for("account", error="Workspace não encontrado."))
+
+                plan = workspace[1] or "trial"
+                limit = PLANS.get(plan, PLANS["trial"])["accounts"]
+
+                cur.execute(
+                    """SELECT COUNT(*) FROM social_accounts
+                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)""",
+                    (workspace[0],),
+                )
+                count = cur.fetchone()[0]
+
+                if isinstance(limit, int) and count >= limit:
+                    plan_name = PLANS.get(plan, PLANS["trial"])["name"]
+                    return redirect(
+                        url_for(
+                            "account",
+                            error=f"O plano {plan_name} permite no máximo {limit} contas sociais ativas.",
+                        )
+                    )
+
+                cur.execute(
+                    """INSERT INTO social_accounts
+                       (workspace_id, platform, username, display_name,
+                        connection_status, is_active)
+                       VALUES (%s, %s, %s, %s, 'pending', TRUE)""",
+                    (workspace[0], platform, username, display_name),
+                )
+
+            conn.commit()
+            return redirect(url_for("account", message=f"{platform} adicionada com sucesso."))
+        except Exception as erro:
+            if conn:
+                conn.rollback()
+            print(f"[SOCIAL ACCOUNT ERROR] {type(erro).__name__}: {erro}")
+            return redirect(url_for("account", error="Não foi possível adicionar a conta social."))
+        finally:
+            if conn:
+                conn.close()
+
+    @server.post("/social-accounts/<account_id>/toggle")
+    def toggle_social_account(account_id):
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+
+        conn = None
+        try:
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE social_accounts
+                       SET is_active = NOT COALESCE(is_active, TRUE)
+                       WHERE id=%s
+                         AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)""",
+                    (account_id, session.get("workspace_slug")),
+                )
+            conn.commit()
+            return redirect(url_for("account"))
+        except Exception as erro:
+            if conn:
+                conn.rollback()
+            print(f"[SOCIAL TOGGLE ERROR] {type(erro).__name__}: {erro}")
+            return redirect(url_for("account", error="Não foi possível alterar o estado da conta."))
+        finally:
+            if conn:
+                conn.close()
+
