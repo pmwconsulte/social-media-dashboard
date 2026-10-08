@@ -759,8 +759,27 @@ def setup_auth(server: Flask):
         if platform == "Instagram":
             return redirect(url_for("instagram_oauth"))
 
-        if platform not in {"Facebook", "LinkedIn", "TikTok"} or not username:
-            return redirect(url_for("account", error="Plataforma ou conta inválida."))
+        # As integrações que ainda não têm OAuth implementado não devem
+        # pedir username/token manualmente. O fluxo comercial deve sempre
+        # encaminhar o cliente para a autenticação oficial da plataforma.
+        coming_soon = {
+            "Facebook": "Facebook OAuth",
+            "WhatsApp": "WhatsApp Business",
+            "TikTok": "TikTok OAuth",
+            "YouTube": "YouTube / Google OAuth",
+            "LinkedIn": "LinkedIn OAuth",
+            "X": "X OAuth",
+        }
+        if platform in coming_soon:
+            return redirect(
+                url_for(
+                    "account",
+                    error=f"{coming_soon[platform]} ainda está em implementação. "
+                          "Não introduza credenciais ou tokens manualmente.",
+                )
+            )
+
+        return redirect(url_for("account", error="Plataforma social inválida."))
 
         conn = None
         try:
