@@ -325,6 +325,29 @@ def setup_auth(server: Flask):
             plans=PLANS,
         )
 
+    @server.after_request
+    def security_headers(response):
+        # Páginas autenticadas nunca devem ser reutilizadas pelo cache do browser.
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+    @server.get("/logout")
+    def logout():
+        # Invalida completamente a sessão atual e remove o cookie no browser.
+        session.clear()
+        response = redirect(url_for("login", logged_out="1"))
+        response.delete_cookie(
+            server.config.get("SESSION_COOKIE_NAME", "session"),
+            path=server.config.get("SESSION_COOKIE_PATH", "/"),
+            domain=server.config.get("SESSION_COOKIE_DOMAIN"),
+        )
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
     @server.route("/login", methods=["GET", "POST"])
     def login():
         if session.get("authenticated"):
