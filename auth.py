@@ -198,6 +198,15 @@ def _env_bool(name, default=True):
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Minha Conta — PMW Social Media Dashboard AI</title>
+<style>body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}.wrap{max-width:1050px;margin:35px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:24px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}label{display:block;margin:12px 0 7px;font-weight:600}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #334155;background:#020617;color:#fff;box-sizing:border-box}button,.btn{display:inline-block;padding:11px 16px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;text-decoration:none;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#172554;color:#7dd3fc;font-size:12px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #1e293b}</style></head><body><div class="wrap">
+<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div>
+<div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
+<div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
+<div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Registo e gestão das contas. OAuth real será integrado na próxima etapa.</p><form method="post" action="/social-accounts/add" class="grid"><div><label>Plataforma</label><select name="platform"><option>Instagram</option><option>Facebook</option><option>LinkedIn</option><option>TikTok</option></select></div><div><label>Utilizador / Página</label><input name="username" required></div><div><label>Nome de apresentação</label><input name="display_name"></div><div><button type="submit">Adicionar conta</button></div></form>
+{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "Ativa" if item.is_active else "Desativada" }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais neste workspace.</p>{% endif %}</div></div></body></html>"""
+
 def setup_auth(server: Flask):
     """Configure secure session authentication for the Dash server."""
     secret_key = os.getenv("SECRET_KEY")
@@ -384,6 +393,91 @@ def setup_auth(server: Flask):
 
         return render_template_string(SIGNUP_PAGE, error=error)
 
+    @server.route("/account", methods=["GET", "POST"])
+    def account():
+        if not session.get("authenticated"): return redirect(url_for("login"))
+        message=request.args.get("message"); error=request.args.get("error"); conn=None
+        try:
+            conn=get_connection(); slug=session.get("workspace_slug")
+            with conn.cursor() as cur:
+                if request.method=="POST":
+                    name=request.form.get("name","").strip()
+                    if not name: return redirect(url_for("account",error="O nome é obrigatório."))
+                    cur.execute("UPDATE users SET name=%s WHERE LOWER(email)=LOWER(%s) AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)",(name,session.get("username"),slug)); conn.commit()
+                    return redirect(url_for("account",message="Perfil atualizado com sucesso."))
+                cur.execute("SELECT u.name,u.email,w.name,w.subscription_plan,w.trial_ends_at FROM users u LEFT JOIN workspaces w ON w.id=u.workspace_id WHERE LOWER(u.email)=LOWER(%s) AND w.slug=%s LIMIT 1",(session.get("username"),slug)); user=cur.fetchone()
+                cur.execute("SELECT id,platform,username,display_name,connection_status,is_active FROM social_accounts WHERE workspace_id=(SELECT id FROM workspaces WHERE slug=%s) ORDER BY created_at DESC",(slug,))
+                accounts=[{"id":str(r[0]),"platform":r[1],"username":r[2],"display_name":r[3],"connection_status":r[4],"is_active":r[5]} for r in cur.fetchall()]
+            if not user: return redirect(url_for("logout"))
+            from datetime import datetime, timezone
+            days_left=0
+            if user[4]:
+                now=datetime.now(timezone.utc).replace(tzinfo=None); days_left=max(0,int(((user[4]-now).total_seconds()+86399)//86400))
+            return render_template_string(ACCOUNT_PAGE,user_name=user[0],email=user[1],workspace_name=user[2] or slug,plan_name=PLANS.get(user[3] or "trial",PLANS["trial"])["name"],days_left=days_left,social_accounts=accounts,message=message,error=error)
+        except Exception as erro:
+            if conn: conn.rollback()
+            print(f"[ACCOUNT ERROR] {erro}"); return "Não foi possível carregar a conta.",503
+        finally:
+            if conn: conn.close()
+
+    @server.post("/account/password")
+    def change_password():
+        if not session.get("authenticated"): return redirect(url_for("login"))
+        current=request.form.get("current_password",""); new=request.form.get("new_password",""); confirm=request.form.get("confirm_password","")
+        if len(new)<8: return redirect(url_for("account",error="A nova password deve ter pelo menos 8 caracteres."))
+        if new!=confirm: return redirect(url_for("account",error="As novas passwords não coincidem."))
+        conn=None
+        try:
+            conn=get_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT password_hash FROM users WHERE LOWER(email)=LOWER(%s) LIMIT 1",(session.get("username"),)); row=cur.fetchone()
+                if not row or not row[0] or not bcrypt.checkpw(current.encode(),row[0].encode()): return redirect(url_for("account",error="A password atual está incorreta."))
+                cur.execute("UPDATE users SET password_hash=%s WHERE LOWER(email)=LOWER(%s)",(bcrypt.hashpw(new.encode(),bcrypt.gensalt()).decode(),session.get("username")))
+            conn.commit(); return redirect(url_for("account",message="Password alterada com sucesso."))
+        except Exception as erro:
+            if conn: conn.rollback()
+            print(f"[PASSWORD ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível alterar a password."))
+        finally:
+            if conn: conn.close()
+
+    @server.post("/social-accounts/add")
+    def add_social_account():
+        if not session.get("authenticated"): return redirect(url_for("login"))
+        platform=request.form.get("platform","").strip(); username=request.form.get("username","").strip(); display_name=request.form.get("display_name","").strip() or username
+        if platform not in {"Instagram","Facebook","LinkedIn","TikTok"} or not username: return redirect(url_for("account",error="Plataforma ou conta inválida."))
+        conn=None
+        try:
+            conn=get_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT id,subscription_plan FROM workspaces WHERE slug=%s LIMIT 1",(session.get("workspace_slug"),)); workspace=cur.fetchone()
+                if not workspace: return redirect(url_for("account",error="Workspace não encontrado."))
+                plan=workspace[1] or "trial"; limit=PLANS.get(plan,PLANS["trial"])["accounts"]
+                cur.execute("SELECT COUNT(*) FROM social_accounts WHERE workspace_id=%s AND COALESCE(is_active,TRUE)",(workspace[0],)); count=cur.fetchone()[0]
+                if isinstance(limit,int) and count>=limit: return redirect(url_for("account",error=f"O plano {PLANS.get(plan,PLANS['trial'])['name']} permite no máximo {limit} contas sociais ativas."))
+                cur.execute("SELECT 1 FROM social_accounts WHERE workspace_id=%s AND LOWER(platform)=LOWER(%s) AND LOWER(username)=LOWER(%s) AND COALESCE(is_active,TRUE) LIMIT 1",(workspace[0],platform,username))
+                if cur.fetchone(): return redirect(url_for("account",error="Esta conta social já está registada neste workspace."))
+                cur.execute("INSERT INTO social_accounts(workspace_id,platform,username,display_name,connection_status,is_active) VALUES(%s,%s,%s,%s,'pending',TRUE)",(workspace[0],platform,username,display_name))
+            conn.commit(); return redirect(url_for("account",message="Conta social adicionada. OAuth será integrado numa próxima etapa."))
+        except Exception as erro:
+            if conn: conn.rollback()
+            print(f"[SOCIAL ACCOUNT ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível adicionar a conta social."))
+        finally:
+            if conn: conn.close()
+
+    @server.post("/social-accounts/<account_id>/toggle")
+    def toggle_social_account(account_id):
+        if not session.get("authenticated"): return redirect(url_for("login"))
+        conn=None
+        try:
+            conn=get_connection()
+            with conn.cursor() as cur: cur.execute("UPDATE social_accounts SET is_active=NOT COALESCE(is_active,TRUE) WHERE id=%s AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)",(account_id,session.get("workspace_slug")))
+            conn.commit(); return redirect(url_for("account",message="Estado da conta social atualizado."))
+        except Exception as erro:
+            if conn: conn.rollback()
+            print(f"[SOCIAL TOGGLE ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível alterar o estado da conta."))
+        finally:
+            if conn: conn.close()
+
     @server.get("/logout")
     def logout():
         session.clear()
@@ -392,7 +486,7 @@ def setup_auth(server: Flask):
     @server.before_request
     def require_authentication():
         endpoint = request.endpoint or ""
-        if endpoint in {"login", "signup", "health", "billing", "static"}:
+        if endpoint in {"login", "signup", "health", "billing", "account", "change_password", "add_social_account", "toggle_social_account", "static"}:
             return None
         if request.path.startswith("/_dash-component-suites/"):
             return None
