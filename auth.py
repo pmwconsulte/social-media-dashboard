@@ -23,7 +23,13 @@ from database import get_connection
 
 
 def _oauth_configured():
-    return bool(os.getenv("INSTAGRAM_APP_ID") and os.getenv("INSTAGRAM_APP_SECRET") and os.getenv("INSTAGRAM_OAUTH_REDIRECT_URI"))
+    required = (
+        "INSTAGRAM_APP_ID",
+        "INSTAGRAM_APP_SECRET",
+        "INSTAGRAM_OAUTH_REDIRECT_URI",
+        "OAUTH_TOKEN_ENCRYPTION_KEY",
+    )
+    return all(os.getenv(name, "").strip() for name in required)
 
 
 def _token_cipher():
@@ -439,10 +445,15 @@ def setup_auth(server: Flask):
             return redirect(url_for("login"))
         if not _oauth_configured():
             return redirect(url_for("account", error="Instagram OAuth ainda não está configurado no servidor."))
-        state = secrets.token_urlsafe(32)
-        session["instagram_oauth_state"] = state
-        session["instagram_oauth_workspace"] = session.get("workspace_slug")
-        return redirect(_instagram_authorize_url(state))
+        try:
+            state = secrets.token_urlsafe(32)
+            session["instagram_oauth_state"] = state
+            session["instagram_oauth_workspace"] = session.get("workspace_slug")
+            session.modified = True
+            return redirect(_instagram_authorize_url(state))
+        except Exception as erro:
+            print(f"[INSTAGRAM OAUTH START ERROR] {type(erro).__name__}: {erro}")
+            return redirect(url_for("account", error="Não foi possível iniciar a ligação ao Instagram."))
 
     @server.get("/oauth/instagram/callback")
     def instagram_oauth_callback():
@@ -555,7 +566,7 @@ def setup_auth(server: Flask):
             return redirect(url_for("account", message="Instagram conectado com sucesso."))
         except (requests.RequestException, ValueError, InvalidToken) as erro:
             if conn: conn.rollback()
-            print(f"[INSTAGRAM OAUTH ERROR] {erro}")
+            print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}: {erro}")
             return redirect(url_for("account", error="Não foi possível concluir a ligação ao Instagram."))
         except Exception as erro:
             if conn: conn.rollback()
