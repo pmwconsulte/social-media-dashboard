@@ -320,6 +320,20 @@ app.layout = html.Div(
                             },
                         ),
                         html.A(
+                            "🔗 Conectar Redes",
+                            href="/account#social-connections",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": "#a855f7",
+                                "color": "white",
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
+                            },
+                        ),
+                        html.A(
                             "💳 Plano",
                             href="/billing",
                             style={
