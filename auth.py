@@ -51,13 +51,21 @@ def _encrypt_token(token):
 
 def _instagram_authorize_url(state):
     from urllib.parse import urlencode
+
+    client_id = os.getenv("INSTAGRAM_APP_ID", "").strip()
+    redirect_uri = os.getenv("INSTAGRAM_OAUTH_REDIRECT_URI", "").strip()
+
+    if not client_id or not redirect_uri:
+        raise RuntimeError("INSTAGRAM_APP_ID ou INSTAGRAM_OAUTH_REDIRECT_URI não configurado.")
+
     params = {
-        "client_id": os.getenv("INSTAGRAM_APP_ID"),
-        "redirect_uri": os.getenv("INSTAGRAM_OAUTH_REDIRECT_URI"),
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "instagram_business_basic",
         "state": state,
     }
+
     return "https://www.instagram.com/oauth/authorize?" + urlencode(params)
 
 
@@ -443,17 +451,37 @@ def setup_auth(server: Flask):
     def instagram_oauth():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
+
         if not _oauth_configured():
-            return redirect(url_for("account", error="Instagram OAuth ainda não está configurado no servidor."))
+            return redirect(
+                url_for(
+                    "account",
+                    error="Instagram OAuth ainda não está configurado no servidor. Verifique as variáveis de ambiente.",
+                )
+            )
+
         try:
             state = secrets.token_urlsafe(32)
             session["instagram_oauth_state"] = state
             session["instagram_oauth_workspace"] = session.get("workspace_slug")
             session.modified = True
-            return redirect(_instagram_authorize_url(state))
+
+            authorize_url = _instagram_authorize_url(state)
+            print(
+                "[INSTAGRAM OAUTH START] "
+                f"workspace={session.get('workspace_slug')} "
+                f"redirect_uri={os.getenv('INSTAGRAM_OAUTH_REDIRECT_URI')}"
+            )
+            return redirect(authorize_url)
+
         except Exception as erro:
             print(f"[INSTAGRAM OAUTH START ERROR] {type(erro).__name__}: {erro}")
-            return redirect(url_for("account", error="Não foi possível iniciar a ligação ao Instagram."))
+            return redirect(
+                url_for(
+                    "account",
+                    error=f"Não foi possível iniciar o Instagram OAuth: {type(erro).__name__}.",
+                )
+            )
 
     @server.get("/oauth/instagram/callback")
     def instagram_oauth_callback():
