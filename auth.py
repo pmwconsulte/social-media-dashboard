@@ -1,4 +1,6 @@
 import os
+import re
+import uuid
 from functools import wraps
 
 import bcrypt
@@ -72,6 +74,30 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 </html>
 """
 
+SIGNUP_PAGE = """
+<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Criar conta — PMW Social Media Dashboard AI</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;background:#020617;color:#f8fafc}
+.card{width:min(92%,460px);padding:34px;border-radius:18px;background:#111827;border:1px solid #1e293b;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+h1{margin:0 0 8px;text-align:center}p{color:#94a3b8;text-align:center;margin-bottom:24px}
+label{display:block;margin:14px 0 7px;font-weight:600}input{width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#020617;color:#fff;outline:none}
+input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;border:0;border-radius:10px;background:#38bdf8;color:#020617;font-weight:700;cursor:pointer}
+.error{margin-top:16px;padding:10px;border-radius:8px;background:rgba(239,68,68,.12);color:#fca5a5;text-align:center}
+.link{display:block;text-align:center;margin-top:18px;color:#38bdf8;text-decoration:none}.footer{margin-top:22px;font-size:12px;color:#64748b;text-align:center}
+</style></head><body><main class="card">
+<h1>🚀 Criar conta</h1><p>Comece o seu trial gratuito de 30 dias</p>
+<form method="post" action="/signup">
+<label for="name">Nome / Empresa</label><input id="name" name="name" type="text" autocomplete="name" required>
+<label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required>
+<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+<label for="confirm_password">Confirmar password</label><input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" minlength="8" required>
+<button type="submit">Criar conta</button></form>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<a class="link" href="/login">Já tenho uma conta — Entrar</a><div class="footer">PMW Consultoria & Tecnologia</div>
+</main></body></html>
+"""
+
 LOGIN_PAGE = """
 <!doctype html>
 <html lang="pt">
@@ -142,7 +168,7 @@ LOGIN_PAGE = """
 <body>
     <main class="card">
         <h1>🔐 Dashboard AI</h1>
-        <p>Autenticação necessária para continuar</p>
+        <p>Entre na sua conta para continuar</p>
         <form method="post" action="/login">
             <label for="username">Username</label>
             <input id="username" name="username" type="text"
@@ -154,6 +180,7 @@ LOGIN_PAGE = """
 
             <button type="submit">Entrar</button>
         </form>
+        <a href="/signup" style="display:block;text-align:center;margin-top:18px;color:#38bdf8;text-decoration:none">Criar nova conta — Trial 30 dias</a>
         {% if error %}
         <div class="error">{{ error }}</div>
         {% endif %}
@@ -197,7 +224,7 @@ def setup_auth(server: Flask):
         try:
             conn = get_connection()
             try:
-                access = evaluate_workspace_access(conn)
+                access = evaluate_workspace_access(conn, session.get("workspace_slug"))
             finally:
                 conn.close()
         except Exception as erro:
@@ -238,32 +265,124 @@ def setup_auth(server: Flask):
         if request.method == "POST":
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
+            valid = False
+            user_workspace_slug = None
+
             configured_username = os.getenv("ADMIN_USERNAME", "").strip()
             password_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
 
-            valid = False
             if configured_username and password_hash:
                 try:
                     valid = (
                         username == configured_username
-                        and bcrypt.checkpw(
-                            password.encode("utf-8"),
-                            password_hash.encode("utf-8"),
-                        )
+                        and bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
                     )
                 except (ValueError, TypeError):
+                    valid = False
+
+            if valid:
+                user_workspace_slug = os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+            else:
+                try:
+                    conn = get_connection()
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """SELECT email, password_hash, workspace_id
+                                   FROM users
+                                   WHERE LOWER(email) = LOWER(%s)
+                                     AND COALESCE(is_active, TRUE) = TRUE
+                                   LIMIT 1;""",
+                                (username,),
+                            )
+                            row = cur.fetchone()
+                            if row and row[1]:
+                                valid = bcrypt.checkpw(password.encode("utf-8"), row[1].encode("utf-8"))
+                                if valid and row[2]:
+                                    cur.execute("SELECT slug FROM workspaces WHERE id = %s LIMIT 1;", (row[2],))
+                                    workspace_row = cur.fetchone()
+                                    if workspace_row:
+                                        user_workspace_slug = workspace_row[0]
+                    finally:
+                        conn.close()
+                except Exception as erro:
+                    print(f"[LOGIN DATABASE ERROR] {erro}")
                     valid = False
 
             if valid:
                 session.clear()
                 session["authenticated"] = True
                 session["username"] = username
+                session["workspace_slug"] = user_workspace_slug or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
                 session.permanent = True
                 return redirect(url_for("index"))
 
-            error = "Username ou password inválido."
+            error = "Email/username ou password inválido."
 
         return render_template_string(LOGIN_PAGE, error=error)
+
+    @server.route("/signup", methods=["GET", "POST"])
+    def signup():
+        if session.get("authenticated"):
+            return redirect(url_for("index"))
+
+        error = None
+        if request.method == "POST":
+            name = request.form.get("name", "").strip()
+            email = request.form.get("email", "").strip().lower()
+            password = request.form.get("password", "")
+            confirm_password = request.form.get("confirm_password", "")
+
+            if not name or not email or not password:
+                error = "Preencha todos os campos obrigatórios."
+            elif len(password) < 8:
+                error = "A password deve ter pelo menos 8 caracteres."
+            elif password != confirm_password:
+                error = "As passwords não coincidem."
+            else:
+                conn = None
+                try:
+                    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+                    base_slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "workspace"
+                    workspace_slug = f"{base_slug}-{uuid.uuid4().hex[:8]}"
+
+                    conn = get_connection()
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1 FROM users WHERE LOWER(email) = LOWER(%s) LIMIT 1;", (email,))
+                        if cur.fetchone():
+                            error = "Este email já está registado."
+                        else:
+                            cur.execute(
+                                """INSERT INTO workspaces
+                                   (name, slug, trial_started_at, trial_ends_at, subscription_status, subscription_plan)
+                                   VALUES (%s, %s, NOW(), NOW() + INTERVAL '30 days', 'trialing', 'trial')
+                                   RETURNING id, slug;""",
+                                (f"{name} Workspace", workspace_slug),
+                            )
+                            workspace_id, workspace_slug = cur.fetchone()
+                            cur.execute(
+                                """INSERT INTO users
+                                   (name, email, password_hash, plan_type, workspace_id, role, is_active)
+                                   VALUES (%s, %s, %s, 'free', %s, 'owner', TRUE);""",
+                                (name, email, password_hash, workspace_id),
+                            )
+                            conn.commit()
+                            session.clear()
+                            session["authenticated"] = True
+                            session["username"] = email
+                            session["workspace_slug"] = workspace_slug
+                            session.permanent = True
+                            return redirect(url_for("index"))
+                except Exception as erro:
+                    if conn:
+                        conn.rollback()
+                    print(f"[SIGNUP ERROR] {erro}")
+                    error = "Não foi possível criar a conta. Tente novamente."
+                finally:
+                    if conn:
+                        conn.close()
+
+        return render_template_string(SIGNUP_PAGE, error=error)
 
     @server.get("/logout")
     def logout():
@@ -273,7 +392,7 @@ def setup_auth(server: Flask):
     @server.before_request
     def require_authentication():
         endpoint = request.endpoint or ""
-        if endpoint in {"login", "health", "billing", "static"}:
+        if endpoint in {"login", "signup", "health", "billing", "static"}:
             return None
         if request.path.startswith("/_dash-component-suites/"):
             return None
