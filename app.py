@@ -6,7 +6,7 @@ import plotly.express as px
 import dash
 
 from dash import html, dcc
-from flask import session
+from flask import has_request_context, session
 from dash.dependencies import Input, Output
 from dotenv import load_dotenv
 
@@ -100,7 +100,7 @@ def carregar_dados():
             WHERE w.slug = %s
             ORDER BY dm.report_date ASC
         """
-        workspace_slug = session.get("workspace_slug") or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+        workspace_slug = (session.get("workspace_slug") if has_request_context() else None) or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
         dados = pd.read_sql_query(query, conn, params=(workspace_slug,))
         print(f"[DATABASE] {len(dados)} registos carregados.")
         return dados
