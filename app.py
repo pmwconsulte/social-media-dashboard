@@ -6,11 +6,12 @@ import plotly.express as px
 import dash
 
 from dash import html, dcc
+from flask import session
 from dash.dependencies import Input, Output
 from dotenv import load_dotenv
 
 from database import get_connection, create_tables
-from auth import setup_auth, get_current_workspace_slug
+from auth import setup_auth
 
 from ai_engine import (
     prever_crescimento,
