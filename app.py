@@ -306,6 +306,20 @@ app.layout = html.Div(
                 html.Div(
                     [
                         html.A(
+                            "👤 Minha Conta",
+                            href="/account",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": COLORS["success"],
+                                "color": COLORS["background"],
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
+                            },
+                        ),
+                        html.A(
                             "💳 Plano",
                             href="/billing",
                             style={
