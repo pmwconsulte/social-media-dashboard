@@ -578,7 +578,7 @@ def setup_auth(server: Flask):
     @server.route("/account", methods=["GET", "POST"])
     def account():
         if not session.get("authenticated"):
-            return redirect(url_for("login"))
+            return redirect("/login")
 
         message = request.args.get("message")
         error = request.args.get("error")
@@ -634,7 +634,8 @@ def setup_auth(server: Flask):
                 ]
 
             if not user:
-                return redirect(url_for("logout"))
+                session.clear()
+                return redirect("/login")
 
             from datetime import datetime, timezone
             days_left = 0
