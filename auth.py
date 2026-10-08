@@ -4,6 +4,11 @@ import uuid
 from functools import wraps
 
 import bcrypt
+import base64
+import hashlib
+import secrets
+import requests
+from cryptography.fernet import Fernet, InvalidToken
 from flask import (
     Flask,
     redirect,
@@ -15,6 +20,40 @@ from flask import (
 
 from billing import PLANS, evaluate_workspace_access
 from database import get_connection
+
+
+def _oauth_configured():
+    return bool(os.getenv("INSTAGRAM_APP_ID") and os.getenv("INSTAGRAM_APP_SECRET") and os.getenv("INSTAGRAM_OAUTH_REDIRECT_URI"))
+
+
+def _token_cipher():
+    raw = os.getenv("OAUTH_TOKEN_ENCRYPTION_KEY", "")
+    if not raw:
+        raise RuntimeError("OAUTH_TOKEN_ENCRYPTION_KEY não está definida.")
+    try:
+        key = raw.encode("utf-8")
+        Fernet(key)
+        return Fernet(key)
+    except Exception:
+        digest = hashlib.sha256(raw.encode("utf-8")).digest()
+        return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _encrypt_token(token):
+    return _token_cipher().encrypt(token.encode("utf-8")).decode("utf-8")
+
+
+def _instagram_authorize_url(state):
+    from urllib.parse import urlencode
+    params = {
+        "client_id": os.getenv("INSTAGRAM_APP_ID"),
+        "redirect_uri": os.getenv("INSTAGRAM_OAUTH_REDIRECT_URI"),
+        "response_type": "code",
+        "scope": "instagram_business_basic",
+        "state": state,
+    }
+    return "https://www.instagram.com/oauth/authorize?" + urlencode(params)
+
 
 
 BILLING_PAGE = """
@@ -204,8 +243,8 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 <div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div>
 <div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
 <div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
-<div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Registo e gestão das contas. OAuth real será integrado na próxima etapa.</p><form method="post" action="/social-accounts/add" class="grid"><div><label>Plataforma</label><select name="platform"><option>Instagram</option><option>Facebook</option><option>LinkedIn</option><option>TikTok</option></select></div><div><label>Utilizador / Página</label><input name="username" required></div><div><label>Nome de apresentação</label><input name="display_name"></div><div><button type="submit">Adicionar conta</button></div></form>
-{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "Ativa" if item.is_active else "Desativada" }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais neste workspace.</p>{% endif %}</div></div></body></html>"""
+<div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Conecte contas através de OAuth. O token é armazenado cifrado no servidor.</p><p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></p><form method="post" action="/social-accounts/add" class="grid"><div><label>Plataforma</label><select name="platform"><option>Instagram</option><option>Facebook</option><option>LinkedIn</option><option>TikTok</option></select></div><div><label>Utilizador / Página</label><input name="username" required></div><div><label>Nome de apresentação</label><input name="display_name"></div><div><button type="submit">Adicionar conta</button></div></form>
+{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "Conectada" if item.connection_status == "connected" and item.is_active else ("Ativa / Pendente" if item.is_active else "Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais neste workspace.</p>{% endif %}</div></div></body></html>"""
 
 def setup_auth(server: Flask):
     """Configure secure session authentication for the Dash server."""
@@ -393,6 +432,119 @@ def setup_auth(server: Flask):
 
         return render_template_string(SIGNUP_PAGE, error=error)
 
+    @server.get("/oauth/instagram")
+    def instagram_oauth():
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+        if not _oauth_configured():
+            return redirect(url_for("account", error="Instagram OAuth ainda não está configurado no servidor."))
+        state = secrets.token_urlsafe(32)
+        session["instagram_oauth_state"] = state
+        session["instagram_oauth_workspace"] = session.get("workspace_slug")
+        return redirect(_instagram_authorize_url(state))
+
+    @server.get("/oauth/instagram/callback")
+    def instagram_oauth_callback():
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+        if request.args.get("error"):
+            return redirect(url_for("account", error="A autorização do Instagram foi cancelada ou recusada."))
+        state = request.args.get("state", "")
+        expected = session.pop("instagram_oauth_state", None)
+        workspace_slug = session.pop("instagram_oauth_workspace", None)
+        if not state or not expected or not secrets.compare_digest(state, expected):
+            return redirect(url_for("account", error="Falha de segurança no estado OAuth. Tente novamente."))
+        code = request.args.get("code", "")
+        if not code or workspace_slug != session.get("workspace_slug"):
+            return redirect(url_for("account", error="Código OAuth inválido ou sessão expirada."))
+        conn = None
+        try:
+            token_response = requests.post(
+                "https://api.instagram.com/oauth/access_token",
+                data={
+                    "client_id": os.getenv("INSTAGRAM_APP_ID"),
+                    "client_secret": os.getenv("INSTAGRAM_APP_SECRET"),
+                    "grant_type": "authorization_code",
+                    "redirect_uri": os.getenv("INSTAGRAM_OAUTH_REDIRECT_URI"),
+                    "code": code,
+                },
+                timeout=15,
+            )
+            token_response.raise_for_status()
+            short_data = token_response.json()
+            short_token = short_data.get("access_token")
+            if not short_token:
+                raise RuntimeError("Instagram não devolveu access_token.")
+
+            long_response = requests.get(
+                "https://graph.instagram.com/access_token",
+                params={
+                    "grant_type": "ig_exchange_token",
+                    "client_secret": os.getenv("INSTAGRAM_APP_SECRET"),
+                    "access_token": short_token,
+                },
+                timeout=15,
+            )
+            long_response.raise_for_status()
+            long_data = long_response.json()
+            access_token = long_data.get("access_token", short_token)
+
+            profile_response = requests.get(
+                "https://graph.instagram.com/v25.0/me",
+                params={"fields": "id,username,account_type", "access_token": access_token},
+                timeout=15,
+            )
+            profile_response.raise_for_status()
+            profile = profile_response.json()
+            ig_id = str(profile.get("id", ""))
+            username = profile.get("username") or ("instagram_" + ig_id)
+            if not ig_id:
+                raise RuntimeError("Não foi possível obter o ID do Instagram.")
+
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM workspaces WHERE slug=%s LIMIT 1", (workspace_slug,))
+                workspace = cur.fetchone()
+                if not workspace:
+                    raise RuntimeError("Workspace não encontrado.")
+                cur.execute(
+                    """SELECT id FROM social_accounts
+                       WHERE workspace_id=%s AND platform='Instagram'
+                         AND LOWER(username)=LOWER(%s) LIMIT 1""",
+                    (workspace[0], username),
+                )
+                existing = cur.fetchone()
+                encrypted = _encrypt_token(access_token)
+                if existing:
+                    cur.execute(
+                        """UPDATE social_accounts
+                           SET access_token=%s, display_name=%s,
+                               connection_status='connected', is_active=TRUE,
+                               last_sync_at=NOW()
+                           WHERE id=%s AND workspace_id=%s""",
+                        (encrypted, username, existing[0], workspace[0]),
+                    )
+                else:
+                    cur.execute(
+                        """INSERT INTO social_accounts
+                           (workspace_id, platform, username, display_name,
+                            access_token, connection_status, is_active, last_sync_at)
+                           VALUES (%s,'Instagram',%s,%s,%s,'connected',TRUE,NOW())""",
+                        (workspace[0], username, username, encrypted),
+                    )
+            conn.commit()
+            return redirect(url_for("account", message="Instagram conectado com sucesso."))
+        except (requests.RequestException, ValueError, InvalidToken) as erro:
+            if conn: conn.rollback()
+            print(f"[INSTAGRAM OAUTH ERROR] {erro}")
+            return redirect(url_for("account", error="Não foi possível concluir a ligação ao Instagram."))
+        except Exception as erro:
+            if conn: conn.rollback()
+            print(f"[INSTAGRAM OAUTH ERROR] {erro}")
+            return redirect(url_for("account", error="Erro ao configurar a conta Instagram."))
+        finally:
+            if conn: conn.close()
+
     @server.route("/account", methods=["GET", "POST"])
     def account():
         if not session.get("authenticated"): return redirect(url_for("login"))
@@ -486,7 +638,7 @@ def setup_auth(server: Flask):
     @server.before_request
     def require_authentication():
         endpoint = request.endpoint or ""
-        if endpoint in {"login", "signup", "health", "billing", "account", "change_password", "add_social_account", "toggle_social_account", "static"}:
+        if endpoint in {"login", "signup", "health", "billing", "account", "change_password", "add_social_account", "toggle_social_account", "instagram_oauth", "instagram_oauth_callback", "static"}:
             return None
         if request.path.startswith("/_dash-component-suites/"):
             return None
