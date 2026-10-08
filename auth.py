@@ -246,7 +246,7 @@ def _env_bool(name, default=True):
 ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Minha Conta — PMW Social Media Dashboard AI</title>
 <style>body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}.wrap{max-width:1050px;margin:35px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:24px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}label{display:block;margin:12px 0 7px;font-weight:600}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #334155;background:#020617;color:#fff;box-sizing:border-box}button,.btn{display:inline-block;padding:11px 16px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;text-decoration:none;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#172554;color:#7dd3fc;font-size:12px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #1e293b}</style></head><body><div class="wrap">
-<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">📷 Conectar Instagram</h2><p class="muted">Conecte a sua conta Instagram através da autenticação oficial. Não introduza username, password ou token neste dashboard.</p><a class="btn" style="font-size:16px;padding:14px 22px;background:#38bdf8" href="/oauth/instagram">📷 Conectar Instagram agora</a></div>
+<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
 <div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
 <div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
 <div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Ligue as suas redes sociais através de autenticação oficial. Não é necessário inserir tokens ou credenciais no dashboard.</p>
@@ -718,60 +718,3 @@ def setup_auth(server: Flask):
                 plan=workspace[1] or "trial"; limit=PLANS.get(plan,PLANS["trial"])["accounts"]
                 cur.execute("SELECT COUNT(*) FROM social_accounts WHERE workspace_id=%s AND COALESCE(is_active,TRUE)",(workspace[0],)); count=cur.fetchone()[0]
                 if isinstance(limit,int) and count>=limit: return redirect(url_for("account",error=f"O plano {PLANS.get(plan,PLANS['trial'])['name']} permite no máximo {limit} contas sociais ativas."))
-                cur.execute("SELECT 1 FROM social_accounts WHERE workspace_id=%s AND LOWER(platform)=LOWER(%s) AND LOWER(username)=LOWER(%s) AND COALESCE(is_active,TRUE) LIMIT 1",(workspace[0],platform,username))
-                if cur.fetchone(): return redirect(url_for("account",error="Esta conta social já está registada neste workspace."))
-                cur.execute("INSERT INTO social_accounts(workspace_id,platform,username,display_name,connection_status,is_active) VALUES(%s,%s,%s,%s,'pending',TRUE)",(workspace[0],platform,username,display_name))
-            conn.commit(); return redirect(url_for("account",message="Conta social adicionada."))
-        except Exception as erro:
-            if conn: conn.rollback()
-            print(f"[SOCIAL ACCOUNT ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível adicionar a conta social."))
-        finally:
-            if conn: conn.close()
-
-    @server.post("/social-accounts/<account_id>/toggle")
-    def toggle_social_account(account_id):
-        if not session.get("authenticated"): return redirect(url_for("login"))
-        conn=None
-        try:
-            conn=get_connection()
-            with conn.cursor() as cur: cur.execute("UPDATE social_accounts SET is_active=NOT COALESCE(is_active,TRUE) WHERE id=%s AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)",(account_id,session.get("workspace_slug")))
-            conn.commit(); return redirect(url_for("account",message="Estado da conta social atualizado."))
-        except Exception as erro:
-            if conn: conn.rollback()
-            print(f"[SOCIAL TOGGLE ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível alterar o estado da conta."))
-        finally:
-            if conn: conn.close()
-
-    @server.get("/logout")
-    def logout():
-        session.clear()
-        return redirect(url_for("login"))
-
-    @server.before_request
-    def require_authentication():
-        endpoint = request.endpoint or ""
-        if endpoint in {"login", "signup", "health", "billing", "account", "change_password", "add_social_account", "toggle_social_account", "instagram_oauth", "instagram_oauth_callback", "static"}:
-            return None
-        if request.path.startswith("/_dash-component-suites/"):
-            return None
-        if session.get("authenticated"):
-            # O acesso ao dashboard é condicionado ao estado da subscrição.
-            if request.path == "/logout":
-                return None
-            try:
-                conn = get_connection()
-                try:
-                    access = evaluate_workspace_access(conn)
-                finally:
-                    conn.close()
-                if access["allowed"]:
-                    return None
-                return redirect(url_for("billing"))
-            except Exception as erro:
-                print(f"[BILLING ACCESS ERROR] {erro}")
-                return redirect(url_for("billing"))
-        if request.path.startswith("/_dash-"):
-            return redirect(url_for("login"))
-        return redirect(url_for("login"))
-
-    return server
