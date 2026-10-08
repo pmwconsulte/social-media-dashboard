@@ -416,11 +416,16 @@ def initialize_database():
                 """
             )
 
-            # Dataset inicial controlado: só entra se a base ainda estiver vazia.
+            # Dados demonstrativos só podem ser criados quando explicitamente
+            # habilitados. Em produção comercial, o padrão é NÃO criar contas demo.
+            allow_demo = os.getenv("ALLOW_DEMO_DATA", "false").strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+
             cur.execute("SELECT COUNT(*) FROM social_accounts;")
             total_accounts = cur.fetchone()[0]
 
-            if total_accounts == 0:
+            if total_accounts == 0 and allow_demo:
                 cur.execute(
                     """
                     INSERT INTO social_accounts
@@ -461,8 +466,13 @@ def initialize_database():
                 )
 
                 print(
-                    "[DATABASE] Dataset inicial criado: "
-                    "PMW Default Workspace / @pmw_demo."
+                    "[DATABASE] Dataset inicial demo criado porque "
+                    "ALLOW_DEMO_DATA está habilitado."
+                )
+            elif total_accounts == 0:
+                print(
+                    "[DATABASE] Base sem contas sociais. "
+                    "Nenhum dado demo será criado (ALLOW_DEMO_DATA desativado)."
                 )
 
         conn.commit()
