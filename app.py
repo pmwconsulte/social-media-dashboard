@@ -140,13 +140,9 @@ def preparar_dados(dados):
     return dados.sort_values("data").reset_index(drop=True)
 
 
-df = preparar_dados(carregar_dados())
-
-if df.empty and os.getenv("ALLOW_DEMO_DATA", "false").strip().lower() in {
-    "1", "true", "yes", "on"
-}:
-    print("[INFO] Nenhum dado encontrado. A utilizar dados demonstrativos.")
-    df = pd.DataFrame({
+def dados_demonstrativos():
+    """Retorna dados de demonstração somente quando explicitamente habilitados."""
+    return pd.DataFrame({
         "data": pd.date_range(start="2026-01-01", periods=7, freq="D"),
         "plataforma": ["Instagram"] * 7,
         "username": ["@demo"] * 7,
@@ -264,17 +260,8 @@ def grafico_sem_dados(titulo):
     return configurar_grafico(fig)
 
 
-if "plataforma" in df.columns:
-    plataformas = sorted(
-        df["plataforma"].dropna().astype(str).unique().tolist()
-    )
-else:
-    plataformas = []
-
-if not plataformas:
-    plataformas = ["Instagram"]
-
-kpis_iniciais = calcular_kpis(df)
+plataformas = ["Instagram"]
+kpis_iniciais = calcular_kpis(pd.DataFrame())
 
 app.layout = html.Div(
     [
@@ -496,6 +483,8 @@ app.layout = html.Div(
 
 @app.callback(
     [
+        Output("plataforma", "options"),
+        Output("plataforma", "value"),
         Output("kpi-seguidores", "children"),
         Output("kpi-alcance", "children"),
         Output("kpi-engajamento", "children"),
@@ -512,12 +501,30 @@ app.layout = html.Div(
     [Input("plataforma", "value")],
 )
 def atualizar(plataforma):
-    dados = df[df["plataforma"].astype(str) == str(plataforma)].copy()
+    workspace_dados = preparar_dados(carregar_dados())
+
+    if workspace_dados.empty and os.getenv("ALLOW_DEMO_DATA", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }:
+        print("[INFO] Nenhum dado encontrado no workspace atual. A utilizar dados demonstrativos.")
+        workspace_dados = dados_demonstrativos()
+
+    plataformas_atuais = sorted(
+        workspace_dados["plataforma"].dropna().astype(str).unique().tolist()
+    ) if "plataforma" in workspace_dados.columns else []
+
+    if not plataformas_atuais:
+        plataformas_atuais = ["Instagram"]
+
+    plataforma_atual = str(plataforma) if plataforma in plataformas_atuais else plataformas_atuais[0]
+    dados = workspace_dados[workspace_dados["plataforma"].astype(str) == plataforma_atual].copy()
     dados = dados.sort_values("data")
 
     if dados.empty:
         vazio = grafico_sem_dados("Sem dados")
         return (
+            [{"label": p, "value": p} for p in plataformas_atuais],
+            plataforma_atual,
             "0", "0", "0%", "0%", "0/100",
             "⚠️ Não existem dados para esta plataforma.",
             "💡 Adicione dados para obter recomendações.",
@@ -599,6 +606,8 @@ def atualizar(plataforma):
         fig4 = grafico_sem_dados("🤖 Previsão IA")
 
     return (
+        [{"label": p, "value": p} for p in plataformas_atuais],
+        plataforma_atual,
         numero(kpis["seguidores"]),
         numero(kpis["alcance"]),
         f'{kpis["engajamento"]}%',
