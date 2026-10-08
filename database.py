@@ -475,6 +475,28 @@ def initialize_database():
                     "Nenhum dado demo será criado (ALLOW_DEMO_DATA desativado)."
                 )
 
+            # Limpeza de uma eventual conta demo criada por versões anteriores.
+            # É limitada ao workspace padrão e à assinatura exata da conta demo,
+            # para não afetar contas reais de clientes.
+            if not allow_demo:
+                cur.execute(
+                    """
+                    DELETE FROM social_accounts sa
+                    USING workspaces w
+                    WHERE sa.workspace_id = w.id
+                      AND w.slug = 'pmw-default'
+                      AND sa.platform = 'Instagram'
+                      AND sa.username = '@pmw_demo'
+                      AND sa.access_token IS NULL;
+                    """
+                )
+                removed_demo = cur.rowcount
+                if removed_demo:
+                    print(
+                        f"[DATABASE] Conta demo antiga removida: "
+                        f"{removed_demo} registo(s)."
+                    )
+
         conn.commit()
         print("[DATABASE] Inicialização de produção concluída.")
         return True
