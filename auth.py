@@ -243,8 +243,9 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 <div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div>
 <div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
 <div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
-<div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Conecte contas através de OAuth. O token é armazenado cifrado no servidor.</p><p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></p><form method="post" action="/social-accounts/add" class="grid"><div><label>Plataforma</label><select name="platform"><option>Instagram</option><option>Facebook</option><option>LinkedIn</option><option>TikTok</option></select></div><div><label>Utilizador / Página</label><input name="username" required></div><div><label>Nome de apresentação</label><input name="display_name"></div><div><button type="submit">Adicionar conta</button></div></form>
-{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "Conectada" if item.connection_status == "connected" and item.is_active else ("Ativa / Pendente" if item.is_active else "Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais neste workspace.</p>{% endif %}</div></div></body></html>"""
+<div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Ligue as suas redes sociais através de autenticação oficial. Não é necessário inserir tokens ou credenciais no dashboard.</p>
+<div style="background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:18px;margin:16px 0"><h3 style="margin-top:0">📷 Instagram</h3><p class="muted">O cliente será redirecionado para o Instagram, fará login e autorizará o acesso. O token é armazenado cifrado no servidor.</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div>
+{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
 
 def setup_auth(server: Flask):
     """Configure secure session authentication for the Dash server."""
@@ -503,10 +504,19 @@ def setup_auth(server: Flask):
 
             conn = get_connection()
             with conn.cursor() as cur:
-                cur.execute("SELECT id FROM workspaces WHERE slug=%s LIMIT 1", (workspace_slug,))
+                cur.execute("SELECT id, subscription_plan FROM workspaces WHERE slug=%s LIMIT 1", (workspace_slug,))
                 workspace = cur.fetchone()
                 if not workspace:
                     raise RuntimeError("Workspace não encontrado.")
+
+                plan_key = workspace[1] or "trial"
+                account_limit = PLANS.get(plan_key, PLANS["trial"])["accounts"]
+                cur.execute(
+                    """SELECT COUNT(*) FROM social_accounts
+                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE""",
+                    (workspace[0],),
+                )
+                active_accounts = cur.fetchone()[0]
                 cur.execute(
                     """SELECT id FROM social_accounts
                        WHERE workspace_id=%s AND platform='Instagram'
@@ -514,6 +524,15 @@ def setup_auth(server: Flask):
                     (workspace[0], username),
                 )
                 existing = cur.fetchone()
+
+                # A renovação de uma conta já conectada não consome novo limite.
+                # Uma nova conta só pode ser criada dentro do limite do plano.
+                if not existing and isinstance(account_limit, int) and active_accounts >= account_limit:
+                    raise RuntimeError(
+                        f"O plano {PLANS.get(plan_key, PLANS['trial'])['name']} permite no máximo "
+                        f"{account_limit} contas sociais ativas."
+                    )
+
                 encrypted = _encrypt_token(access_token)
                 if existing:
                     cur.execute(
@@ -596,7 +615,10 @@ def setup_auth(server: Flask):
     def add_social_account():
         if not session.get("authenticated"): return redirect(url_for("login"))
         platform=request.form.get("platform","").strip(); username=request.form.get("username","").strip(); display_name=request.form.get("display_name","").strip() or username
-        if platform not in {"Instagram","Facebook","LinkedIn","TikTok"} or not username: return redirect(url_for("account",error="Plataforma ou conta inválida."))
+        if platform == "Instagram":
+            return redirect(url_for("instagram_oauth"))
+        if platform not in {"Facebook","LinkedIn","TikTok"} or not username:
+            return redirect(url_for("account",error="Plataforma ou conta inválida."))
         conn=None
         try:
             conn=get_connection()
@@ -609,7 +631,7 @@ def setup_auth(server: Flask):
                 cur.execute("SELECT 1 FROM social_accounts WHERE workspace_id=%s AND LOWER(platform)=LOWER(%s) AND LOWER(username)=LOWER(%s) AND COALESCE(is_active,TRUE) LIMIT 1",(workspace[0],platform,username))
                 if cur.fetchone(): return redirect(url_for("account",error="Esta conta social já está registada neste workspace."))
                 cur.execute("INSERT INTO social_accounts(workspace_id,platform,username,display_name,connection_status,is_active) VALUES(%s,%s,%s,%s,'pending',TRUE)",(workspace[0],platform,username,display_name))
-            conn.commit(); return redirect(url_for("account",message="Conta social adicionada. OAuth será integrado numa próxima etapa."))
+            conn.commit(); return redirect(url_for("account",message="Conta social adicionada."))
         except Exception as erro:
             if conn: conn.rollback()
             print(f"[SOCIAL ACCOUNT ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível adicionar a conta social."))
