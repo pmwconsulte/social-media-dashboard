@@ -577,30 +577,108 @@ def setup_auth(server: Flask):
 
     @server.route("/account", methods=["GET", "POST"])
     def account():
-        if not session.get("authenticated"): return redirect(url_for("login"))
-        message=request.args.get("message"); error=request.args.get("error"); conn=None
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+
+        message = request.args.get("message")
+        error = request.args.get("error")
+        conn = None
+
         try:
-            conn=get_connection(); slug=session.get("workspace_slug")
+            conn = get_connection()
+            slug = session.get("workspace_slug")
+
             with conn.cursor() as cur:
-                if request.method=="POST":
-                    name=request.form.get("name","").strip()
-                    if not name: return redirect(url_for("account",error="O nome é obrigatório."))
-                    cur.execute("UPDATE users SET name=%s WHERE LOWER(email)=LOWER(%s) AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)",(name,session.get("username"),slug)); conn.commit()
-                    return redirect(url_for("account",message="Perfil atualizado com sucesso."))
-                cur.execute("SELECT u.name,u.email,w.name,w.subscription_plan,w.trial_ends_at FROM users u LEFT JOIN workspaces w ON w.id=u.workspace_id WHERE LOWER(u.email)=LOWER(%s) AND w.slug=%s LIMIT 1",(session.get("username"),slug)); user=cur.fetchone()
-                cur.execute("SELECT id,platform,username,display_name,connection_status,is_active FROM social_accounts WHERE workspace_id=(SELECT id FROM workspaces WHERE slug=%s) ORDER BY created_at DESC",(slug,))
-                accounts=[{"id":str(r[0]),"platform":r[1],"username":r[2],"display_name":r[3],"connection_status":r[4],"is_active":r[5]} for r in cur.fetchall()]
-            if not user: return redirect(url_for("logout"))
+                if request.method == "POST":
+                    name = request.form.get("name", "").strip()
+                    if not name:
+                        return redirect(url_for("account", error="O nome é obrigatório."))
+
+                    cur.execute(
+                        """UPDATE users
+                           SET name=%s
+                           WHERE LOWER(email)=LOWER(%s)
+                             AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)""",
+                        (name, session.get("username"), slug),
+                    )
+                    conn.commit()
+                    return redirect(url_for("account", message="Perfil atualizado com sucesso."))
+
+                cur.execute(
+                    """SELECT u.name,u.email,w.name,w.subscription_plan,w.trial_ends_at
+                       FROM users u
+                       LEFT JOIN workspaces w ON w.id=u.workspace_id
+                       WHERE LOWER(u.email)=LOWER(%s) AND w.slug=%s
+                       LIMIT 1""",
+                    (session.get("username"), slug),
+                )
+                user = cur.fetchone()
+
+                cur.execute(
+                    """SELECT id,platform,username,display_name,connection_status,is_active
+                       FROM social_accounts
+                       WHERE workspace_id=(SELECT id FROM workspaces WHERE slug=%s)
+                       ORDER BY created_at DESC""",
+                    (slug,),
+                )
+                accounts = [
+                    {
+                        "id": str(row[0]),
+                        "platform": row[1],
+                        "username": row[2],
+                        "display_name": row[3],
+                        "connection_status": row[4],
+                        "is_active": row[5],
+                    }
+                    for row in cur.fetchall()
+                ]
+
+            if not user:
+                return redirect(url_for("logout"))
+
             from datetime import datetime, timezone
-            days_left=0
+            days_left = 0
             if user[4]:
-                now=datetime.now(timezone.utc).replace(tzinfo=None); days_left=max(0,int(((user[4]-now).total_seconds()+86399)//86400))
-            return render_template_string(ACCOUNT_PAGE,user_name=user[0],email=user[1],workspace_name=user[2] or slug,plan_name=PLANS.get(user[3] or "trial",PLANS["trial"])["name"],days_left=days_left,social_accounts=accounts,message=message,error=error)
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                days_left = max(
+                    0,
+                    int(((user[4] - now).total_seconds() + 86399) // 86400),
+                )
+
+            return render_template_string(
+                ACCOUNT_PAGE,
+                user_name=user[0] or "",
+                email=user[1] or session.get("username", ""),
+                workspace_name=user[2] or slug,
+                plan_name=PLANS.get(user[3] or "trial", PLANS["trial"])["name"],
+                days_left=days_left,
+                social_accounts=accounts,
+                message=message,
+                error=error,
+            )
+
         except Exception as erro:
-            if conn: conn.rollback()
-            print(f"[ACCOUNT ERROR] {erro}"); return "Não foi possível carregar a conta.",503
-        finally:
-            if conn: conn.close()
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+            import traceback
+            print(f"[ACCOUNT ERROR] {type(erro).__name__}: {erro}")
+            traceback.print_exc()
+
+            return render_template_string(
+                ACCOUNT_PAGE,
+                user_name=session.get("username", ""),
+                email=session.get("username", ""),
+                workspace_name=session.get("workspace_slug", ""),
+                plan_name="Trial",
+                days_left=0,
+                social_accounts=[],
+                message=message,
+                error="Não foi possível carregar os dados da conta. O erro foi registado no servidor.",
+            ), 200
 
     @server.post("/account/password")
     def change_password():
