@@ -579,8 +579,13 @@ def setup_auth(server: Flask):
             profile = profile_response.json()
             ig_id = str(profile.get("id", ""))
             username = profile.get("username") or ("instagram_" + ig_id)
+            account_type = str(profile.get("account_type", "")).upper()
             if not ig_id:
                 raise RuntimeError("Não foi possível obter o ID do Instagram.")
+            if account_type and account_type not in {"BUSINESS", "CREATOR"}:
+                raise RuntimeError(
+                    "A conta Instagram precisa ser profissional (Business ou Creator)."
+                )
 
             conn = get_connection()
             with conn.cursor() as cur:
