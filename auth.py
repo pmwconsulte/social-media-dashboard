@@ -309,7 +309,7 @@ def setup_auth(server: Flask):
                 finally:
                     conn.close()
                 if access["allowed"]:
-                    return redirect(url_for("index"))
+                    return redirect("/")
                 return redirect(url_for("billing"))
             except Exception as erro:
                 print(f"[BILLING LOGIN ERROR] {erro}")
@@ -370,7 +370,7 @@ def setup_auth(server: Flask):
                 session["username"] = username
                 session["workspace_slug"] = user_workspace_slug or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
                 session.permanent = True
-                return redirect(url_for("index"))
+                return redirect("/")
 
             error = "Email/username ou password inválido."
 
@@ -379,7 +379,7 @@ def setup_auth(server: Flask):
     @server.route("/signup", methods=["GET", "POST"])
     def signup():
         if session.get("authenticated"):
-            return redirect(url_for("index"))
+            return redirect("/")
 
         error = None
         if request.method == "POST":
@@ -427,7 +427,7 @@ def setup_auth(server: Flask):
                             session["username"] = email
                             session["workspace_slug"] = workspace_slug
                             session.permanent = True
-                            return redirect(url_for("index"))
+                            return redirect("/")
                 except Exception as erro:
                     if conn:
                         conn.rollback()
