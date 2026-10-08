@@ -236,6 +236,22 @@ def create_tables():
                 """
             )
 
+
+            cur.execute(
+                """ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);"""
+            )
+            cur.execute(
+                """ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS connection_status VARCHAR(30) DEFAULT 'pending';"""
+            )
+            cur.execute(
+                """ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;"""
+            )
+            cur.execute(
+                """ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMP;"""
+            )
+            cur.execute(
+                """CREATE INDEX IF NOT EXISTS idx_social_accounts_workspace_active ON social_accounts(workspace_id, is_active);"""
+            )
         conn.commit()
 
         print(
