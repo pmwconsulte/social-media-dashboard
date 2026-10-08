@@ -327,10 +327,57 @@ def setup_auth(server: Flask):
 
     @server.after_request
     def security_headers(response):
+        """Apply browser security headers without changing OAuth behavior."""
         # Páginas autenticadas nunca devem ser reutilizadas pelo cache do browser.
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+
+        # Harden browser-side protections. These headers do not alter OAuth
+        # redirects, callback parameters, cookies, or external API requests.
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        )
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+
+        # Render terminates TLS before Flask. HSTS is therefore safe to send
+        # only for HTTPS requests and will force future browser connections
+        # to remain on HTTPS.
+        if request.is_secure:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+
+        # Keep CSP scoped to the authentication UI. Dash itself may require
+        # additional browser resources, so do not impose this policy globally.
+        auth_paths = {
+            "/login",
+            "/signup",
+            "/account",
+            "/account/password",
+            "/billing",
+            "/logout",
+            "/oauth/instagram",
+            "/oauth/instagram/callback",
+            "/health",
+        }
+        if request.path in auth_paths:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "base-uri 'self'; "
+                "form-action 'self'; "
+                "frame-ancestors 'none'; "
+                "object-src 'none'; "
+                "script-src 'none'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; "
+                "font-src 'self' data:"
+            )
+
         return response
 
     @server.get("/logout")
