@@ -10,7 +10,7 @@ from dash.dependencies import Input, Output
 from dotenv import load_dotenv
 
 from database import get_connection, create_tables
-from auth import setup_auth
+from auth import setup_auth, get_current_workspace_slug
 
 from ai_engine import (
     prever_crescimento,
@@ -99,7 +99,7 @@ def carregar_dados():
             WHERE w.slug = %s
             ORDER BY dm.report_date ASC
         """
-        workspace_slug = os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+        workspace_slug = session.get("workspace_slug") or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
         dados = pd.read_sql_query(query, conn, params=(workspace_slug,))
         print(f"[DATABASE] {len(dados)} registos carregados.")
         return dados
