@@ -55,6 +55,37 @@ def google_site_verification():
         mimetype="text/html",
     )
 
+# SEO endpoints: expose only public entry pages to search engines.
+PUBLIC_BASE_URL = "https://social-media-dashboard-s0i4.onrender.com"
+
+@server.get("/robots.txt")
+def robots_txt():
+    body = "\n".join([
+        "User-agent: *",
+        "Allow: /login",
+        "Allow: /signup",
+        "Disallow: /account",
+        "Disallow: /billing",
+        "Disallow: /logout",
+        "Disallow: /oauth/",
+        "Disallow: /social-accounts/",
+        "Disallow: /_dash-",
+        "Disallow: /health",
+        f"Sitemap: {PUBLIC_BASE_URL}/sitemap.xml",
+    ]) + "\n"
+    return Response(body, mimetype="text/plain")
+
+@server.get("/sitemap.xml")
+def sitemap_xml():
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"  <url><loc>{PUBLIC_BASE_URL}/login</loc></url>\n"
+        f"  <url><loc>{PUBLIC_BASE_URL}/signup</loc></url>\n"
+        "</urlset>\n"
+    )
+    return Response(body, mimetype="application/xml")
+
 setup_auth(server)
 
 
