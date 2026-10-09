@@ -74,12 +74,84 @@ def robots_txt():
     ]) + "\n"
     return Response(body, mimetype="text/plain")
 
+# Página pública de apresentação do produto (o dashboard principal continua protegido).
+PUBLIC_HOME_PAGE = """<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PMW Social Media Dashboard AI | Análise de Redes Sociais</title>
+  <meta name="description" content="Acompanhe métricas de redes sociais, crescimento, alcance e envolvimento num dashboard com indicadores e apoio de inteligência artificial.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://social-media-dashboard-s0i4.onrender.com/home">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="PMW Social Media Dashboard AI">
+  <meta property="og:description" content="Métricas, tendências e relatórios de redes sociais num único dashboard com apoio de IA.">
+  <meta property="og:url" content="https://social-media-dashboard-s0i4.onrender.com/home">
+  <meta name="theme-color" content="#020617">
+  <style>
+    :root{color-scheme:dark;--bg:#020617;--panel:#111827;--line:#263449;--text:#f8fafc;--muted:#a7b4c7;--blue:#38bdf8;--green:#22c55e}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#0c2344 0,var(--bg) 55%);color:var(--text);font-family:Inter,Arial,sans-serif;line-height:1.6}
+    a{color:inherit}.wrap{width:min(1120px,92%);margin:auto}.nav{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:22px 0}.brand{font-weight:800;font-size:18px}.navlinks{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.btn{display:inline-block;text-decoration:none;font-weight:700;padding:11px 17px;border-radius:10px;background:var(--blue);color:#06111f}.btn.secondary{background:transparent;border:1px solid #456078;color:var(--text)}
+    .hero{padding:72px 0 64px;max-width:850px}.eyebrow{color:var(--blue);font-weight:800;letter-spacing:.12em;font-size:12px;text-transform:uppercase}.hero h1{font-size:clamp(36px,6vw,64px);line-height:1.08;letter-spacing:-.04em;margin:18px 0}.hero p{font-size:19px;color:var(--muted);max-width:720px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+    .section{padding:42px 0}.section h2{font-size:clamp(26px,4vw,36px);margin:0 0 12px}.intro{color:var(--muted);max-width:760px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:24px}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:16px;padding:22px}.card h3{margin:8px 0}.card p{color:var(--muted);margin-bottom:0}.symbol{font-size:25px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:30px}.metric{padding:18px;border-radius:14px;background:#0b1730;border:1px solid #1d3554}.metric strong{display:block;color:var(--blue);font-size:21px}.metric span{color:var(--muted);font-size:13px}.cta{margin:45px 0;padding:30px;border-radius:18px;border:1px solid #1d4562;background:linear-gradient(120deg,#0c2440,#111827)}footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-size:13px}
+    @media(max-width:600px){.nav{align-items:flex-start;flex-direction:column}.hero{padding:46px 0 35px}.hero p{font-size:17px}}
+  </style>
+</head>
+<body>
+<header class="wrap nav">
+  <div class="brand">📊 PMW Dashboard AI</div>
+  <nav class="navlinks" aria-label="Navegação principal">
+    <a class="btn secondary" href="/login">Entrar</a>
+    <a class="btn" href="/signup">Criar conta</a>
+  </nav>
+</header>
+<main class="wrap">
+  <section class="hero">
+    <div class="eyebrow">Analytics • Métricas • Inteligência Artificial</div>
+    <h1>Transforme métricas de redes sociais em decisões mais informadas.</h1>
+    <p>Consulte indicadores de desempenho, acompanhe tendências e obtenha apoio para interpretar resultados num dashboard concebido para tornar a análise de redes sociais mais clara e prática.</p>
+    <div class="actions">
+      <a class="btn" href="/signup">Começar o trial de 30 dias</a>
+      <a class="btn secondary" href="/login">Já tenho uma conta</a>
+    </div>
+    <div class="metrics" aria-label="Indicadores disponíveis">
+      <div class="metric"><strong>Seguidores</strong><span>Evolução da audiência</span></div>
+      <div class="metric"><strong>Alcance</strong><span>Distribuição do conteúdo</span></div>
+      <div class="metric"><strong>Engajamento</strong><span>Interação com o público</span></div>
+      <div class="metric"><strong>Score IA</strong><span>Indicador de apoio à análise</span></div>
+    </div>
+  </section>
+  <section class="section">
+    <h2>O que pode acompanhar</h2>
+    <p class="intro">Uma visão organizada para ajudar a compreender o desempenho, identificar alterações e orientar os próximos passos.</p>
+    <div class="grid">
+      <article class="card"><div class="symbol">📈</div><h3>Métricas num só lugar</h3><p>Visualize seguidores, alcance, impressões, visualizações do perfil, cliques e taxa de envolvimento quando esses dados estiverem disponíveis.</p></article>
+      <article class="card"><div class="symbol">🤖</div><h3>Apoio de inteligência artificial</h3><p>Consulte alertas, recomendações e um relatório executivo gerados a partir dos dados disponíveis no dashboard.</p></article>
+      <article class="card"><div class="symbol">🔐</div><h3>Acesso protegido</h3><p>O dashboard e os dados da conta exigem autenticação. A ligação ao Instagram utiliza o fluxo oficial de autorização configurado no serviço.</p></article>
+    </div>
+  </section>
+  <section class="cta">
+    <h2>Conheça melhor o desempenho das suas redes sociais.</h2>
+    <p class="intro">Crie uma conta para aceder ao dashboard. A disponibilidade dos indicadores depende dos dados e das integrações configuradas.</p>
+    <div class="actions"><a class="btn" href="/signup">Criar conta</a><a class="btn secondary" href="/login">Entrar no dashboard</a></div>
+  </section>
+</main>
+<footer><div class="wrap">© 2026 PMW Consultoria &amp; Tecnologia · PMW Social Media Dashboard AI</div></footer>
+</body>
+</html>"""
+
+@server.get("/home")
+def public_home():
+    return Response(PUBLIC_HOME_PAGE, mimetype="text/html")
+
 @server.get("/sitemap.xml")
 def sitemap_xml():
-    # Não há páginas públicas destinadas à indexação neste momento.
+    # Inclui apenas a página pública de apresentação; não indexa áreas privadas.
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f'  <url><loc>{PUBLIC_BASE_URL}/home</loc></url>\n'
         '</urlset>\n'
     )
     return Response(body, mimetype="application/xml")
