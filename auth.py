@@ -142,7 +142,8 @@ input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;
 .link{display:block;text-align:center;margin-top:18px;color:#38bdf8;text-decoration:none}.footer{margin-top:22px;font-size:12px;color:#64748b;text-align:center}
 </style></head><body><main class="card">
 <h1>🚀 PMW Dashboard AI</h1><p>Crie uma conta própria para o dashboard. Não utilize a palavra-passe do Instagram ou de outra rede social.</p>
-<form method="post" action="/signup">\n<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<form method="post" action="/signup">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <label for="name">Nome / Empresa</label><input id="name" name="name" type="text" autocomplete="name" required>
 <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
@@ -225,7 +226,8 @@ LOGIN_PAGE = """
     <main class="card">
         <h1>🔐 PMW Dashboard AI</h1>
         <p>Entre na sua conta PMW. Use apenas as credenciais criadas para este dashboard. Nunca introduza aqui a palavra-passe do Instagram ou de outra rede social.</p>
-        <form method="post" action="/login">\n            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <form method="post" action="/login">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="username">Username</label>
             <input id="username" name="username" type="text"
                    autocomplete="username" required autofocus>
@@ -264,7 +266,8 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 <h2>➕ Adicionar Rede Social</h2>
 <p class="muted">Selecione a plataforma. A autenticação será feita na plataforma oficial; não introduza passwords ou tokens neste dashboard.</p>
 <form method="post" action="/social-accounts/add" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">\n <div><label>Rede Social</label>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <div><label>Rede Social</label>
 <select name="platform" required>
 <option value="">— Selecionar plataforma —</option>
 <option value="Instagram">📷 Instagram</option>
