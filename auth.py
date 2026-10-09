@@ -839,9 +839,32 @@ def setup_auth(server: Flask):
         try:
             conn=get_connection()
             with conn.cursor() as cur:
-                cur.execute("SELECT password_hash FROM users WHERE LOWER(email)=LOWER(%s) LIMIT 1",(session.get("username"),)); row=cur.fetchone()
-                if not row or not row[0] or not bcrypt.checkpw(current.encode(),row[0].encode()): return redirect(url_for("account",error="A password atual está incorreta."))
-                cur.execute("UPDATE users SET password_hash=%s WHERE LOWER(email)=LOWER(%s)",(bcrypt.hashpw(new.encode(),bcrypt.gensalt()).decode(),session.get("username")))
+                cur.execute(
+                    """SELECT u.password_hash
+                       FROM users u
+                       JOIN workspaces w ON w.id = u.workspace_id
+                       WHERE LOWER(u.email) = LOWER(%s)
+                         AND w.slug = %s
+                         AND COALESCE(u.is_active, TRUE) = TRUE
+                       LIMIT 1""",
+                    (session.get("username"), session.get("workspace_slug")),
+                )
+                row = cur.fetchone()
+                if not row or not row[0] or not bcrypt.checkpw(current.encode(), row[0].encode()):
+                    return redirect(url_for("account", error="A password atual está incorreta."))
+                cur.execute(
+                    """UPDATE users
+                       SET password_hash = %s
+                       WHERE LOWER(email) = LOWER(%s)
+                         AND workspace_id = (
+                             SELECT id FROM workspaces WHERE slug = %s
+                         )""",
+                    (
+                        bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode(),
+                        session.get("username"),
+                        session.get("workspace_slug"),
+                    ),
+                )
             conn.commit(); return redirect(url_for("account",message="Password alterada com sucesso."))
         except Exception as erro:
             if conn: conn.rollback()
