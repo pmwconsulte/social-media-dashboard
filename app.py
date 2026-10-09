@@ -62,8 +62,7 @@ PUBLIC_BASE_URL = "https://social-media-dashboard-s0i4.onrender.com"
 def robots_txt():
     body = "\n".join([
         "User-agent: *",
-        "Allow: /login",
-        "Allow: /signup",
+        # Leave /login and /signup crawlable so search engines can process noindex.
         "Disallow: /account",
         "Disallow: /billing",
         "Disallow: /logout",
@@ -77,11 +76,12 @@ def robots_txt():
 
 @server.get("/sitemap.xml")
 def sitemap_xml():
+    # The dashboard's root URL is the product entry point. Authentication
+    # pages are intentionally excluded from the sitemap and marked noindex.
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"  <url><loc>{PUBLIC_BASE_URL}/login</loc></url>\n"
-        f"  <url><loc>{PUBLIC_BASE_URL}/signup</loc></url>\n"
+        f"  <url><loc>{PUBLIC_BASE_URL}/</loc></url>\n"
         "</urlset>\n"
     )
     return Response(body, mimetype="application/xml")
