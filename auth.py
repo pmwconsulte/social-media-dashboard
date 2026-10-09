@@ -295,6 +295,18 @@ def setup_auth(server: Flask):
         PERMANENT_SESSION_LIFETIME=3600,
     )
 
+    @server.before_request
+    def require_dashboard_login():
+        """Protect the dashboard UI and Dash data/callback endpoints."""
+        path = request.path
+        is_dash_endpoint = path.startswith("/_dash-") and not path.startswith(
+            "/_dash-component-suites/"
+        )
+        if (path == "/" or is_dash_endpoint) and not session.get("authenticated"):
+            if path == "/":
+                return redirect(url_for("login"))
+            return "Authentication required", 401
+
     @server.get("/health")
     def health():
         return "OK", 200
