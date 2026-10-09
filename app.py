@@ -6,7 +6,7 @@ import plotly.express as px
 import dash
 
 from dash import html, dcc
-from flask import has_request_context, session
+from flask import Response, has_request_context, session
 from dash.dependencies import Input, Output
 from dotenv import load_dotenv
 
@@ -46,6 +46,15 @@ app = dash.Dash(
 )
 
 server = app.server
+
+# Google Search Console HTML verification
+@server.route("/google70d27d788b9e13bf.html")
+def google_site_verification():
+    return Response(
+        "google-site-verification: google70d27d788b9e13bf.html",
+        mimetype="text/html",
+    )
+
 setup_auth(server)
 
 
