@@ -9,6 +9,7 @@ import hashlib
 import secrets
 import requests
 from cryptography.fernet import Fernet, InvalidToken
+from flask_wtf.csrf import CSRFProtect
 from flask import (
     Flask,
     redirect,
@@ -94,7 +95,7 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 <div class="wrap">
 <div class="card">
 <h1>💳 Plano e Subscrição</h1>
-<p class="muted">PMW Social Media Dashboard AI</p>
+<p class="muted">PMW Social Media Dashboard AI — gestão e análise de redes sociais.</p>
 <div class="status">
 <strong>Estado:</strong> {{ status }}<br>
 <strong>Plano:</strong> {{ plan_name }}
@@ -140,8 +141,8 @@ input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;
 .error{margin-top:16px;padding:10px;border-radius:8px;background:rgba(239,68,68,.12);color:#fca5a5;text-align:center}
 .link{display:block;text-align:center;margin-top:18px;color:#38bdf8;text-decoration:none}.footer{margin-top:22px;font-size:12px;color:#64748b;text-align:center}
 </style></head><body><main class="card">
-<h1>🚀 Criar conta</h1><p>Comece o seu trial gratuito de 30 dias</p>
-<form method="post" action="/signup">
+<h1>🚀 PMW Dashboard AI</h1><p>Crie uma conta própria para o dashboard. Não utilize a palavra-passe do Instagram ou de outra rede social.</p>
+<form method="post" action="/signup">\n<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <label for="name">Nome / Empresa</label><input id="name" name="name" type="text" autocomplete="name" required>
 <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
@@ -222,9 +223,9 @@ LOGIN_PAGE = """
 </head>
 <body>
     <main class="card">
-        <h1>🔐 Dashboard AI</h1>
-        <p>Entre na sua conta para continuar</p>
-        <form method="post" action="/login">
+        <h1>🔐 PMW Dashboard AI</h1>
+        <p>Entre na sua conta PMW. Use apenas as credenciais criadas para este dashboard. Nunca introduza aqui a palavra-passe do Instagram ou de outra rede social.</p>
+        <form method="post" action="/login">\n            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="username">Username</label>
             <input id="username" name="username" type="text"
                    autocomplete="username" required autofocus>
@@ -257,13 +258,13 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 <title>Minha Conta — PMW Social Media Dashboard AI</title>
 <style>body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}.wrap{max-width:1050px;margin:35px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:24px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}label{display:block;margin:12px 0 7px;font-weight:600}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #334155;background:#020617;color:#fff;box-sizing:border-box}button,.btn{display:inline-block;padding:11px 16px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;text-decoration:none;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#172554;color:#7dd3fc;font-size:12px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #1e293b}</style></head><body><div class="wrap">
 <div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
-<div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
-<div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
+<div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
+<div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
 <div class="card" style="border:2px solid #a855f7;background:#111827">
 <h2>➕ Adicionar Rede Social</h2>
 <p class="muted">Selecione a plataforma. A autenticação será feita na plataforma oficial; não introduza passwords ou tokens neste dashboard.</p>
 <form method="post" action="/social-accounts/add" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
-<div><label>Rede Social</label>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">\n <div><label>Rede Social</label>
 <select name="platform" required>
 <option value="">— Selecionar plataforma —</option>
 <option value="Instagram">📷 Instagram</option>
@@ -279,7 +280,7 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 </div>
 <div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Ligue as suas redes sociais através de autenticação oficial. Não é necessário inserir tokens ou credenciais no dashboard.</p>
 <div style="background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:18px;margin:16px 0"><h3 style="margin-top:0">📷 Instagram</h3><p class="muted">O cliente será redirecionado para o Instagram, fará login e autorizará o acesso. O token é armazenado cifrado no servidor.</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div>
-{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
+{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
 
 def setup_auth(server: Flask):
     """Configure secure session authentication for the Dash server."""
@@ -288,6 +289,8 @@ def setup_auth(server: Flask):
         raise RuntimeError("SECRET_KEY não está configurada no ambiente.")
 
     server.secret_key = secret_key
+    csrf = CSRFProtect()
+    csrf.init_app(server)
     server.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=_env_bool("SESSION_COOKIE_SECURE", True),
@@ -880,55 +883,6 @@ def setup_auth(server: Flask):
 
         return redirect(url_for("account", error="Plataforma social inválida."))
 
-        conn = None
-        try:
-            conn = get_connection()
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, subscription_plan FROM workspaces WHERE slug=%s LIMIT 1",
-                    (session.get("workspace_slug"),),
-                )
-                workspace = cur.fetchone()
-                if not workspace:
-                    return redirect(url_for("account", error="Workspace não encontrado."))
-
-                plan = workspace[1] or "trial"
-                limit = PLANS.get(plan, PLANS["trial"])["accounts"]
-
-                cur.execute(
-                    """SELECT COUNT(*) FROM social_accounts
-                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)""",
-                    (workspace[0],),
-                )
-                count = cur.fetchone()[0]
-
-                if isinstance(limit, int) and count >= limit:
-                    plan_name = PLANS.get(plan, PLANS["trial"])["name"]
-                    return redirect(
-                        url_for(
-                            "account",
-                            error=f"O plano {plan_name} permite no máximo {limit} contas sociais ativas.",
-                        )
-                    )
-
-                cur.execute(
-                    """INSERT INTO social_accounts
-                       (workspace_id, platform, username, display_name,
-                        connection_status, is_active)
-                       VALUES (%s, %s, %s, %s, 'pending', TRUE)""",
-                    (workspace[0], platform, username, display_name),
-                )
-
-            conn.commit()
-            return redirect(url_for("account", message=f"{platform} adicionada com sucesso."))
-        except Exception as erro:
-            if conn:
-                conn.rollback()
-            print(f"[SOCIAL ACCOUNT ERROR] {type(erro).__name__}: {erro}")
-            return redirect(url_for("account", error="Não foi possível adicionar a conta social."))
-        finally:
-            if conn:
-                conn.close()
 
     @server.post("/social-accounts/<account_id>/toggle")
     def toggle_social_account(account_id):
