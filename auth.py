@@ -130,6 +130,7 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 SIGNUP_PAGE = """
 <!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Criar conta — PMW Social Media Dashboard AI</title>
+<meta name="robots" content="noindex, nofollow, noarchive">
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;background:#020617;color:#f8fafc}
 .card{width:min(92%,460px);padding:34px;border-radius:18px;background:#111827;border:1px solid #1e293b;box-shadow:0 20px 60px rgba(0,0,0,.35)}
@@ -158,6 +159,7 @@ LOGIN_PAGE = """
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Login — PMW Social Media Dashboard AI</title>
+    <meta name="robots" content="noindex, nofollow, noarchive">
     <style>
         * { box-sizing: border-box; }
         body {
@@ -328,6 +330,16 @@ def setup_auth(server: Flask):
     @server.after_request
     def security_headers(response):
         """Apply browser security headers without changing OAuth behavior."""
+        # Páginas de autenticação e áreas privadas não devem aparecer nos resultados
+        # de pesquisa; X-Robots-Tag também cobre respostas que não são HTML.
+        noindex_paths = (
+            "/login", "/signup", "/account", "/account/password", "/billing",
+            "/logout", "/oauth/instagram", "/oauth/instagram/callback",
+            "/health",
+        )
+        if request.path in noindex_paths or request.path.startswith("/social-accounts/"):
+            response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+
         # Páginas autenticadas nunca devem ser reutilizadas pelo cache do browser.
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
