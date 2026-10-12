@@ -96,7 +96,11 @@ def _read_instagram_insight(ig_id, access_token, metric):
             f"(HTTP {response.status_code})."
         )
         return None
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError:
+        print(f"[INSTAGRAM INSIGHTS] Resposta inválida para a métrica {metric}.")
+        return None
     for item in payload.get("data", []):
         values = item.get("values") or []
         if values:
