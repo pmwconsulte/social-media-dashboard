@@ -74,15 +74,22 @@ def _instagram_authorize_url(state):
 def _read_instagram_insight(ig_id, access_token, metric):
     """Devolve o valor mais recente de uma métrica, ou None se indisponível."""
     api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
-    response = requests.get(
-        f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
-        params={
-            "metric": metric,
-            "period": "day",
-            "access_token": access_token,
-        },
-        timeout=15,
-    )
+    try:
+        response = requests.get(
+            f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
+            params={
+                "metric": metric,
+                "period": "day",
+                "access_token": access_token,
+            },
+            timeout=15,
+        )
+    except requests.RequestException as erro:
+        print(
+            f"[INSTAGRAM INSIGHTS] Falha ao consultar {metric}: "
+            f"{type(erro).__name__}."
+        )
+        return None
     if not response.ok:
         print(
             f"[INSTAGRAM INSIGHTS] Métrica {metric} indisponível "
