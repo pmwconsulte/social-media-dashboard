@@ -684,7 +684,7 @@ def atualizar(plataforma):
             ponderados["_den"] = ponderados["peso_engajamento"].where(taxa.notna())
             pesos = ponderados.groupby("data")[["_num", "_den"]].sum(min_count=1)
             taxa_ponderada = (
-                pesos["_num"] / pesos["_den"].replace(0, pd.NA)
+                pesos["_num"] / pesos["_den"].where(pesos["_den"] > 0)
             ).reindex(diario["data"])
             diario["engajamento"] = taxa_calculada.fillna(
                 pd.Series(taxa_ponderada.to_numpy(), index=diario.index)
