@@ -200,6 +200,7 @@ def carregar_dados():
                 dm.reach AS alcance,
                 dm.impressions AS impressoes,
                 dm.engagement_rate AS engajamento,
+                dm.interactions_count AS interacoes,
                 dm.profile_views AS visualizacoes_perfil,
                 dm.website_clicks AS cliques_site
             FROM daily_metrics dm
@@ -236,6 +237,7 @@ def preparar_dados(dados):
         "alcance",
         "impressoes",
         "engajamento",
+        "interacoes",
         "visualizacoes_perfil",
         "cliques_site",
     ]
@@ -656,6 +658,39 @@ def atualizar(plataforma):
     dados = workspace_dados[workspace_dados["plataforma"].astype(str) == plataforma_atual].copy()
     dados = dados.sort_values("data")
 
+    # Consolidar várias contas da mesma plataforma por dia evita comparar
+    # contas diferentes como se fossem dias consecutivos de uma única conta.
+    if not dados.empty:
+        colunas_soma = [
+            coluna for coluna in (
+                "seguidores", "alcance", "impressoes", "interacoes",
+                "visualizacoes_perfil", "cliques_site"
+            ) if coluna in dados.columns
+        ]
+        diario = dados.groupby("data", as_index=False)[colunas_soma].sum(min_count=1)
+        taxa_calculada = pd.Series(index=diario.index, dtype="float64")
+        if "interacoes" in diario.columns and "alcance" in diario.columns:
+            taxa_calculada = (
+                diario["interacoes"] / diario["alcance"] * 100
+            ).where(diario["alcance"] > 0)
+
+        if "engajamento" in dados.columns:
+            ponderados = dados.copy()
+            ponderados["peso_engajamento"] = pd.to_numeric(
+                ponderados["alcance"], errors="coerce"
+            ).clip(lower=0)
+            taxa = pd.to_numeric(ponderados["engajamento"], errors="coerce")
+            ponderados["_num"] = taxa * ponderados["peso_engajamento"]
+            ponderados["_den"] = ponderados["peso_engajamento"].where(taxa.notna())
+            pesos = ponderados.groupby("data")[["_num", "_den"]].sum(min_count=1)
+            taxa_ponderada = (
+                pesos["_num"] / pesos["_den"].replace(0, pd.NA)
+            ).reindex(diario["data"])
+            diario["engajamento"] = taxa_calculada.fillna(
+                pd.Series(taxa_ponderada.to_numpy(), index=diario.index)
+            )
+        dados = diario.sort_values("data").reset_index(drop=True)
+
     if dados.empty:
         vazio = grafico_sem_dados("Sem dados")
         return (
@@ -672,6 +707,22 @@ def atualizar(plataforma):
 
     try:
         alerta = gerar_alerta(dados)
+        alcance_atual = kpis.get("alcance")
+        engajamento_atual = kpis.get("engajamento")
+        avisos_qualidade = []
+        if alcance_atual is not None and alcance_atual < 30:
+            avisos_qualidade.append(
+                "⚠️ Amostra reduzida: o alcance diário é inferior a 30; "
+                "interprete a taxa de engajamento e o Score IA com cautela."
+            )
+        if engajamento_atual is not None and engajamento_atual > 100:
+            avisos_qualidade.append(
+                "🔎 A taxa de engajamento ultrapassa 100%. Isto pode ocorrer "
+                "quando há mais interações do que contas alcançadas, mas confirme "
+                "se alcance e interações correspondem ao mesmo período."
+            )
+        if avisos_qualidade:
+            alerta = "\\n".join(avisos_qualidade + [str(alerta)])
     except Exception as erro:
         print(f"[AI ALERT ERROR] {erro}")
         alerta = "⚠️ Não foi possível gerar o alerta."
@@ -684,6 +735,23 @@ def atualizar(plataforma):
 
     try:
         relatorio = gerar_relatorio_executivo(dados)
+        if len(dados) < 2:
+            relatorio += (
+                "\\n\\nQUALIDADE E CONFIANÇA\\n"
+                "Histórico insuficiente: existe apenas um dia de dados. "
+                "O crescimento histórico não pode ser determinado e a previsão "
+                "repete o valor mais recente; não deve ser interpretada como tendência.\\n"
+            )
+        if kpis.get("alcance") is not None and kpis["alcance"] < 30:
+            relatorio += (
+                "Amostra reduzida (alcance inferior a 30): interpretar os "
+                "indicadores como preliminares.\\n"
+            )
+        if kpis.get("engajamento") is not None and kpis["engajamento"] > 100:
+            relatorio += (
+                "Validação recomendada: engajamento superior a 100%; confirmar "
+                "que interações e alcance usam o mesmo período de referência.\\n"
+            )
     except Exception as erro:
         print(f"[AI REPORT ERROR] {erro}")
         relatorio = "Relatório executivo indisponível."
