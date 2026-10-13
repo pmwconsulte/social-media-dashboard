@@ -266,43 +266,58 @@ def dados_demonstrativos():
 
 
 def calcular_kpis(dados):
+    """Calcula KPIs com os dados mais recentes e assinala métricas indisponíveis."""
     if dados.empty:
-        return {
-            "seguidores": 0,
-            "alcance": 0,
-            "engajamento": 0,
-            "crescimento": 0,
-            "score": 0,
-        }
+        return {"seguidores": None, "alcance": None, "engajamento": None,
+                "crescimento": None, "score": None}
 
     dados = dados.sort_values("data")
     seguidores = pd.to_numeric(dados["seguidores"], errors="coerce").dropna()
     alcance = pd.to_numeric(dados["alcance"], errors="coerce").dropna()
     engajamento = pd.to_numeric(dados["engajamento"], errors="coerce").dropna()
 
-    primeiro = float(seguidores.iloc[0]) if not seguidores.empty else 0
-    ultimo = float(seguidores.iloc[-1]) if not seguidores.empty else 0
-    crescimento = ((ultimo - primeiro) / primeiro) * 100 if primeiro > 0 else 0
+    seguidores_atual = float(seguidores.iloc[-1]) if not seguidores.empty else None
+    alcance_atual = float(alcance.iloc[-1]) if not alcance.empty else None
+    engajamento_medio = round(float(engajamento.mean()), 2) if not engajamento.empty else None
 
-    try:
-        score = calcular_score(dados)
-    except Exception:
-        score = 0
+    crescimento = None
+    if len(seguidores) >= 2 and float(seguidores.iloc[0]) > 0:
+        crescimento = round(
+            ((float(seguidores.iloc[-1]) - float(seguidores.iloc[0]))
+             / float(seguidores.iloc[0])) * 100, 2
+        )
+
+    score = None
+    if len(dados) >= 2 and len(seguidores) >= 2 and not alcance.empty and not engajamento.empty:
+        try:
+            score = calcular_score(dados)
+        except Exception as erro:
+            print(f"[AI SCORE ERROR] {type(erro).__name__}")
 
     return {
-        "seguidores": int(seguidores.max()) if not seguidores.empty else 0,
-        "alcance": int(alcance.max()) if not alcance.empty else 0,
-        "engajamento": round(float(engajamento.mean()), 2) if not engajamento.empty else 0,
-        "crescimento": round(crescimento, 2),
+        "seguidores": int(seguidores_atual) if seguidores_atual is not None else None,
+        "alcance": int(alcance_atual) if alcance_atual is not None else None,
+        "engajamento": engajamento_medio,
+        "crescimento": crescimento,
         "score": score,
     }
 
-
 def numero(valor):
+    if valor is None or pd.isna(valor):
+        return "N/D"
     try:
         return f"{float(valor):,.0f}"
-    except Exception:
-        return "0"
+    except (TypeError, ValueError):
+        return "N/D"
+
+
+def percentual(valor):
+    if valor is None or pd.isna(valor):
+        return "N/D"
+    try:
+        return f"{float(valor):.2f}%"
+    except (TypeError, ValueError):
+        return "N/D"
 
 
 def criar_kpi(valor, titulo, cor, identificador):
@@ -635,7 +650,7 @@ def atualizar(plataforma):
         return (
             [{"label": p, "value": p} for p in plataformas_atuais],
             plataforma_atual,
-            "0", "0", "0%", "0%", "0/100",
+            "N/D", "N/D", "N/D", "N/D", "N/D",
             "⚠️ Não existem dados para esta plataforma.",
             "💡 Adicione dados para obter recomendações.",
             "Relatório indisponível.",
@@ -720,9 +735,9 @@ def atualizar(plataforma):
         plataforma_atual,
         numero(kpis["seguidores"]),
         numero(kpis["alcance"]),
-        f'{kpis["engajamento"]}%',
-        f'{kpis["crescimento"]}%',
-        f'{kpis["score"]}/100',
+        percentual(kpis["engajamento"]),
+        percentual(kpis["crescimento"]),
+        f'{kpis["score"]}/100' if kpis["score"] is not None else "N/D",
         str(alerta),
         str(recomendacao),
         str(relatorio),
