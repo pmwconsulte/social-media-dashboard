@@ -79,8 +79,8 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         "metric_type": metric_type,
         "access_token": access_token,
     }
-    if period:
-        params["period"] = period
+    # A API de Insights exige period também nas consultas total_value.
+    params["period"] = period or "day"
     try:
         response = requests.get(
             f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
