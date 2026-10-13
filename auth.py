@@ -177,28 +177,35 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
                 (social_account_id, report_date),
             )
             row = cur.fetchone()
+            # Não converter métricas indisponíveis em zero: zero é um valor
+            # real, enquanto NULL significa que a API não forneceu o indicador.
             current = {
-                "followers": int(row[0] or 0) if row else 0,
-                "reach": int(row[1] or 0) if row else 0,
-                "impressions": int(row[2] or 0) if row else 0,
-                "engagement_rate": float(row[3] or 0) if row else 0.0,
-                "profile_views": int(row[4] or 0) if row else 0,
-                "website_clicks": int(row[5] or 0) if row else 0,
+                "followers": int(row[0]) if row and row[0] is not None else None,
+                "reach": int(row[1]) if row and row[1] is not None else None,
+                "impressions": int(row[2]) if row and row[2] is not None else None,
+                "engagement_rate": float(row[3]) if row and row[3] is not None else None,
+                "profile_views": int(row[4]) if row and row[4] is not None else None,
+                "website_clicks": int(row[5]) if row and row[5] is not None else None,
             }
             if followers is not None:
-                current["followers"] = followers
+                current["followers"] = int(followers)
+            elif current["followers"] == 0:
+                current["followers"] = None
             if reach_value is not None:
                 current["reach"] = int(reach_value)
+            elif current["reach"] == 0:
+                current["reach"] = None
             if views_value is not None:
                 # Compatibilidade com a coluna histórica 'impressions'.
                 current["impressions"] = int(views_value)
-            if (
-                interactions_value is not None
-                and current["reach"] > 0
-            ):
+            elif current["impressions"] == 0:
+                current["impressions"] = None
+            if interactions_value is not None and current["reach"] is not None and current["reach"] > 0:
                 current["engagement_rate"] = round(
                     float(interactions_value) / current["reach"] * 100, 2
                 )
+            elif current["engagement_rate"] == 0:
+                current["engagement_rate"] = None
 
             if row:
                 cur.execute(
