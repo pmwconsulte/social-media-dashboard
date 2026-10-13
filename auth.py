@@ -94,9 +94,28 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         )
         return None
     if not response.ok:
+        # Regista o motivo devolvido pela API sem expor o token de acesso.
+        error_code = None
+        error_subcode = None
+        error_message = ""
+        try:
+            error_payload = response.json().get("error", {})
+            error_code = error_payload.get("code")
+            error_subcode = error_payload.get("error_subcode")
+            error_message = str(error_payload.get("message", ""))[:180]
+        except (ValueError, AttributeError):
+            error_message = ""
+        details = []
+        if error_code is not None:
+            details.append(f"code={error_code}")
+        if error_subcode is not None:
+            details.append(f"subcode={error_subcode}")
+        if error_message:
+            details.append(f"motivo={error_message}")
+        suffix = f" ({'; '.join(details)})" if details else ""
         print(
             f"[INSTAGRAM INSIGHTS] Métrica {metric} indisponível "
-            f"(HTTP {response.status_code})."
+            f"(HTTP {response.status_code}){suffix}."
         )
         return None
     try:
@@ -131,6 +150,31 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     interactions_value = _read_instagram_insight(
         ig_id, access_token, "total_interactions", metric_type="total_value"
     )
+    if interactions_value is None:
+        # Compatibilidade: tenta compor interações a partir das métricas
+        # oficiais individuais. Só calcula a soma se TODAS estiverem disponíveis;
+        # nunca trata uma métrica em falta como zero.
+        interaction_parts = {
+            metric: _read_instagram_insight(
+                ig_id, access_token, metric, metric_type="total_value"
+            )
+            for metric in ("likes", "comments", "shares", "saves")
+        }
+        if all(value is not None for value in interaction_parts.values()):
+            interactions_value = sum(interaction_parts.values())
+            print(
+                "[INSTAGRAM INSIGHTS] Interações calculadas pela soma "
+                "de likes, comments, shares e saves."
+            )
+        else:
+            missing = [
+                metric for metric, value in interaction_parts.items()
+                if value is None
+            ]
+            print(
+                "[INSTAGRAM INSIGHTS] Taxa de engajamento continua indisponível; "
+                f"métricas individuais ausentes: {', '.join(missing)}."
+            )
 
     followers = None
     api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
