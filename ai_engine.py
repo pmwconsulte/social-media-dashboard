@@ -475,6 +475,11 @@ def gerar_relatorio_executivo(df):
         if previsao
         else seguidores
     )
+    crescimento_formatado = (
+        f"{crescimento:.2f}%"
+        if crescimento is not None
+        else "N/D (histórico insuficiente)"
+    )
 
     return f"""
 RELATÓRIO EXECUTIVO IA
@@ -483,7 +488,7 @@ RELATÓRIO EXECUTIVO IA
 Seguidores atuais: {seguidores:,}
 Alcance máximo: {alcance:,}
 Engajamento médio: {engajamento:.2f}%
-Crescimento histórico: {f"{crescimento:.2f}%" if crescimento is not None else "N/D (histórico insuficiente)"}
+Crescimento histórico: {crescimento_formatado}
 
 Score IA: {score}/100
 Classificação: {classificacao}
