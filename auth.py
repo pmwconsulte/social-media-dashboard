@@ -71,17 +71,20 @@ def _instagram_authorize_url(state):
 
 
 
-def _read_instagram_insight(ig_id, access_token, metric):
-    """Devolve o valor mais recente de uma métrica, ou None se indisponível."""
+def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None):
+    """Consulta uma métrica atual da Instagram Login API, sem mascarar erros como zero."""
     api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+    params = {
+        "metric": metric,
+        "metric_type": metric_type,
+        "access_token": access_token,
+    }
+    if period:
+        params["period"] = period
     try:
         response = requests.get(
             f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
-            params={
-                "metric": metric,
-                "period": "day",
-                "access_token": access_token,
-            },
+            params=params,
             timeout=15,
         )
     except requests.RequestException as erro:
@@ -112,21 +115,22 @@ def _read_instagram_insight(ig_id, access_token, metric):
             return total
     return None
 
-
 def _sync_instagram_metrics(social_account_id, ig_id, access_token):
-    """Importa as métricas suportadas e guarda um registo diário sem duplicar a data."""
+    """Guarda métricas válidas da conta, sem inventar valores indisponíveis."""
     from datetime import datetime, timezone
 
-    metrics = {}
-    for api_metric, db_column in (
-        ("reach", "reach"),
-        ("profile_views", "profile_views"),
-        ("website_clicks", "website_clicks"),
-        ("total_interactions", "total_interactions"),
-    ):
-        value = _read_instagram_insight(ig_id, access_token, api_metric)
-        if value is not None:
-            metrics[db_column] = int(value)
+    # Na API atual, impressions/profile_views/website_clicks não são métricas
+    # de conta suportadas de forma geral no Instagram Login. 'views' substitui
+    # impressions; fica na coluna legada impressions até uma migração de esquema.
+    reach_value = _read_instagram_insight(
+        ig_id, access_token, "reach", metric_type="time_series", period="day"
+    )
+    views_value = _read_instagram_insight(
+        ig_id, access_token, "views", metric_type="total_value"
+    )
+    interactions_value = _read_instagram_insight(
+        ig_id, access_token, "total_interactions", metric_type="total_value"
+    )
 
     followers = None
     api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
@@ -137,9 +141,12 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
             timeout=15,
         )
         if profile_response.ok:
-            follower_value = profile_response.json().get("followers_count")
-            if isinstance(follower_value, (int, float)):
-                followers = int(follower_value)
+            try:
+                follower_value = profile_response.json().get("followers_count")
+                if isinstance(follower_value, (int, float)):
+                    followers = int(follower_value)
+            except ValueError:
+                print("[INSTAGRAM INSIGHTS] Resposta inválida ao consultar seguidores.")
     except requests.RequestException as erro:
         print(f"[INSTAGRAM INSIGHTS] Não foi possível obter seguidores: {type(erro).__name__}.")
 
@@ -167,12 +174,17 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
             }
             if followers is not None:
                 current["followers"] = followers
-            for key in ("reach", "profile_views", "website_clicks"):
-                if key in metrics:
-                    current[key] = metrics[key]
-            if "total_interactions" in metrics and current["reach"] > 0:
+            if reach_value is not None:
+                current["reach"] = int(reach_value)
+            if views_value is not None:
+                # Compatibilidade com a coluna histórica 'impressions'.
+                current["impressions"] = int(views_value)
+            if (
+                interactions_value is not None
+                and current["reach"] > 0
+            ):
                 current["engagement_rate"] = round(
-                    metrics["total_interactions"] / current["reach"] * 100, 2
+                    float(interactions_value) / current["reach"] * 100, 2
                 )
 
             if row:
@@ -200,9 +212,17 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
                     ),
                 )
         conn.commit()
+        available = [
+            name for name, value in (
+                ("reach", reach_value),
+                ("views", views_value),
+                ("total_interactions", interactions_value),
+                ("followers", followers),
+            ) if value is not None
+        ]
         print(
             f"[INSTAGRAM INSIGHTS] Registo diário guardado para a conta "
-            f"{social_account_id}; métricas recebidas: {', '.join(sorted(metrics)) or 'nenhuma'}."
+            f"{social_account_id}; métricas recebidas: {', '.join(available) or 'nenhuma'}."
         )
         return True
     except Exception as erro:
