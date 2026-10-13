@@ -1,5 +1,6 @@
 import os
 import psycopg2
+from urllib.parse import urlparse, unquote
 
 
 # ============================================================
@@ -26,26 +27,39 @@ def get_database_url():
 
 def get_connection():
 
-    database_url = get_database_url()
+    database_url = get_database_url().strip()
+    parsed = urlparse(database_url)
+
+    if parsed.scheme not in ("postgres", "postgresql"):
+        raise ValueError(
+            "DATABASE_URL deve ser uma URL PostgreSQL válida."
+        )
+
+    database_name = unquote(parsed.path.lstrip("/"))
+    database_user = unquote(parsed.username or "")
+    database_password = unquote(parsed.password or "")
+
+    if not parsed.hostname or not database_name:
+        raise ValueError(
+            "DATABASE_URL não contém host ou nome da base de dados."
+        )
 
     try:
-
         return psycopg2.connect(
-            database_url,
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            dbname=database_name,
+            user=database_user,
+            password=database_password,
             connect_timeout=10,
-            sslmode=os.getenv(
-                "PGSSLMODE",
-                "require"
-            ),
+            sslmode=os.getenv("PGSSLMODE", "require"),
         )
-
     except Exception as erro:
-
+        # Nunca imprimir a URL completa, pois pode conter credenciais.
         print(
-            f"[DATABASE ERROR] "
-            f"{erro}"
+            f"[DATABASE ERROR] Falha na ligação PostgreSQL: "
+            f"{type(erro).__name__}"
         )
-
         raise
 
 
