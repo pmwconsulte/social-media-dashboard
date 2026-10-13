@@ -583,7 +583,7 @@ def setup_auth(server: Flask):
         noindex_paths = (
             "/login", "/signup", "/account", "/account/password", "/billing",
             "/logout", "/oauth/instagram", "/oauth/instagram/callback",
-            "/health",
+            "/health", "/diagnostico-dados",
         )
         if request.path in noindex_paths or request.path.startswith("/social-accounts/"):
             response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
