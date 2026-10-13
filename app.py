@@ -6,7 +6,7 @@ import plotly.express as px
 import dash
 
 from dash import html, dcc
-from flask import Response, has_request_context, session
+from flask import Response, has_request_context, session, jsonify, redirect
 from dash.dependencies import Input, Output
 from dotenv import load_dotenv
 
@@ -46,6 +46,71 @@ app = dash.Dash(
 )
 
 server = app.server
+
+@server.get("/diagnostico-dados")
+def diagnostico_dados():
+    """Diagnóstico temporário e autenticado das métricas do workspace atual."""
+    if not session.get("authenticated"):
+        return redirect("/login")
+
+    workspace_slug = session.get("workspace_slug") or os.getenv(
+        "DEFAULT_WORKSPACE_SLUG", "pmw-default"
+    )
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COUNT(*), MAX(dm.report_date)
+                FROM daily_metrics dm
+                JOIN social_accounts sa ON sa.id = dm.social_account_id
+                JOIN workspaces w ON w.id = sa.workspace_id
+                WHERE w.slug = %s
+                """,
+                (workspace_slug,),
+            )
+            total, ultima_data = cur.fetchone()
+
+            cur.execute(
+                """
+                SELECT sa.platform, dm.report_date, dm.followers,
+                       dm.reach, dm.engagement_rate
+                FROM daily_metrics dm
+                JOIN social_accounts sa ON sa.id = dm.social_account_id
+                JOIN workspaces w ON w.id = sa.workspace_id
+                WHERE w.slug = %s
+                ORDER BY dm.report_date DESC
+                LIMIT 10
+                """,
+                (workspace_slug,),
+            )
+            metricas = [
+                {
+                    "plataforma": row[0],
+                    "data": str(row[1]),
+                    "seguidores": row[2],
+                    "alcance": row[3],
+                    "engajamento": (
+                        float(row[4]) if row[4] is not None else None
+                    ),
+                }
+                for row in cur.fetchall()
+            ]
+
+        return jsonify({
+            "workspace": workspace_slug,
+            "total_registos": total,
+            "ultima_data": str(ultima_data) if ultima_data else None,
+            "metricas": metricas,
+        })
+    except Exception as erro:
+        print(f"[DIAGNOSTICO ERROR] {type(erro).__name__}: {erro}")
+        return jsonify({"erro": "Não foi possível consultar as métricas."}), 500
+    finally:
+        if conn:
+            conn.close()
+
 
 # Google Search Console HTML verification
 @server.route("/google70d27d788b9e13bf.html")
