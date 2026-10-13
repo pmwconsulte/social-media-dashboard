@@ -287,10 +287,21 @@ def calcular_kpis(dados):
              / float(seguidores.iloc[0])) * 100, 2
         )
 
+    # O Score IA pode ser estimado com um único registo, desde que existam
+    # seguidores, alcance e taxa de engajamento. Com histórico de um dia,
+    # o resultado é preliminar; o crescimento continua indisponível até haver
+    # pelo menos dois registos comparáveis.
     score = None
-    if len(dados) >= 2 and len(seguidores) >= 2 and not alcance.empty and not engajamento.empty:
+    if (
+        len(dados) >= 1
+        and not seguidores.empty
+        and not alcance.empty
+        and not engajamento.empty
+    ):
         try:
             score = calcular_score(dados)
+            if len(dados) < 2 or len(seguidores) < 2:
+                print("[AI SCORE] Score preliminar calculado com histórico de um único registo.")
         except Exception as erro:
             print(f"[AI SCORE ERROR] {type(erro).__name__}")
 
@@ -495,7 +506,7 @@ app.layout = html.Div(
                 criar_kpi(numero(kpis_iniciais["alcance"]), "Alcance", COLORS["success"], "kpi-alcance"),
                 criar_kpi(percentual(kpis_iniciais["engajamento"]), "Engajamento Médio", COLORS["warning"], "kpi-engajamento"),
                 criar_kpi(percentual(kpis_iniciais["crescimento"]), "Crescimento", COLORS["purple"], "kpi-crescimento"),
-                criar_kpi(f'{kpis_iniciais["score"]}/100' if kpis_iniciais["score"] is not None else "N/D", "Score IA", COLORS["danger"], "kpi-score"),
+                criar_kpi(f'{kpis_iniciais["score"]}/100' if kpis_iniciais["score"] is not None else "N/D", "Score IA*", COLORS["danger"], "kpi-score"),
             ],
             style={
                 "display": "grid",
@@ -737,7 +748,7 @@ def atualizar(plataforma):
         numero(kpis["alcance"]),
         percentual(kpis["engajamento"]),
         percentual(kpis["crescimento"]),
-        f'{kpis["score"]}/100' if kpis["score"] is not None else "N/D",
+        f'{kpis["score"]}/100*' if kpis["score"] is not None and len(dados) < 2 else (f'{kpis["score"]}/100' if kpis["score"] is not None else "N/D"),
         str(alerta),
         str(recomendacao),
         str(relatorio),
