@@ -11,6 +11,7 @@ import requests
 from cryptography.fernet import Fernet, InvalidToken
 from flask import (
     Flask,
+    jsonify,
     redirect,
     render_template_string,
     request,
@@ -214,7 +215,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT followers, reach, impressions, engagement_rate,
-                          profile_views, website_clicks
+                          profile_views, website_clicks, interactions_count
                    FROM daily_metrics
                    WHERE social_account_id=%s AND report_date=%s
                    ORDER BY created_at DESC LIMIT 1""",
@@ -230,6 +231,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
                 "engagement_rate": float(row[3]) if row and row[3] is not None else None,
                 "profile_views": int(row[4]) if row and row[4] is not None else None,
                 "website_clicks": int(row[5]) if row and row[5] is not None else None,
+                "interactions_count": int(row[6]) if row and row[6] is not None else None,
             }
             if followers is not None:
                 current["followers"] = int(followers)
@@ -244,6 +246,8 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
                 current["impressions"] = int(views_value)
             elif current["impressions"] == 0:
                 current["impressions"] = None
+            if interactions_value is not None:
+                current["interactions_count"] = int(interactions_value)
             if interactions_value is not None and current["reach"] is not None and current["reach"] > 0:
                 current["engagement_rate"] = round(
                     float(interactions_value) / current["reach"] * 100, 2
@@ -255,24 +259,27 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
                 cur.execute(
                     """UPDATE daily_metrics
                        SET followers=%s, reach=%s, impressions=%s,
-                           engagement_rate=%s, profile_views=%s, website_clicks=%s
+                           engagement_rate=%s, profile_views=%s, website_clicks=%s,
+                           interactions_count=%s
                        WHERE social_account_id=%s AND report_date=%s""",
                     (
                         current["followers"], current["reach"], current["impressions"],
                         current["engagement_rate"], current["profile_views"],
-                        current["website_clicks"], social_account_id, report_date,
+                        current["website_clicks"], current["interactions_count"],
+                        social_account_id, report_date,
                     ),
                 )
             else:
                 cur.execute(
                     """INSERT INTO daily_metrics
                        (social_account_id, report_date, followers, reach, impressions,
-                        engagement_rate, profile_views, website_clicks)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        engagement_rate, profile_views, website_clicks, interactions_count)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (
                         social_account_id, report_date, current["followers"],
                         current["reach"], current["impressions"], current["engagement_rate"],
                         current["profile_views"], current["website_clicks"],
+                        current["interactions_count"],
                     ),
                 )
         conn.commit()
@@ -576,7 +583,7 @@ def setup_auth(server: Flask):
         noindex_paths = (
             "/login", "/signup", "/account", "/account/password", "/billing",
             "/logout", "/oauth/instagram", "/oauth/instagram/callback",
-            "/health",
+            "/health", "/diagnostico-dados",
         )
         if request.path in noindex_paths or request.path.startswith("/social-accounts/"):
             response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
@@ -632,6 +639,60 @@ def setup_auth(server: Flask):
             )
 
         return response
+
+    @server.get("/diagnostico-dados")
+    def diagnostico_dados():
+        """Diagnóstico privado e limitado ao workspace da sessão; nunca expõe tokens."""
+        if not session.get("authenticated"):
+            return jsonify({"erro": "autenticacao_necessaria"}), 401
+
+        workspace_slug = session.get("workspace_slug") or os.getenv(
+            "DEFAULT_WORKSPACE_SLUG", "pmw-default"
+        )
+        conn = None
+        try:
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT sa.username, sa.platform, dm.report_date,
+                              dm.followers, dm.reach, dm.impressions,
+                              dm.interactions_count, dm.engagement_rate
+                       FROM social_accounts sa
+                       JOIN workspaces w ON w.id = sa.workspace_id
+                       LEFT JOIN daily_metrics dm ON dm.social_account_id = sa.id
+                       WHERE w.slug = %s
+                         AND COALESCE(sa.is_active, TRUE) = TRUE
+                       ORDER BY sa.platform, sa.username, dm.report_date DESC
+                       LIMIT 100""",
+                    (workspace_slug,),
+                )
+                rows = cur.fetchall()
+            records = []
+            for row in rows:
+                records.append({
+                    "conta": row[0],
+                    "plataforma": row[1],
+                    "data": row[2].isoformat() if row[2] else None,
+                    "seguidores": row[3],
+                    "alcance": row[4],
+                    "visualizacoes": row[5],
+                    "interacoes": row[6],
+                    "engajamento_percentual": float(row[7]) if row[7] is not None else None,
+                })
+            response = jsonify({
+                "workspace": workspace_slug,
+                "registos_de_dados": len(records),
+                "nota": "Dados limitados ao workspace autenticado; tokens e credenciais não são incluídos.",
+                "metricas": records,
+            })
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        except Exception as erro:
+            print(f"[DIAGNOSTICO DADOS ERROR] {type(erro).__name__}")
+            return jsonify({"erro": "nao_foi_possivel_consultar_metricas"}), 500
+        finally:
+            if conn:
+                conn.close()
 
     @server.get("/logout")
     def logout():

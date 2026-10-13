@@ -191,6 +191,8 @@ def create_tables():
                     engagement_rate NUMERIC(10,2)
                         DEFAULT 0,
 
+                    interactions_count INTEGER,
+
                     profile_views INTEGER
                         DEFAULT 0,
 
@@ -263,6 +265,7 @@ def create_tables():
             cur.execute(
                 """ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMP;"""
             )
+            cur.execute("ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS interactions_count INTEGER;")
             cur.execute(
                 """CREATE INDEX IF NOT EXISTS idx_social_accounts_workspace_active ON social_accounts(workspace_id, is_active);"""
             )
