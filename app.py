@@ -722,7 +722,7 @@ def atualizar(plataforma):
                 "se alcance e interações correspondem ao mesmo período."
             )
         if avisos_qualidade:
-            alerta = "\\n".join(avisos_qualidade + [str(alerta)])
+            alerta = "\n".join(avisos_qualidade + [str(alerta)])
     except Exception as erro:
         print(f"[AI ALERT ERROR] {erro}")
         alerta = "⚠️ Não foi possível gerar o alerta."
@@ -737,20 +737,20 @@ def atualizar(plataforma):
         relatorio = gerar_relatorio_executivo(dados)
         if len(dados) < 2:
             relatorio += (
-                "\\n\\nQUALIDADE E CONFIANÇA\\n"
+                "\n\nQUALIDADE E CONFIANÇA\n"
                 "Histórico insuficiente: existe apenas um dia de dados. "
                 "O crescimento histórico não pode ser determinado e a previsão "
-                "repete o valor mais recente; não deve ser interpretada como tendência.\\n"
+                "repete o valor mais recente; não deve ser interpretada como tendência.\n"
             )
         if kpis.get("alcance") is not None and kpis["alcance"] < 30:
             relatorio += (
                 "Amostra reduzida (alcance inferior a 30): interpretar os "
-                "indicadores como preliminares.\\n"
+                "indicadores como preliminares.\n"
             )
         if kpis.get("engajamento") is not None and kpis["engajamento"] > 100:
             relatorio += (
                 "Validação recomendada: engajamento superior a 100%; confirmar "
-                "que interações e alcance usam o mesmo período de referência.\\n"
+                "que interações e alcance usam o mesmo período de referência.\n"
             )
     except Exception as erro:
         print(f"[AI REPORT ERROR] {erro}")
