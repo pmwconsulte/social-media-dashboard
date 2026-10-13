@@ -459,8 +459,10 @@ def gerar_relatorio_executivo(df):
         else 0
     )
 
-    crescimento = calcular_crescimento(
-        dados
+    crescimento = (
+        calcular_crescimento(dados)
+        if len(seguidores_series) >= 2
+        else None
     )
 
     previsao = prever_crescimento(
@@ -473,6 +475,11 @@ def gerar_relatorio_executivo(df):
         if previsao
         else seguidores
     )
+    crescimento_formatado = (
+        f"{crescimento:.2f}%"
+        if crescimento is not None
+        else "N/D (histórico insuficiente)"
+    )
 
     return f"""
 RELATÓRIO EXECUTIVO IA
@@ -481,7 +488,7 @@ RELATÓRIO EXECUTIVO IA
 Seguidores atuais: {seguidores:,}
 Alcance máximo: {alcance:,}
 Engajamento médio: {engajamento:.2f}%
-Crescimento histórico: {crescimento:.2f}%
+Crescimento histórico: {crescimento_formatado}
 
 Score IA: {score}/100
 Classificação: {classificacao}
