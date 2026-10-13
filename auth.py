@@ -62,12 +62,190 @@ def _instagram_authorize_url(state):
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "instagram_business_basic",
+        "scope": "instagram_business_basic,instagram_business_manage_insights",
         "state": state,
     }
 
     return "https://www.instagram.com/oauth/authorize?" + urlencode(params)
 
+
+
+
+def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None):
+    """Consulta uma métrica atual da Instagram Login API, sem mascarar erros como zero."""
+    api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+    params = {
+        "metric": metric,
+        "metric_type": metric_type,
+        "access_token": access_token,
+    }
+    if period:
+        params["period"] = period
+    try:
+        response = requests.get(
+            f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
+            params=params,
+            timeout=15,
+        )
+    except requests.RequestException as erro:
+        print(
+            f"[INSTAGRAM INSIGHTS] Falha ao consultar {metric}: "
+            f"{type(erro).__name__}."
+        )
+        return None
+    if not response.ok:
+        print(
+            f"[INSTAGRAM INSIGHTS] Métrica {metric} indisponível "
+            f"(HTTP {response.status_code})."
+        )
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        print(f"[INSTAGRAM INSIGHTS] Resposta inválida para a métrica {metric}.")
+        return None
+    for item in payload.get("data", []):
+        values = item.get("values") or []
+        if values:
+            value = values[-1].get("value")
+            if isinstance(value, (int, float)):
+                return value
+        total = item.get("total_value", {}).get("value")
+        if isinstance(total, (int, float)):
+            return total
+    return None
+
+def _sync_instagram_metrics(social_account_id, ig_id, access_token):
+    """Guarda métricas válidas da conta, sem inventar valores indisponíveis."""
+    from datetime import datetime, timezone
+
+    # Na API atual, impressions/profile_views/website_clicks não são métricas
+    # de conta suportadas de forma geral no Instagram Login. 'views' substitui
+    # impressions; fica na coluna legada impressions até uma migração de esquema.
+    reach_value = _read_instagram_insight(
+        ig_id, access_token, "reach", metric_type="time_series", period="day"
+    )
+    views_value = _read_instagram_insight(
+        ig_id, access_token, "views", metric_type="total_value"
+    )
+    interactions_value = _read_instagram_insight(
+        ig_id, access_token, "total_interactions", metric_type="total_value"
+    )
+
+    followers = None
+    api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+    try:
+        profile_response = requests.get(
+            f"https://graph.instagram.com/{api_version}/me",
+            params={"fields": "followers_count", "access_token": access_token},
+            timeout=15,
+        )
+        if profile_response.ok:
+            try:
+                follower_value = profile_response.json().get("followers_count")
+                if isinstance(follower_value, (int, float)):
+                    followers = int(follower_value)
+            except ValueError:
+                print("[INSTAGRAM INSIGHTS] Resposta inválida ao consultar seguidores.")
+    except requests.RequestException as erro:
+        print(f"[INSTAGRAM INSIGHTS] Não foi possível obter seguidores: {type(erro).__name__}.")
+
+    available_values = (
+        reach_value,
+        views_value,
+        interactions_value,
+        followers,
+    )
+    if all(value is None for value in available_values):
+        print(
+            f"[INSTAGRAM INSIGHTS] Nenhuma métrica disponível para a conta "
+            f"{social_account_id}; não será criado um registo vazio."
+        )
+        return False
+
+    report_date = datetime.now(timezone.utc).date()
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT followers, reach, impressions, engagement_rate,
+                          profile_views, website_clicks
+                   FROM daily_metrics
+                   WHERE social_account_id=%s AND report_date=%s
+                   ORDER BY created_at DESC LIMIT 1""",
+                (social_account_id, report_date),
+            )
+            row = cur.fetchone()
+            current = {
+                "followers": int(row[0] or 0) if row else 0,
+                "reach": int(row[1] or 0) if row else 0,
+                "impressions": int(row[2] or 0) if row else 0,
+                "engagement_rate": float(row[3] or 0) if row else 0.0,
+                "profile_views": int(row[4] or 0) if row else 0,
+                "website_clicks": int(row[5] or 0) if row else 0,
+            }
+            if followers is not None:
+                current["followers"] = followers
+            if reach_value is not None:
+                current["reach"] = int(reach_value)
+            if views_value is not None:
+                # Compatibilidade com a coluna histórica 'impressions'.
+                current["impressions"] = int(views_value)
+            if (
+                interactions_value is not None
+                and current["reach"] > 0
+            ):
+                current["engagement_rate"] = round(
+                    float(interactions_value) / current["reach"] * 100, 2
+                )
+
+            if row:
+                cur.execute(
+                    """UPDATE daily_metrics
+                       SET followers=%s, reach=%s, impressions=%s,
+                           engagement_rate=%s, profile_views=%s, website_clicks=%s
+                       WHERE social_account_id=%s AND report_date=%s""",
+                    (
+                        current["followers"], current["reach"], current["impressions"],
+                        current["engagement_rate"], current["profile_views"],
+                        current["website_clicks"], social_account_id, report_date,
+                    ),
+                )
+            else:
+                cur.execute(
+                    """INSERT INTO daily_metrics
+                       (social_account_id, report_date, followers, reach, impressions,
+                        engagement_rate, profile_views, website_clicks)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (
+                        social_account_id, report_date, current["followers"],
+                        current["reach"], current["impressions"], current["engagement_rate"],
+                        current["profile_views"], current["website_clicks"],
+                    ),
+                )
+        conn.commit()
+        available = [
+            name for name, value in (
+                ("reach", reach_value),
+                ("views", views_value),
+                ("total_interactions", interactions_value),
+                ("followers", followers),
+            ) if value is not None
+        ]
+        print(
+            f"[INSTAGRAM INSIGHTS] Registo diário guardado para a conta "
+            f"{social_account_id}; métricas recebidas: {', '.join(available) or 'nenhuma'}."
+        )
+        return True
+    except Exception as erro:
+        if conn:
+            conn.rollback()
+        print(f"[INSTAGRAM INSIGHTS ERROR] Falha ao guardar métricas: {type(erro).__name__}: {erro}")
+        return False
+    finally:
+        if conn:
+            conn.close()
 
 
 BILLING_PAGE = """
@@ -691,24 +869,30 @@ def setup_auth(server: Flask):
 
                 encrypted = _encrypt_token(access_token)
                 if existing:
+                    social_account_id = existing[0]
                     cur.execute(
                         """UPDATE social_accounts
                            SET access_token=%s, display_name=%s,
                                connection_status='connected', is_active=TRUE,
                                last_sync_at=NOW()
                            WHERE id=%s AND workspace_id=%s""",
-                        (encrypted, username, existing[0], workspace[0]),
+                        (encrypted, username, social_account_id, workspace[0]),
                     )
                 else:
                     cur.execute(
                         """INSERT INTO social_accounts
                            (workspace_id, platform, username, display_name,
                             access_token, connection_status, is_active, last_sync_at)
-                           VALUES (%s,'Instagram',%s,%s,%s,'connected',TRUE,NOW())""",
+                           VALUES (%s,'Instagram',%s,%s,%s,'connected',TRUE,NOW())
+                           RETURNING id""",
                         (workspace[0], username, username, encrypted),
                     )
+                    social_account_id = cur.fetchone()[0]
             conn.commit()
-            return redirect(url_for("account", message="Instagram conectado com sucesso."))
+            synced = _sync_instagram_metrics(social_account_id, ig_id, access_token)
+            if synced:
+                return redirect(url_for("account", message="Instagram conectado e métricas sincronizadas."))
+            return redirect(url_for("account", message="Instagram conectado. Algumas métricas ainda não estão disponíveis; verifique as permissões e os logs."))
         except (requests.RequestException, ValueError, InvalidToken) as erro:
             if conn: conn.rollback()
             print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}: {erro}")
