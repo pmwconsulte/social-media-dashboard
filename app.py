@@ -271,7 +271,7 @@ def calcular_kpis(dados):
         return {"seguidores": None, "alcance": None, "engajamento": None,
                 "crescimento": None, "score": None}
 
-    dados = dados.sort_values("data")
+    dados = dados.sort_values("data").copy()
     seguidores = pd.to_numeric(dados["seguidores"], errors="coerce").dropna()
     alcance = pd.to_numeric(dados["alcance"], errors="coerce").dropna()
     engajamento = pd.to_numeric(dados["engajamento"], errors="coerce").dropna()
@@ -280,15 +280,29 @@ def calcular_kpis(dados):
     alcance_atual = float(alcance.iloc[-1]) if not alcance.empty else None
     engajamento_medio = round(float(engajamento.mean()), 2) if not engajamento.empty else None
 
+    # Várias contas sincronizadas no mesmo dia não constituem histórico temporal.
+    # Para o KPI global, reduzimos os seguidores a uma observação por data.
+    historico = dados[["data", "seguidores"]].copy()
+    historico["data"] = pd.to_datetime(historico["data"], errors="coerce")
+    historico["seguidores"] = pd.to_numeric(historico["seguidores"], errors="coerce")
+    historico = historico.dropna(subset=["data", "seguidores"])
+    seguidores_por_dia = (
+        historico.groupby("data")["seguidores"].median().sort_index()
+    )
+
     crescimento = None
-    if len(seguidores) >= 2 and float(seguidores.iloc[0]) > 0:
+    if len(seguidores_por_dia) >= 2 and float(seguidores_por_dia.iloc[0]) > 0:
         crescimento = round(
-            ((float(seguidores.iloc[-1]) - float(seguidores.iloc[0]))
-             / float(seguidores.iloc[0])) * 100, 2
+            ((float(seguidores_por_dia.iloc[-1]) - float(seguidores_por_dia.iloc[0]))
+             / float(seguidores_por_dia.iloc[0])) * 100, 2
         )
 
     score = None
-    if len(dados) >= 2 and len(seguidores) >= 2 and not alcance.empty and not engajamento.empty:
+    if (
+        len(seguidores_por_dia) >= 2
+        and not alcance.empty
+        and not engajamento.empty
+    ):
         try:
             score = calcular_score(dados)
         except Exception as erro:
