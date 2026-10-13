@@ -654,6 +654,32 @@ def setup_auth(server: Flask):
             conn = get_connection()
             with conn.cursor() as cur:
                 cur.execute(
+                    """SELECT sa.username, sa.platform, sa.connection_status,
+                              COALESCE(sa.is_active, TRUE) AS ativa,
+                              COUNT(dm.id) AS total_registos,
+                              MIN(dm.report_date) AS primeira_data,
+                              MAX(dm.report_date) AS ultima_data
+                       FROM social_accounts sa
+                       JOIN workspaces w ON w.id = sa.workspace_id
+                       LEFT JOIN daily_metrics dm ON dm.social_account_id = sa.id
+                       WHERE w.slug = %s
+                       GROUP BY sa.id, sa.username, sa.platform,
+                                sa.connection_status, sa.is_active
+                       ORDER BY sa.platform, sa.username""",
+                    (workspace_slug,),
+                )
+                account_rows = cur.fetchall()
+                contas = [{
+                    "conta": row[0],
+                    "plataforma": row[1],
+                    "estado_ligacao": row[2],
+                    "ativa": row[3],
+                    "registos_de_dados": row[4],
+                    "primeira_data": row[5].isoformat() if row[5] else None,
+                    "ultima_data": row[6].isoformat() if row[6] else None,
+                } for row in account_rows]
+
+                cur.execute(
                     """SELECT sa.username, sa.platform, dm.report_date,
                               dm.followers, dm.reach, dm.impressions,
                               dm.interactions_count, dm.engagement_rate
@@ -681,8 +707,11 @@ def setup_auth(server: Flask):
                 })
             response = jsonify({
                 "workspace": workspace_slug,
-                "registos_de_dados": len(records),
-                "nota": "Dados limitados ao workspace autenticado; tokens e credenciais não são incluídos.",
+                "total_contas": len(contas),
+                "total_contas_ativas": sum(1 for conta in contas if conta["ativa"]),
+                "registos_de_dados": sum(conta["registos_de_dados"] for conta in contas),
+                "contas": contas,
+                "nota": "Resumo por conta e métricas limitados ao workspace autenticado; tokens e credenciais não são incluídos.",
                 "metricas": records,
             })
             response.headers["Cache-Control"] = "no-store"
