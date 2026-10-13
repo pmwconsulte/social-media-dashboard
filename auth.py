@@ -150,6 +150,19 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     except requests.RequestException as erro:
         print(f"[INSTAGRAM INSIGHTS] Não foi possível obter seguidores: {type(erro).__name__}.")
 
+    available_values = (
+        reach_value,
+        views_value,
+        interactions_value,
+        followers,
+    )
+    if all(value is None for value in available_values):
+        print(
+            f"[INSTAGRAM INSIGHTS] Nenhuma métrica disponível para a conta "
+            f"{social_account_id}; não será criado um registo vazio."
+        )
+        return False
+
     report_date = datetime.now(timezone.utc).date()
     conn = None
     try:
