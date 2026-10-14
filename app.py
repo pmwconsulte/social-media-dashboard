@@ -150,16 +150,21 @@ PUBLIC_HOME_PAGE = """<!doctype html>
         <div class="symbol">☎️</div>
         <h3>Telefone / WhatsApp</h3>
         <p><a href="tel:+258849550202">+258 84 955 0202</a></p>
-        <div class="actions"><a class="btn" href="https://wa.me/258849550202" target="_blank" rel="noopener noreferrer">Contactar pelo WhatsApp</a></div>
+        <div class="actions"><a class="btn" href="https://wa.me/258823002555" target="_blank" rel="noopener noreferrer">Contactar pelo WhatsApp</a></div>
+      </article>
+      <article class="card">
+        <div class="symbol">📍</div>
+        <h3>Morada</h3>
+        <p>Avenida Patrice Lumumba, n.º 1125, R/C</p>
       </article>
     </div>
     <div class="actions">
       <a class="btn" href="mailto:info@pmwconsultoria.com?subject=Contacto%20PMW%20Consultoria">Enviar email</a>
-      <a class="btn secondary" href="tel:+258849550202">Ligar agora</a>
+      <a class="btn secondary" href="tel:+258849550202">Ligar para +258 84 955 0202</a>
     </div>
   </section>
 </main>
-<footer><div class="wrap">© 2026 PMW Consultoria &amp; Tecnologia · PMW Social Media Dashboard AI · <a href="#contacto">Contacto</a> · <a href="mailto:info@pmwconsultoria.com">info@pmwconsultoria.com</a> · <a href="tel:+258849550202">+258 84 955 0202</a></div></footer>
+<footer><div class="wrap">© 2026 PMW Consultoria &amp; Tecnologia · PMW Social Media Dashboard AI · <a href="#contacto">Contacto</a> · <a href="mailto:info@pmwconsultoria.com">info@pmwconsultoria.com</a> · <a href="tel:+258849550202">+258 84 955 0202</a> · Avenida Patrice Lumumba, n.º 1125, R/C</div></footer>
 </body>
 </html>"""
 
