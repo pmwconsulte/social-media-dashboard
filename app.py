@@ -104,6 +104,7 @@ PUBLIC_HOME_PAGE = """<!doctype html>
   <nav class="navlinks" aria-label="Navegação principal">
     <a class="btn secondary" href="/login">Entrar</a>
     <a class="btn" href="/signup">Criar conta</a>
+    <a class="btn secondary" href="#contacto">Contacto</a>
   </nav>
 </header>
 <main class="wrap">
@@ -136,8 +137,29 @@ PUBLIC_HOME_PAGE = """<!doctype html>
     <p class="intro">Crie uma conta para aceder ao dashboard. A disponibilidade dos indicadores depende dos dados e das integrações configuradas.</p>
     <div class="actions"><a class="btn" href="/signup">Criar conta</a><a class="btn secondary" href="/login">Entrar no dashboard</a></div>
   </section>
+  <section class="section" id="contacto">
+    <h2>Contacte a PMW Consultoria</h2>
+    <p class="intro">Tem dúvidas ou precisa de apoio? Entre em contacto connosco através do email ou telefone.</p>
+    <div class="grid">
+      <article class="card">
+        <div class="symbol">✉️</div>
+        <h3>Email</h3>
+        <p><a href="mailto:info@pmwconsultoria.com">info@pmwconsultoria.com</a></p>
+      </article>
+      <article class="card">
+        <div class="symbol">☎️</div>
+        <h3>Telefone / WhatsApp</h3>
+        <p><a href="tel:+258849550202">+258 84 955 0202</a></p>
+        <div class="actions"><a class="btn" href="https://wa.me/258849550202" target="_blank" rel="noopener noreferrer">Contactar pelo WhatsApp</a></div>
+      </article>
+    </div>
+    <div class="actions">
+      <a class="btn" href="mailto:info@pmwconsultoria.com?subject=Contacto%20PMW%20Consultoria">Enviar email</a>
+      <a class="btn secondary" href="tel:+258849550202">Ligar agora</a>
+    </div>
+  </section>
 </main>
-<footer><div class="wrap">© 2026 PMW Consultoria &amp; Tecnologia · PMW Social Media Dashboard AI</div></footer>
+<footer><div class="wrap">© 2026 PMW Consultoria &amp; Tecnologia · PMW Social Media Dashboard AI · <a href="#contacto">Contacto</a> · <a href="mailto:info@pmwconsultoria.com">info@pmwconsultoria.com</a> · <a href="tel:+258849550202">+258 84 955 0202</a></div></footer>
 </body>
 </html>"""
 
