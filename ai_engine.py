@@ -109,6 +109,16 @@ def calcular_crescimento(df):
         .astype(float)
     )
 
+    if "data" in dados.columns:
+        historico = dados[["data", "seguidores"]].copy()
+        historico["seguidores"] = _numero(historico["seguidores"])
+        historico = (
+            historico.dropna(subset=["data", "seguidores"])
+            .sort_values("data")
+            .drop_duplicates(subset=["data"], keep="last")
+        )
+        seguidores = historico["seguidores"].astype(float)
+
     if len(seguidores) < 2:
         return 0.0
 
