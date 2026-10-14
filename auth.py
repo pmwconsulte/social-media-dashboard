@@ -312,34 +312,36 @@ BILLING_PAGE = """
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Plano e Subscrição — PMW Dashboard AI</title>
+<title>Planos e Pagamentos — PMW Dashboard AI</title>
 <style>
-body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}
-.wrap{max-width:1100px;margin:40px auto;padding:20px}
-.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:26px;margin-bottom:22px}
-h1{margin-top:0} .muted{color:#94a3b8}.status{padding:12px;border-radius:10px;background:#172554;margin:18px 0}
-.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px}
-.plan{background:#0f172a;border:1px solid #334155;border-radius:14px;padding:20px}
-.price{font-size:24px;font-weight:700;margin:10px 0 18px}
-ul{padding-left:20px;line-height:1.8}
-button,a.btn{display:inline-block;padding:11px 16px;border-radius:9px;text-decoration:none;font-weight:700;border:0;background:#38bdf8;color:#020617}
+*{box-sizing:border-box}body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif;line-height:1.55}
+.wrap{max-width:1100px;margin:40px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:26px;margin-bottom:22px}
+h1{margin-top:0}.muted{color:#94a3b8}.status{padding:12px;border-radius:10px;background:#172554;margin:18px 0}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.plan{background:#0f172a;border:1px solid #334155;border-radius:14px;padding:20px;min-width:0}
+.price{font-size:24px;font-weight:700;margin:10px 0 18px}ul{padding-left:20px;line-height:1.8}
+button,a.btn{display:inline-block;padding:11px 16px;border-radius:9px;text-decoration:none;font-weight:700;border:0;background:#38bdf8;color:#020617;cursor:pointer}
+a.secondary{background:#1e293b;color:#f8fafc;border:1px solid #475569}
 a.logout{background:#ef4444;color:white;margin-left:8px}
+.payment{border-top:1px solid #334155;margin-top:18px;padding-top:14px}.payment p{margin:8px 0;overflow-wrap:anywhere}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.actions a{font-size:13px}
+.notice{font-size:13px;color:#cbd5e1;background:#111827;border:1px solid #334155;border-radius:10px;padding:13px;margin-top:18px}
 </style>
 </head>
 <body>
 <div class="wrap">
 <div class="card">
-<h1>💳 Plano e Subscrição</h1>
+<h1>💳 Planos e Pagamentos</h1>
 <p class="muted">PMW Social Media Dashboard AI</p>
 <div class="status">
 <strong>Estado:</strong> {{ status }}<br>
-<strong>Plano:</strong> {{ plan_name }}
+<strong>Plano atual:</strong> {{ plan_name }}
 {% if days_left > 0 %}<br><strong>Dias restantes do trial:</strong> {{ days_left }}{% endif %}
 </div>
 {% if expired %}
-<p>O período gratuito de 30 dias terminou. Os seus dados permanecem guardados, mas o acesso ao dashboard está bloqueado até ativar uma subscrição.</p>
+<p>O período gratuito de 30 dias terminou. Os seus dados permanecem guardados, mas o acesso ao dashboard está bloqueado até a subscrição ser ativada.</p>
 {% else %}
-<p>O período de teste está ativo. Escolha um plano quando estiver pronto para continuar.</p>
+<p>O período de teste está ativo. Escolha um plano para consultar as opções de pagamento quando estiver pronto para continuar.</p>
 {% endif %}
 <a class="btn" href="/billing">Atualizar subscrição</a>
 <a class="btn logout" href="/logout">Sair</a>
@@ -354,9 +356,24 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 <li>Utilizadores: {{ item.users }}</li>
 <li>Analytics e IA</li>
 </ul>
-<button disabled>Pagamento em breve</button>
+<div class="payment">
+<strong>Escolha um método de pagamento</strong>
+<p><strong>PayPal:</strong> pmwconsulte@gmail.com</p>
+<div class="actions">
+<a class="btn" href="https://www.paypal.com/" target="_blank" rel="noopener noreferrer">Abrir PayPal</a>
+<a class="btn secondary" href="mailto:pmwconsulte@gmail.com?subject=Pagamento%20{{ item.name|urlencode }}%20-%20PMW%20Dashboard">Contactar por email</a>
+</div>
+<p><strong>M-Pesa:</strong> 84 955 0202</p>
+<p><strong>mKesh:</strong> 82 300 2555</p>
+<div class="actions">
+<a class="btn secondary" href="https://wa.me/258823002555?text=Olá%2C%20pretendo%20pagar%20o%20plano%20{{ item.name|urlencode }}%20({{ item.price|urlencode }}).%20Preciso%20de%20confirmar%20os%20dados%20de%20pagamento." target="_blank" rel="noopener noreferrer">Pedir instruções / confirmar</a>
+</div>
+</div>
 </div>
 {% endfor %}
+</div>
+<div class="notice">
+<strong>Importante:</strong> estes botões abrem o PayPal ou o contacto da PMW para confirmação. Os pagamentos por M-Pesa e mKesh devem ser enviados para os números indicados. A ativação do plano não é automática: envie o comprovativo à PMW Consultoria e aguarde a confirmação da equipa. Não envie palavras-passe nem códigos PIN.
 </div>
 </div>
 </body>
