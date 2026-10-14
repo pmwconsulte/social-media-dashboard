@@ -282,12 +282,26 @@ def calcular_kpis(dados):
     alcance_atual = float(alcance.iloc[-1]) if not alcance.empty else None
     engajamento_medio = round(float(engajamento.mean()), 2) if not engajamento.empty else None
 
+    # Só comparar seguidores entre datas distintas; linhas do mesmo dia
+    # não constituem histórico de crescimento.
     crescimento = None
-    if len(seguidores) >= 2 and float(seguidores.iloc[0]) > 0:
-        crescimento = round(
-            ((float(seguidores.iloc[-1]) - float(seguidores.iloc[0]))
-             / float(seguidores.iloc[0])) * 100, 2
+    if "data" in dados.columns:
+        historico_seguidores = dados[["data", "seguidores"]].copy()
+        historico_seguidores["seguidores"] = pd.to_numeric(
+            historico_seguidores["seguidores"], errors="coerce"
         )
+        historico_seguidores = (
+            historico_seguidores.dropna(subset=["data", "seguidores"])
+            .sort_values("data")
+            .drop_duplicates(subset=["data"], keep="last")
+        )
+        if (
+            historico_seguidores["data"].nunique() >= 2
+            and float(historico_seguidores["seguidores"].iloc[0]) > 0
+        ):
+            inicial = float(historico_seguidores["seguidores"].iloc[0])
+            final = float(historico_seguidores["seguidores"].iloc[-1])
+            crescimento = round(((final - inicial) / inicial) * 100, 2)
 
     # O Score IA pode ser estimado com um único registo, desde que existam
     # seguidores, alcance e taxa de engajamento. Com histórico de um dia,
@@ -302,8 +316,9 @@ def calcular_kpis(dados):
     ):
         try:
             score = calcular_score(dados)
-            if len(dados) < 2 or len(seguidores) < 2:
-                print("[AI SCORE] Score preliminar calculado com histórico de um único registo.")
+            dias_com_dados = dados["data"].nunique() if "data" in dados.columns else 0
+            if dias_com_dados < 2 or len(seguidores) < 2:
+                print("[AI SCORE] Score preliminar calculado com histórico inferior a dois dias.")
         except Exception as erro:
             print(f"[AI SCORE ERROR] {type(erro).__name__}")
 
@@ -675,20 +690,30 @@ def atualizar(plataforma):
             ).where(diario["alcance"] > 0)
 
         if "engajamento" in dados.columns:
-            ponderados = dados.copy()
-            ponderados["peso_engajamento"] = pd.to_numeric(
-                ponderados["alcance"], errors="coerce"
-            ).clip(lower=0)
-            taxa = pd.to_numeric(ponderados["engajamento"], errors="coerce")
-            ponderados["_num"] = taxa * ponderados["peso_engajamento"]
-            ponderados["_den"] = ponderados["peso_engajamento"].where(taxa.notna())
-            pesos = ponderados.groupby("data")[["_num", "_den"]].sum(min_count=1)
-            taxa_ponderada = (
-                pesos["_num"] / pesos["_den"].where(pesos["_den"] > 0)
-            ).reindex(diario["data"])
-            diario["engajamento"] = taxa_calculada.fillna(
-                pd.Series(taxa_ponderada.to_numpy(), index=diario.index)
+            # Se interações e alcance existem, usar apenas a taxa recalculada
+            # a partir dos totais do mesmo dia. Não preencher taxas inválidas
+            # com valores antigos potencialmente calculados noutro período.
+            tem_interacoes_e_alcance = (
+                "interacoes" in dados.columns
+                and "alcance" in dados.columns
+                and pd.to_numeric(dados["interacoes"], errors="coerce").notna().any()
+                and pd.to_numeric(dados["alcance"], errors="coerce").notna().any()
             )
+            if tem_interacoes_e_alcance:
+                diario["engajamento"] = taxa_calculada
+            else:
+                ponderados = dados.copy()
+                ponderados["peso_engajamento"] = pd.to_numeric(
+                    ponderados["alcance"], errors="coerce"
+                ).clip(lower=0)
+                taxa = pd.to_numeric(ponderados["engajamento"], errors="coerce")
+                ponderados["_num"] = taxa * ponderados["peso_engajamento"]
+                ponderados["_den"] = ponderados["peso_engajamento"].where(taxa.notna())
+                pesos = ponderados.groupby("data")[["_num", "_den"]].sum(min_count=1)
+                taxa_ponderada = (
+                    pesos["_num"] / pesos["_den"].where(pesos["_den"] > 0)
+                ).reindex(diario["data"])
+                diario["engajamento"] = taxa_ponderada.to_numpy()
         dados = diario.sort_values("data").reset_index(drop=True)
 
     if dados.empty:
@@ -735,7 +760,7 @@ def atualizar(plataforma):
 
     try:
         relatorio = gerar_relatorio_executivo(dados)
-        if len(dados) < 2:
+        if dados["data"].nunique() < 2:
             relatorio += (
                 "\n\nQUALIDADE E CONFIANÇA\n"
                 "Histórico insuficiente: existe apenas um dia de dados. "
@@ -816,7 +841,7 @@ def atualizar(plataforma):
         numero(kpis["alcance"]),
         percentual(kpis["engajamento"]),
         percentual(kpis["crescimento"]),
-        f'{kpis["score"]}/100*' if kpis["score"] is not None and len(dados) < 2 else (f'{kpis["score"]}/100' if kpis["score"] is not None else "N/D"),
+        f'{kpis["score"]}/100*' if kpis["score"] is not None and dados["data"].nunique() < 2 else (f'{kpis["score"]}/100' if kpis["score"] is not None else "N/D"),
         str(alerta),
         str(recomendacao),
         str(relatorio),
