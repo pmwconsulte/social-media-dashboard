@@ -358,6 +358,7 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 </ul>
 <div class="payment">
 <strong>Escolha um método de pagamento</strong>
+{% if paypal_ready and key != "trial" %}<div class="actions"><a class="btn" href="/billing/paypal/subscribe/{{ key }}">Subscrever com PayPal (Sandbox)</a></div>{% elif key != "trial" %}<p class="muted">Checkout PayPal automático desativado enquanto decorrem os testes de segurança.</p>{% endif %}
 <p><strong>PayPal:</strong> pmwconsulte@gmail.com</p>
 <div class="actions">
 <a class="btn" href="https://www.paypal.com/" target="_blank" rel="noopener noreferrer">Abrir PayPal</a>
@@ -590,6 +591,7 @@ def setup_auth(server: Flask):
             days_left=access.get("days_left", 0),
             expired=not access.get("allowed", False),
             plans=PLANS,
+            paypal_ready=(os.getenv("PAYMENT_AUTOMATION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"} and all(os.getenv(k, "").strip() for k in ("PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_PLAN_STARTER_ID", "PAYPAL_PLAN_PRO_ID", "PAYPAL_PLAN_BUSINESS_ID"))),
         )
 
     @server.after_request
@@ -1299,3 +1301,6 @@ def setup_auth(server: Flask):
             if conn:
                 conn.close()
 
+    # Rotas PayPal são registadas no fim da configuração, sem ativar pagamentos por omissão.
+    from payments import register_paypal_routes
+    register_paypal_routes(server)
