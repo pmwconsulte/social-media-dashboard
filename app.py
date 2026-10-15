@@ -6,7 +6,7 @@ import plotly.express as px
 import dash
 
 from dash import html, dcc
-from flask import Response, has_request_context, session
+from flask import Response, has_request_context, request, session
 from dash.dependencies import Input, Output
 from dotenv import load_dotenv
 
@@ -184,6 +184,24 @@ def sitemap_xml():
     return Response(body, mimetype="application/xml")
 
 setup_auth(server)
+
+
+@server.before_request
+def reject_unknown_dash_paths():
+    """Return HTTP 404 instead of the Dash HTML shell for unknown URLs.
+
+    Dash uses an index route with a path converter as a fallback. Only intercept
+    requests matched to that fallback endpoint; explicit Flask routes and Dash
+    API/component/static endpoints continue through their normal handlers.
+    The root path remains available for the authenticated dashboard.
+    """
+    rule = request.url_rule
+    if (
+        rule is not None
+        and rule.endpoint == "index"
+        and request.path != "/"
+    ):
+        return Response("Not Found\n", status=404, mimetype="text/plain")
 
 
 def testar_database():
