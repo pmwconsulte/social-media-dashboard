@@ -343,10 +343,10 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 {% else %}
 <p>O período de teste está ativo. Escolha um plano para consultar as opções de pagamento quando estiver pronto para continuar.</p>
 {% endif %}
-<a class="btn" href="/billing">Atualizar subscrição</a>
+<a class="btn" href="#plans">Ver planos e opções de pagamento</a>
 <a class="btn logout" href="/logout">Sair</a>
 </div>
-<div class="plans">
+<div class="plans" id="plans">
 {% for key, item in plans.items() %}
 <div class="plan">
 <h2>{{ item.name }}</h2>
