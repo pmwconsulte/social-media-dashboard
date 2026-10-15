@@ -198,7 +198,7 @@ def reject_unknown_dash_paths():
     rule = request.url_rule
     if (
         rule is not None
-        and rule.endpoint == "catchall"
+        and rule.rule == "/<path:path>"
         and request.path != "/"
     ):
         return Response("Not Found\n", status=404, mimetype="text/plain")
