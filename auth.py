@@ -412,88 +412,253 @@ LOGIN_PAGE = """
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Login — PMW Social Media Dashboard AI</title>
+    <title>Entrar — PMW Social Media Dashboard AI</title>
     <meta name="robots" content="noindex, nofollow, noarchive">
+    <meta name="theme-color" content="#07111f">
     <style>
+        :root {
+            color-scheme: dark;
+            --bg: #07111f;
+            --panel: #101d30;
+            --panel-soft: #13243a;
+            --line: #2a3b52;
+            --text: #f4f8ff;
+            --muted: #a6b6ca;
+            --blue: #52d1f5;
+            --blue-strong: #19b8e5;
+            --violet: #9b8cff;
+            --danger-bg: rgba(248, 113, 113, .12);
+            --danger: #fecaca;
+        }
         * { box-sizing: border-box; }
         body {
             margin: 0;
             min-height: 100vh;
-            display: flex;
+            color: var(--text);
+            background:
+                radial-gradient(ellipse at 12% 10%, rgba(25,184,229,.16), transparent 38%),
+                radial-gradient(ellipse at 88% 85%, rgba(155,140,255,.14), transparent 35%),
+                var(--bg);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            line-height: 1.5;
+        }
+        a { color: inherit; }
+        .page {
+            width: min(1180px, calc(100% - 40px));
+            min-height: 100vh;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: minmax(0, 1.08fr) minmax(340px, .92fr);
             align-items: center;
-            justify-content: center;
-            font-family: Arial, sans-serif;
-            background: #020617;
-            color: #f8fafc;
+            gap: clamp(36px, 7vw, 92px);
+            padding: 42px 0;
         }
-        .card {
-            width: min(92%, 420px);
-            padding: 34px;
-            border-radius: 18px;
-            background: #111827;
-            border: 1px solid #1e293b;
-            box-shadow: 0 20px 60px rgba(0,0,0,.35);
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 56px;
+            text-decoration: none;
         }
-        h1 { margin: 0 0 8px; text-align: center; }
-        p { color: #94a3b8; text-align: center; margin-bottom: 28px; }
-        label { display: block; margin: 16px 0 7px; font-weight: 600; }
-        input {
-            width: 100%;
-            padding: 13px;
-            border-radius: 10px;
-            border: 1px solid #334155;
-            background: #020617;
-            color: #fff;
-            outline: none;
+        .brand-mark {
+            width: 44px;
+            height: 44px;
+            display: grid;
+            place-items: center;
+            border-radius: 14px;
+            color: #05121d;
+            font-size: 23px;
+            background: linear-gradient(135deg, var(--blue), #9cecff);
+            box-shadow: 0 8px 28px rgba(82,209,245,.2);
         }
-        input:focus { border-color: #38bdf8; }
-        button {
-            width: 100%;
-            margin-top: 24px;
-            padding: 13px;
-            border: 0;
-            border-radius: 10px;
-            background: #38bdf8;
-            color: #020617;
-            font-weight: 700;
-            cursor: pointer;
-        }
-        .error {
-            margin-top: 16px;
-            padding: 10px;
-            border-radius: 8px;
-            background: rgba(239,68,68,.12);
-            color: #fca5a5;
-            text-align: center;
-        }
-        .footer {
-            margin-top: 22px;
+        .brand-name { display: block; font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
+        .brand-sub { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 11px;
+            border: 1px solid rgba(82,209,245,.25);
+            border-radius: 999px;
+            background: rgba(82,209,245,.07);
+            color: #a6ecff;
             font-size: 12px;
-            color: #64748b;
-            text-align: center;
+            font-weight: 750;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+        .eyebrow-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+        h1 {
+            max-width: 650px;
+            margin: 22px 0 18px;
+            font-size: clamp(36px, 4.6vw, 60px);
+            line-height: 1.06;
+            letter-spacing: -.055em;
+        }
+        .gradient-text {
+            color: var(--blue);
+            background: linear-gradient(90deg, var(--blue), #b6aaff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .lead { max-width: 540px; color: var(--muted); font-size: 17px; }
+        .feature-list { display: grid; gap: 14px; margin: 32px 0 0; padding: 0; list-style: none; }
+        .feature { display: flex; align-items: flex-start; gap: 12px; color: #dbe8f7; font-size: 14px; }
+        .feature-icon {
+            flex: 0 0 34px;
+            width: 34px;
+            height: 34px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--line);
+            border-radius: 11px;
+            background: rgba(19,36,58,.8);
+        }
+        .feature strong { display: block; margin-bottom: 2px; font-size: 14px; }
+        .feature span:last-child { color: var(--muted); }
+        .login-wrap { width: 100%; max-width: 440px; justify-self: end; }
+        .login-card {
+            padding: clamp(25px, 4vw, 38px);
+            border: 1px solid rgba(151,174,202,.2);
+            border-radius: 24px;
+            background: linear-gradient(160deg, rgba(19,36,58,.97), rgba(12,25,42,.98));
+            box-shadow: 0 28px 90px rgba(0,0,0,.32);
+        }
+        .mobile-brand { display: none; }
+        .form-kicker { margin: 0 0 7px; color: var(--blue); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+        h2 { margin: 0; font-size: 29px; line-height: 1.2; letter-spacing: -.035em; }
+        .form-intro { margin: 10px 0 26px; color: var(--muted); font-size: 14px; }
+        .field { margin-top: 18px; }
+        label { display: block; margin-bottom: 8px; color: #e6eef9; font-size: 13px; font-weight: 700; }
+        input {
+            display: block;
+            width: 100%;
+            min-height: 49px;
+            padding: 13px 14px;
+            border: 1px solid #354960;
+            border-radius: 11px;
+            outline: none;
+            background: #081423;
+            color: var(--text);
+            font: inherit;
+            font-size: 14px;
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        input::placeholder { color: #71849b; }
+        input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(82,209,245,.13); }
+        .submit {
+            width: 100%;
+            min-height: 50px;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            gap: 9px;
+            margin-top: 25px;
+            padding: 13px 16px;
+            border: 0;
+            border-radius: 11px;
+            background: linear-gradient(100deg, var(--blue), #8ce7ff);
+            color: #04121e;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 850;
+            cursor: pointer;
+            box-shadow: 0 10px 26px rgba(25,184,229,.15);
+        }
+        .submit:hover { filter: brightness(1.04); }
+        .divider { display: flex; align-items: center; gap: 12px; margin: 23px 0 18px; color: #8294aa; font-size: 11px; }
+        .divider::before, .divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+        .signup { text-align: center; color: var(--muted); font-size: 13px; }
+        .signup a { color: #a7edff; font-weight: 800; text-decoration: none; }
+        .signup a:hover { text-decoration: underline; }
+        .security-note { display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 22px; color: #93a6bc; font-size: 11px; text-align: center; }
+        .error {
+            margin-top: 18px;
+            padding: 12px 13px;
+            border: 1px solid rgba(248,113,113,.25);
+            border-radius: 10px;
+            background: var(--danger-bg);
+            color: var(--danger);
+            font-size: 13px;
+            overflow-wrap: anywhere;
+        }
+        .footer { margin-top: 22px; color: #71849b; font-size: 11px; text-align: center; }
+        @media (max-width: 800px) {
+            .page { width: min(520px, calc(100% - 32px)); grid-template-columns: 1fr; gap: 26px; padding: 24px 0 32px; }
+            .intro-panel { display: none; }
+            .login-wrap { max-width: none; }
+            .mobile-brand { display: flex; margin: 0 0 22px; }
+            .login-card { padding: clamp(24px, 7vw, 34px); border-radius: 20px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
         }
     </style>
 </head>
 <body>
-    <main class="card">
-        <h1>🔐 Dashboard AI</h1>
-        <p>Entre na sua conta para continuar</p>
-        <form method="post" action="/login">
-            <label for="username">Username</label>
-            <input id="username" name="username" type="text"
-                   autocomplete="username" required autofocus>
+    <main class="page">
+        <section class="intro-panel" aria-label="Apresentação da plataforma">
+            <a class="brand" href="/login" aria-label="PMW Social Media Dashboard AI">
+                <span class="brand-mark" aria-hidden="true">↗</span>
+                <span>
+                    <span class="brand-name">PMW Dashboard AI</span>
+                    <span class="brand-sub">Social Media Intelligence</span>
+                </span>
+            </a>
+            <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> Analytics · Métricas · IA</div>
+            <h1>As suas redes sociais.<br><span class="gradient-text">Uma visão mais inteligente.</span></h1>
+            <p class="lead">Acompanhe o desempenho, compreenda as tendências e transforme os dados disponíveis em decisões mais informadas.</p>
+            <ul class="feature-list">
+                <li class="feature">
+                    <span class="feature-icon" aria-hidden="true">↗</span>
+                    <span><strong>Métricas organizadas</strong><span>Acompanhe seguidores, alcance e envolvimento num só espaço.</span></span>
+                </li>
+                <li class="feature">
+                    <span class="feature-icon" aria-hidden="true">✦</span>
+                    <span><strong>Apoio de inteligência artificial</strong><span>Consulte alertas, recomendações e relatórios com base nos dados disponíveis.</span></span>
+                </li>
+                <li class="feature">
+                    <span class="feature-icon" aria-hidden="true">⌁</span>
+                    <span><strong>Área de trabalho protegida</strong><span>Entre na sua conta para consultar o dashboard e os dados autorizados.</span></span>
+                </li>
+            </ul>
+        </section>
 
-            <label for="password">Password</label>
-            <input id="password" name="password" type="password"
-                   autocomplete="current-password" required>
-
-            <button type="submit">Entrar</button>
-        </form>
-        <a href="/signup" style="display:block;text-align:center;margin-top:18px;color:#38bdf8;text-decoration:none">Criar nova conta — Trial 30 dias</a>
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
-        <div class="footer">PMW Consultoria & Tecnologia</div>
+        <section class="login-wrap" aria-labelledby="login-title">
+            <a class="brand mobile-brand" href="/login" aria-label="PMW Social Media Dashboard AI">
+                <span class="brand-mark" aria-hidden="true">↗</span>
+                <span>
+                    <span class="brand-name">PMW Dashboard AI</span>
+                    <span class="brand-sub">Social Media Intelligence</span>
+                </span>
+            </a>
+            <div class="login-card">
+                <p class="form-kicker">Bem-vindo de volta</p>
+                <h2 id="login-title">Entrar na plataforma</h2>
+                <p class="form-intro">Introduza as suas credenciais para continuar para o seu dashboard.</p>
+                <form method="post" action="/login">
+                    <div class="field">
+                        <label for="username">Email ou nome de utilizador</label>
+                        <input id="username" name="username" type="text" autocomplete="username"
+                               placeholder="O seu email ou utilizador" required autofocus>
+                    </div>
+                    <div class="field">
+                        <label for="password">Palavra-passe</label>
+                        <input id="password" name="password" type="password" autocomplete="current-password"
+                               placeholder="Introduza a sua palavra-passe" required>
+                    </div>
+                    <button class="submit" type="submit">Entrar com segurança <span aria-hidden="true">→</span></button>
+                </form>
+                {% if error %}
+                <div class="error" role="alert">{{ error }}</div>
+                {% endif %}
+                <div class="divider">NOVO NA PMW?</div>
+                <div class="signup">Crie a sua conta e conheça o <a href="/signup">trial de 30 dias</a>.</div>
+                <div class="security-note"><span aria-hidden="true">🔒</span> Acesso reservado a utilizadores autenticados</div>
+            </div>
+            <div class="footer">© 2026 PMW Consultoria &amp; Tecnologia</div>
+        </section>
     </main>
 </body>
 </html>
