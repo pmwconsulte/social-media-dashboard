@@ -10,7 +10,10 @@ from flask import Response, has_request_context, request, session
 from dash.dependencies import Input, Output
 from dotenv import load_dotenv
 
-from database import get_connection, create_tables
+# Carregar o .env antes de importar database.py, cuja inicialização é automática.
+load_dotenv()
+
+from database import get_connection, initialize_database
 from auth import setup_auth
 
 from ai_engine import (
@@ -20,8 +23,6 @@ from ai_engine import (
     calcular_score,
     gerar_relatorio_executivo,
 )
-
-load_dotenv()
 
 APP_TITLE = "PMW Social Media Dashboard AI"
 
@@ -223,9 +224,10 @@ def testar_database():
 
 def inicializar_database():
     try:
-        create_tables()
-        print("[DATABASE] Tabelas verificadas com sucesso.")
-        return True
+        resultado = initialize_database()
+        if resultado:
+            print("[DATABASE] Inicialização confirmada.")
+        return resultado
     except Exception as erro:
         print(f"[DATABASE WARNING] {erro}")
         traceback.print_exc()
