@@ -266,9 +266,6 @@ def create_tables():
                 """ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMP;"""
             )
             cur.execute("ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS interactions_count INTEGER;")
-            cur.execute(
-                """CREATE INDEX IF NOT EXISTS idx_social_accounts_workspace_active ON social_accounts(workspace_id, is_active);"""
-            )
         conn.commit()
 
         print(
@@ -300,7 +297,7 @@ def create_tables():
 # WORKSPACES / MIGRAÇÃO / DADOS INICIAIS
 # ============================================================
 
-def initialize_database():
+def _initialize_database_locked():
     """
     Inicializa o schema de produção de forma idempotente.
     Também cria um workspace padrão e um dataset inicial apenas
@@ -362,6 +359,15 @@ def initialize_database():
                 ADD COLUMN IF NOT EXISTS workspace_id UUID
                 REFERENCES workspaces(id)
                 ON DELETE CASCADE;
+                """
+            )
+
+            # Criar este índice só depois de garantir a existência de workspace_id.
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_social_accounts_workspace_active
+                ON social_accounts(workspace_id, is_active);
                 """
             )
 
@@ -528,6 +534,50 @@ def initialize_database():
     finally:
         if conn:
             conn.close()
+
+
+def initialize_database():
+    """
+    Serializa a inicialização do schema entre processos/instâncias.
+
+    O bloqueio é de sessão e fica numa ligação dedicada, por isso protege
+    também create_tables(), que abre a sua própria ligação PostgreSQL.
+    """
+    lock_conn = None
+    lock_acquired = False
+    lock_key = 74629180512026
+
+    try:
+        lock_conn = get_connection()
+        lock_conn.autocommit = True
+
+        with lock_conn.cursor() as lock_cur:
+            lock_cur.execute("SELECT pg_advisory_lock(%s);", (lock_key,))
+        lock_acquired = True
+
+        return _initialize_database_locked()
+
+    except Exception as erro:
+        print(
+            f"[DATABASE ERROR] Falha na inicialização coordenada: "
+            f"{type(erro).__name__}: {erro}"
+        )
+        traceback = __import__("traceback")
+        traceback.print_exc()
+        return False
+
+    finally:
+        if lock_conn:
+            if lock_acquired:
+                try:
+                    with lock_conn.cursor() as lock_cur:
+                        lock_cur.execute("SELECT pg_advisory_unlock(%s);", (lock_key,))
+                except Exception as erro_unlock:
+                    print(
+                        "[DATABASE WARNING] Não foi possível libertar o bloqueio "
+                        f"de inicialização: {type(erro_unlock).__name__}"
+                    )
+            lock_conn.close()
 
 
 # Executado também quando o serviço é iniciado por Gunicorn.
