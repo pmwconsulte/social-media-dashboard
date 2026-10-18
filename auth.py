@@ -142,14 +142,29 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     # Na API atual, impressions/profile_views/website_clicks não são métricas
     # de conta suportadas de forma geral no Instagram Login. 'views' substitui
     # impressions; fica na coluna legada impressions até uma migração de esquema.
+    # Métricas diárias: reach é série temporal; views/interações usam total_value diário.
     reach_value = _read_instagram_insight(
         ig_id, access_token, "reach", metric_type="time_series", period="day"
     )
     views_value = _read_instagram_insight(
-        ig_id, access_token, "views", metric_type="total_value"
+        ig_id, access_token, "views", metric_type="total_value", period="day"
     )
     interactions_value = _read_instagram_insight(
-        ig_id, access_token, "total_interactions", metric_type="total_value"
+        ig_id, access_token, "total_interactions",
+        metric_type="total_value", period="day"
+    )
+
+    # Totais oficiais de 28 dias. Não somar reach diário: a mesma pessoa pode
+    # ser alcançada em dias diferentes.
+    reach_28d = _read_instagram_insight(
+        ig_id, access_token, "reach", metric_type="total_value", period="days_28"
+    )
+    views_28d = _read_instagram_insight(
+        ig_id, access_token, "views", metric_type="total_value", period="days_28"
+    )
+    interactions_28d = _read_instagram_insight(
+        ig_id, access_token, "total_interactions",
+        metric_type="total_value", period="days_28"
     )
     if interactions_value is None:
         # Compatibilidade: tenta compor interações a partir das métricas
@@ -198,10 +213,15 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     # Diagnóstico temporário: valores devolvidos pela API, sem tokens nem segredos.
     from datetime import datetime, timezone
     print(
-        "[INSTAGRAM INSIGHTS] Diagnóstico de valores: "
+        "[INSTAGRAM INSIGHTS] Diagnóstico diário: "
         f"reach={reach_value!r}, views={views_value!r}, "
         f"total_interactions={interactions_value!r}, followers={followers!r}, "
         f"data_registo_utc={datetime.now(timezone.utc).date().isoformat()}."
+    )
+    print(
+        "[INSTAGRAM INSIGHTS] Diagnóstico 28 dias: "
+        f"reach={reach_28d!r}, views={views_28d!r}, "
+        f"total_interactions={interactions_28d!r}."
     )
 
     available_values = (
@@ -291,6 +311,21 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
                         current["interactions_count"],
                     ),
                 )
+        # Guardar snapshots de 28 dias em tabela separada; preservar daily_metrics.
+        if any(value is not None for value in (reach_28d, views_28d, interactions_28d)):
+            cur.execute(
+                """
+                INSERT INTO instagram_insights_28d
+                    (social_account_id, snapshot_date, reach, views, interactions)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (social_account_id, snapshot_date) DO UPDATE SET
+                    reach = COALESCE(EXCLUDED.reach, instagram_insights_28d.reach),
+                    views = COALESCE(EXCLUDED.views, instagram_insights_28d.views),
+                    interactions = COALESCE(EXCLUDED.interactions, instagram_insights_28d.interactions),
+                    created_at = NOW()
+                """,
+                (social_account_id, report_date, reach_28d, views_28d, interactions_28d),
+            )
         conn.commit()
         available = [
             name for name, value in (

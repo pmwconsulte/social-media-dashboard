@@ -271,6 +271,44 @@ def carregar_dados():
             conn.close()
 
 
+def carregar_insights_28d():
+    """Carrega o snapshot mais recente de 28 dias por conta do workspace."""
+    conn = None
+    try:
+        conn = get_connection()
+        workspace_slug = (
+            session.get("workspace_slug") if has_request_context() else None
+        ) or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+        query = """
+            SELECT SUM(reach), SUM(views), SUM(interactions)
+            FROM (
+                SELECT DISTINCT ON (m.social_account_id)
+                    m.social_account_id, m.reach, m.views, m.interactions
+                FROM instagram_insights_28d m
+                INNER JOIN social_accounts sa ON sa.id = m.social_account_id
+                INNER JOIN workspaces w ON w.id = sa.workspace_id
+                WHERE w.slug = %s
+                ORDER BY m.social_account_id, m.snapshot_date DESC, m.created_at DESC
+            ) latest
+        """
+        with conn.cursor() as cur:
+            cur.execute(query, (workspace_slug,))
+            row = cur.fetchone()
+        if not row:
+            return {"reach": None, "views": None, "interactions": None}
+        return {
+            "reach": int(row[0]) if row[0] is not None else None,
+            "views": int(row[1]) if row[1] is not None else None,
+            "interactions": int(row[2]) if row[2] is not None else None,
+        }
+    except Exception as erro:
+        print(f"[DATABASE] Não foi possível carregar Insights de 28 dias: {type(erro).__name__}")
+        return {"reach": None, "views": None, "interactions": None}
+    finally:
+        if conn:
+            conn.close()
+
+
 def preparar_dados(dados):
     if dados.empty:
         return dados
@@ -569,6 +607,29 @@ app.layout = html.Div(
 
         html.Div(
             [
+                html.H3("📆 Instagram — últimos 28 dias",
+                        style={"color": "white", "margin": "0 0 12px"}),
+                html.P(
+                    "Alcance único, visualizações e interações agregadas pela API do Instagram.",
+                    style={"color": COLORS["muted"], "margin": "0 0 16px"},
+                ),
+                html.Div(
+                    id="kpis-28d",
+                    children=[
+                        criar_kpi("N/D", "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
+                        criar_kpi("N/D", "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
+                        criar_kpi("N/D", "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
+                    ],
+                    style={"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))",
+                           "gap": "15px", "width": "100%"},
+                ),
+            ],
+            style={"background": COLORS["card"], "padding": "20px", "borderRadius": "16px",
+                   "marginBottom": "20px", "border": "1px solid rgba(148,163,184,0.10)"},
+        ),
+
+        html.Div(
+            [
                 html.Label(
                     "🔎 Selecionar plataforma",
                     style={
@@ -669,6 +730,7 @@ app.layout = html.Div(
 
 @app.callback(
     [
+        Output("kpis-28d", "children"),
         Output("plataforma", "options"),
         Output("plataforma", "value"),
         Output("kpi-seguidores", "children"),
@@ -752,6 +814,11 @@ def atualizar(plataforma):
     if dados.empty:
         vazio = grafico_sem_dados("Sem dados")
         return (
+            [
+                criar_kpi("N/D", "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
+                criar_kpi("N/D", "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
+                criar_kpi("N/D", "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
+            ],
             [{"label": p, "value": p} for p in plataformas_atuais],
             plataforma_atual,
             "N/D", "N/D", "N/D", "N/D", "N/D",
@@ -867,7 +934,15 @@ def atualizar(plataforma):
         print(f"[AI FORECAST ERROR] {erro}")
         fig4 = grafico_sem_dados("🤖 Previsão IA")
 
+    insights_28d = carregar_insights_28d()
+    cards_28d = [
+        criar_kpi(numero(insights_28d["reach"]), "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
+        criar_kpi(numero(insights_28d["views"]), "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
+        criar_kpi(numero(insights_28d["interactions"]), "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
+    ]
+
     return (
+        cards_28d,
         [{"label": p, "value": p} for p in plataformas_atuais],
         plataforma_atual,
         numero(kpis["seguidores"]),
