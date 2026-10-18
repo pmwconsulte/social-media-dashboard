@@ -195,6 +195,15 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     except requests.RequestException as erro:
         print(f"[INSTAGRAM INSIGHTS] Não foi possível obter seguidores: {type(erro).__name__}.")
 
+    # Diagnóstico temporário: valores devolvidos pela API, sem tokens nem segredos.
+    from datetime import datetime, timezone
+    print(
+        "[INSTAGRAM INSIGHTS] Diagnóstico de valores: "
+        f"reach={reach_value!r}, views={views_value!r}, "
+        f"total_interactions={interactions_value!r}, followers={followers!r}, "
+        f"data_registo_utc={datetime.now(timezone.utc).date().isoformat()}."
+    )
+
     available_values = (
         reach_value,
         views_value,
