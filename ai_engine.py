@@ -457,10 +457,18 @@ def gerar_relatorio_executivo(df):
         else 0
     )
 
-    alcance = (
+    # O KPI "Alcance" deve refletir o registo mais recente disponível,
+    # tal como o cartão do dashboard. O máximo histórico é apresentado
+    # separadamente para não ser confundido com o valor atual.
+    alcance_atual = (
+        int(alcance_series.iloc[-1])
+        if not alcance_series.empty
+        else None
+    )
+    alcance_maximo = (
         int(alcance_series.max())
         if not alcance_series.empty
-        else 0
+        else None
     )
 
     engajamento = (
@@ -496,8 +504,9 @@ RELATÓRIO EXECUTIVO IA
 =================================================
 
 Seguidores atuais: {seguidores:,}
-Alcance máximo: {alcance:,}
-Engajamento médio: {engajamento:.2f}%
+Alcance mais recente registado: {f"{alcance_atual:,}" if alcance_atual is not None else "N/D"}
+Maior alcance diário no histórico: {f"{alcance_maximo:,}" if alcance_maximo is not None else "N/D"}
+Engajamento médio registado: {engajamento:.2f}%
 Crescimento histórico: {crescimento_formatado}
 
 Score IA: {score}/100
