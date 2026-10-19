@@ -972,7 +972,10 @@ def setup_auth(server: Flask):
             try:
                 conn = get_connection()
                 try:
-                    access = evaluate_workspace_access(conn)
+                    # Use o workspace da sessão, não o workspace global por defeito.
+                    access = evaluate_workspace_access(
+                        conn, session.get("workspace_slug")
+                    )
                 finally:
                     conn.close()
                 if access["allowed"]:
