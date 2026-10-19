@@ -72,8 +72,8 @@ def _instagram_authorize_url(state):
 
 
 
-def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None):
-    """Consulta uma métrica atual da Instagram Login API, sem mascarar erros como zero."""
+def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None, since=None, until=None):
+    """Consulta uma métrica da Instagram Login API, com intervalo opcional explícito."""
     api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
     params = {
         "metric": metric,
@@ -82,6 +82,12 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
     }
     # A API de Insights exige period também nas consultas total_value.
     params["period"] = period or "day"
+    # Para relatórios históricos, delimitar explicitamente a janela evita depender
+    # do intervalo implícito da API (que pode ser apenas o período recente).
+    if since is not None:
+        params["since"] = int(since)
+    if until is not None:
+        params["until"] = int(until)
     try:
         response = requests.get(
             f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
@@ -168,7 +174,14 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
 
 def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     """Guarda métricas válidas da conta, sem inventar valores indisponíveis."""
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
+
+    # Janela explícita de 28 dias, em timestamps Unix UTC. O fim é o momento
+    # da sincronização; o início recua exatamente 28 dias.
+    range_end = datetime.now(timezone.utc)
+    range_start = range_end - timedelta(days=28)
+    since_28d = int(range_start.timestamp())
+    until_28d = int(range_end.timestamp())
 
     # Na API atual, impressions/profile_views/website_clicks não são métricas
     # de conta suportadas de forma geral no Instagram Login. 'views' substitui
@@ -188,14 +201,17 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     # Totais oficiais de 28 dias. Não somar reach diário: a mesma pessoa pode
     # ser alcançada em dias diferentes.
     reach_28d = _read_instagram_insight(
-        ig_id, access_token, "reach", metric_type="total_value", period="days_28"
+        ig_id, access_token, "reach", metric_type="total_value", period="days_28",
+        since=since_28d, until=until_28d,
     )
     views_28d = _read_instagram_insight(
-        ig_id, access_token, "views", metric_type="total_value", period="days_28"
+        ig_id, access_token, "views", metric_type="total_value", period="days_28",
+        since=since_28d, until=until_28d,
     )
     interactions_28d = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
-        metric_type="total_value", period="days_28"
+        metric_type="total_value", period="days_28",
+        since=since_28d, until=until_28d,
     )
     if interactions_value is None:
         # Compatibilidade: tenta compor interações a partir das métricas
@@ -251,6 +267,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     )
     print(
         "[INSTAGRAM INSIGHTS] Diagnóstico 28 dias: "
+        f"intervalo_utc={range_start.isoformat()}..{range_end.isoformat()}, "
         f"reach={reach_28d!r}, views={views_28d!r}, "
         f"total_interactions={interactions_28d!r}."
     )
