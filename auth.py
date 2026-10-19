@@ -122,17 +122,48 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
     try:
         payload = response.json()
     except ValueError:
-        print(f"[INSTAGRAM INSIGHTS] Resposta inválida para a métrica {metric}.")
+        print(
+            f"[INSTAGRAM INSIGHTS] Resposta inválida para {metric} "
+            f"(HTTP {response.status_code})."
+        )
         return None
-    for item in payload.get("data", []):
+
+    items = payload.get("data", [])
+    if not isinstance(items, list):
+        print(
+            f"[INSTAGRAM INSIGHTS DEBUG] metric={metric} period={params.get('period')} "
+            f"metric_type={metric_type} HTTP={response.status_code} "
+            "estrutura_data_inválida."
+        )
+        return None
+
+    for item in items:
         values = item.get("values") or []
-        if values:
-            value = values[-1].get("value")
+        total_obj = item.get("total_value") or {}
+        last_value = values[-1].get("value") if values and isinstance(values[-1], dict) else None
+        total_value = total_obj.get("value") if isinstance(total_obj, dict) else None
+        print(
+            f"[INSTAGRAM INSIGHTS DEBUG] metric={item.get('name', metric)} "
+            f"period={params.get('period')} metric_type={metric_type} "
+            f"HTTP={response.status_code} values_count={len(values)} "
+            f"last_value={last_value!r} total_value={total_value!r}."
+        )
+
+        # Para consultas agregadas, usar primeiro o total agregado; para séries,
+        # usar o último ponto temporal. Evita confundir os dois formatos.
+        candidates = (
+            (total_value, last_value)
+            if metric_type == "total_value"
+            else (last_value, total_value)
+        )
+        for value in candidates:
             if isinstance(value, (int, float)):
                 return value
-        total = item.get("total_value", {}).get("value")
-        if isinstance(total, (int, float)):
-            return total
+    print(
+        f"[INSTAGRAM INSIGHTS DEBUG] metric={metric} "
+        f"period={params.get('period')} metric_type={metric_type} "
+        f"HTTP={response.status_code} data_items={len(items)} valor_numérico_ausente."
+    )
     return None
 
 def _sync_instagram_metrics(social_account_id, ig_id, access_token):
