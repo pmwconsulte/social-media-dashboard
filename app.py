@@ -819,29 +819,57 @@ def atualizar(plataforma):
 
     if dados.empty:
         vazio = grafico_sem_dados("Sem dados")
+        insights_28d = carregar_insights_28d()
+        cards_28d = [
+            criar_kpi(numero(insights_28d["reach"]), "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
+            criar_kpi(numero(insights_28d["views"]), "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
+            criar_kpi(numero(insights_28d["interactions"]), "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
+        ]
+        alcance_28d = insights_28d.get("reach")
+        interacoes_28d = insights_28d.get("interactions")
+        engajamento_28d = (
+            round(interacoes_28d / alcance_28d * 100, 2)
+            if alcance_28d is not None and alcance_28d > 0 and interacoes_28d is not None
+            else None
+        )
+        # Sem registos diários, usar o snapshot de 28 dias para os KPIs que
+        # têm correspondência directa. Crescimento continua N/D sem histórico.
         return (
-            [
-                criar_kpi("N/D", "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
-                criar_kpi("N/D", "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
-                criar_kpi("N/D", "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
-            ],
+            cards_28d,
             [{"label": p, "value": p} for p in plataformas_atuais],
             plataforma_atual,
-            "N/D", "N/D", "N/D", "N/D", "N/D",
-            "⚠️ Não existem dados para esta plataforma.",
-            "💡 Adicione dados para obter recomendações.",
-            "Relatório indisponível.",
+            "N/D",
+            numero(alcance_28d),
+            percentual(engajamento_28d),
+            "N/D",
+            "N/D",
+            "⚠️ Existem Insights agregados, mas ainda não há histórico diário suficiente para avaliar tendências.",
+            "💡 Continue a sincronizar diariamente para calcular crescimento e um Score IA fiável.",
+            "Relatório indisponível: existem métricas agregadas dos últimos 28 dias, mas não há histórico diário suficiente para análise temporal.",
             vazio, vazio, vazio, vazio,
         )
 
     kpis = calcular_kpis(dados)
+    insights_28d = carregar_insights_28d()
 
-    # Não apresentar taxas ou pontuação IA como atuais quando o alcance
-    # mais recente não está disponível/validado. O histórico bruto é preservado.
-    if kpis.get("alcance") is None:
-        kpis["engajamento"] = None
+    # Os cards principais de alcance e engajamento usam o snapshot da API
+    # dos últimos 28 dias, não o último registo diário (que pode ser zero ou
+    # não conter Insights). A taxa usa interações/alcance do mesmo snapshot.
+    alcance_28d = insights_28d.get("reach")
+    interacoes_28d = insights_28d.get("interactions")
+    engajamento_28d = (
+        round(interacoes_28d / alcance_28d * 100, 2)
+        if alcance_28d is not None and alcance_28d > 0 and interacoes_28d is not None
+        else None
+    )
+    if alcance_28d is not None:
+        kpis["alcance"] = alcance_28d
+        kpis["engajamento"] = engajamento_28d
+
+    # O Score IA continua baseado em histórico diário consistente. Não o
+    # apresentar quando não existem dias suficientes com métricas válidas.
+    if kpis.get("alcance") is None or dados["data"].nunique() < 2:
         kpis["score"] = None
-        print("[KPI QUALITY] Alcance atual indisponível; engajamento e Score IA ocultados.")
 
     try:
         alerta = gerar_alerta(dados)
@@ -947,7 +975,6 @@ def atualizar(plataforma):
         print(f"[AI FORECAST ERROR] {erro}")
         fig4 = grafico_sem_dados("🤖 Previsão IA")
 
-    insights_28d = carregar_insights_28d()
     cards_28d = [
         criar_kpi(numero(insights_28d["reach"]), "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
         criar_kpi(numero(insights_28d["views"]), "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
