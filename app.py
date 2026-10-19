@@ -836,6 +836,13 @@ def atualizar(plataforma):
 
     kpis = calcular_kpis(dados)
 
+    # Não apresentar taxas ou pontuação IA como atuais quando o alcance
+    # mais recente não está disponível/validado. O histórico bruto é preservado.
+    if kpis.get("alcance") is None:
+        kpis["engajamento"] = None
+        kpis["score"] = None
+        print("[KPI QUALITY] Alcance atual indisponível; engajamento e Score IA ocultados.")
+
     try:
         alerta = gerar_alerta(dados)
         alcance_atual = kpis.get("alcance")
