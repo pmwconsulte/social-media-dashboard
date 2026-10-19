@@ -353,57 +353,63 @@ def dados_demonstrativos():
 
 
 def calcular_kpis(dados):
-    """Calcula KPIs com os dados mais recentes e assinala métricas indisponíveis."""
+    """Calcula KPIs sem apresentar zeros como métricas válidas quando faltam dados da API."""
     if dados.empty:
         return {"seguidores": None, "alcance": None, "engajamento": None,
                 "crescimento": None, "score": None}
 
+    dados = dados.copy()
+    dados["data"] = pd.to_datetime(dados["data"], errors="coerce")
     dados = dados.sort_values("data")
-    seguidores = pd.to_numeric(dados["seguidores"], errors="coerce").dropna()
-    alcance = pd.to_numeric(dados["alcance"], errors="coerce").dropna()
-    engajamento = pd.to_numeric(dados["engajamento"], errors="coerce").dropna()
 
+    for coluna in ("seguidores", "alcance", "engajamento"):
+        dados[coluna] = pd.to_numeric(dados[coluna], errors="coerce")
+
+    seguidores = dados["seguidores"].dropna()
     seguidores_atual = float(seguidores.iloc[-1]) if not seguidores.empty else None
-    alcance_atual = float(alcance.iloc[-1]) if not alcance.empty else None
-    engajamento_medio = round(float(engajamento.mean()), 2) if not engajamento.empty else None
 
-    # Só comparar seguidores entre datas distintas; linhas do mesmo dia
-    # não constituem histórico de crescimento.
+    # Alcance zero com histórico de seguidores, mas sem insights disponíveis,
+    # não permite distinguir ausência de dados de um zero real. Não o usamos
+    # como prova de que a conta não alcançou ninguém.
+    alcance_valido = dados.loc[dados["alcance"] > 0, "alcance"]
+    alcance_atual = (
+        float(dados.iloc[-1]["alcance"])
+        if pd.notna(dados.iloc[-1]["alcance"]) and dados.iloc[-1]["alcance"] > 0
+        else None
+    )
+
+    # Só interpretar engajamento em linhas com alcance positivo; uma taxa
+    # sem denominador válido pode inflacionar o KPI e o Score IA.
+    dados_validos = dados.loc[
+        (dados["alcance"] > 0) & dados["engajamento"].notna()
+    ].copy()
+    engajamento = dados_validos["engajamento"]
+    engajamento_medio = (
+        round(float(engajamento.mean()), 2) if not engajamento.empty else None
+    )
+
     crescimento = None
-    if "data" in dados.columns:
-        historico_seguidores = dados[["data", "seguidores"]].copy()
-        historico_seguidores["seguidores"] = pd.to_numeric(
-            historico_seguidores["seguidores"], errors="coerce"
-        )
-        historico_seguidores = (
-            historico_seguidores.dropna(subset=["data", "seguidores"])
-            .sort_values("data")
-            .drop_duplicates(subset=["data"], keep="last")
-        )
-        if (
-            historico_seguidores["data"].nunique() >= 2
-            and float(historico_seguidores["seguidores"].iloc[0]) > 0
-        ):
-            inicial = float(historico_seguidores["seguidores"].iloc[0])
-            final = float(historico_seguidores["seguidores"].iloc[-1])
-            crescimento = round(((final - inicial) / inicial) * 100, 2)
+    historico_seguidores = dados[["data", "seguidores"]].dropna(
+        subset=["data", "seguidores"]
+    ).drop_duplicates(subset=["data"], keep="last").sort_values("data")
+    if (
+        historico_seguidores["data"].nunique() >= 2
+        and float(historico_seguidores["seguidores"].iloc[0]) > 0
+    ):
+        inicial = float(historico_seguidores["seguidores"].iloc[0])
+        final = float(historico_seguidores["seguidores"].iloc[-1])
+        crescimento = round(((final - inicial) / inicial) * 100, 2)
 
-    # O Score IA pode ser estimado com um único registo, desde que existam
-    # seguidores, alcance e taxa de engajamento. Com histórico de um dia,
-    # o resultado é preliminar; o crescimento continua indisponível até haver
-    # pelo menos dois registos comparáveis.
     score = None
     if (
-        len(dados) >= 1
+        not dados_validos.empty
         and not seguidores.empty
-        and not alcance.empty
-        and not engajamento.empty
+        and not alcance_valido.empty
     ):
         try:
-            score = calcular_score(dados)
-            dias_com_dados = dados["data"].nunique() if "data" in dados.columns else 0
-            if dias_com_dados < 2 or len(seguidores) < 2:
-                print("[AI SCORE] Score preliminar calculado com histórico inferior a dois dias.")
+            score = calcular_score(dados_validos)
+            if dados_validos["data"].nunique() < 2:
+                print("[AI SCORE] Score preliminar: poucos dias com métricas de alcance válidas.")
         except Exception as erro:
             print(f"[AI SCORE ERROR] {type(erro).__name__}")
 
