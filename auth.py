@@ -311,21 +311,21 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
                         current["interactions_count"],
                     ),
                 )
-        # Guardar snapshots de 28 dias em tabela separada; preservar daily_metrics.
-        if any(value is not None for value in (reach_28d, views_28d, interactions_28d)):
-            cur.execute(
-                """
-                INSERT INTO instagram_insights_28d
-                    (social_account_id, snapshot_date, reach, views, interactions)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (social_account_id, snapshot_date) DO UPDATE SET
-                    reach = COALESCE(EXCLUDED.reach, instagram_insights_28d.reach),
-                    views = COALESCE(EXCLUDED.views, instagram_insights_28d.views),
-                    interactions = COALESCE(EXCLUDED.interactions, instagram_insights_28d.interactions),
-                    created_at = NOW()
-                """,
-                (social_account_id, report_date, reach_28d, views_28d, interactions_28d),
-            )
+            # Guardar snapshots de 28 dias enquanto o cursor ainda está aberto.
+            if any(value is not None for value in (reach_28d, views_28d, interactions_28d)):
+                cur.execute(
+                    """
+                    INSERT INTO instagram_insights_28d
+                        (social_account_id, snapshot_date, reach, views, interactions)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (social_account_id, snapshot_date) DO UPDATE SET
+                        reach = COALESCE(EXCLUDED.reach, instagram_insights_28d.reach),
+                        views = COALESCE(EXCLUDED.views, instagram_insights_28d.views),
+                        interactions = COALESCE(EXCLUDED.interactions, instagram_insights_28d.interactions),
+                        created_at = NOW()
+                    """,
+                    (social_account_id, report_date, reach_28d, views_28d, interactions_28d),
+                )
         conn.commit()
         available = [
             name for name, value in (
