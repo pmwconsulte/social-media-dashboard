@@ -17,20 +17,20 @@ from database import get_connection
 
 
 def load_connected_instagram_accounts():
-    """Obtém apenas contas Instagram ativas com token guardado."""
+    """Obtém contas Instagram ativas, mantendo o workspace para deduplicação."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, username, access_token
+                SELECT id, workspace_id, username, access_token
                 FROM social_accounts
                 WHERE LOWER(platform) LIKE '%instagram%'
                   AND COALESCE(is_active, TRUE) = TRUE
                   AND COALESCE(connection_status, 'connected') = 'connected'
                   AND access_token IS NOT NULL
                   AND access_token <> ''
-                ORDER BY created_at ASC
+                ORDER BY created_at ASC, id ASC
                 """
             )
             return cur.fetchall()
@@ -38,18 +38,18 @@ def load_connected_instagram_accounts():
         conn.close()
 
 
-def sync_account(account_id, username, encrypted_token):
-    """Desencripta o token em memória, identifica a conta e sincroniza Insights."""
+def get_profile_and_token(username, encrypted_token):
+    """Desencripta o token e obtém o ID oficial da conta Instagram."""
     try:
         access_token = _token_cipher().decrypt(
             encrypted_token.encode("utf-8")
         ).decode("utf-8")
     except (InvalidToken, ValueError, TypeError):
         print(
-            f"[CRON INSTAGRAM] Conta {username or account_id}: "
+            f"[CRON INSTAGRAM] Conta {username or 'desconhecida'}: "
             "não foi possível desencriptar o token. Verifique OAUTH_TOKEN_ENCRYPTION_KEY."
         )
-        return False
+        return None, None
 
     api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
     try:
@@ -63,25 +63,29 @@ def sync_account(account_id, username, encrypted_token):
         )
         if not response.ok:
             print(
-                f"[CRON INSTAGRAM] Conta {username or account_id}: "
+                f"[CRON INSTAGRAM] Conta {username or 'desconhecida'}: "
                 f"API de perfil respondeu HTTP {response.status_code}."
             )
-            return False
+            return None, None
         profile = response.json()
         instagram_id = str(profile.get("id") or "")
         if not instagram_id:
             print(
-                f"[CRON INSTAGRAM] Conta {username or account_id}: "
+                f"[CRON INSTAGRAM] Conta {username or 'desconhecida'}: "
                 "a API não devolveu o ID do Instagram."
             )
-            return False
+            return None, None
+        return access_token, instagram_id
     except (requests.RequestException, ValueError) as error:
         print(
-            f"[CRON INSTAGRAM] Conta {username or account_id}: "
+            f"[CRON INSTAGRAM] Conta {username or 'desconhecida'}: "
             f"falha ao consultar perfil ({type(error).__name__})."
         )
-        return False
+        return None, None
 
+
+def sync_account(account_id, username, access_token, instagram_id):
+    """Sincroniza Insights de uma conta já identificada pelo ID oficial."""
     if not _sync_instagram_metrics(account_id, instagram_id, access_token):
         print(
             f"[CRON INSTAGRAM] Conta {username or account_id}: "
@@ -133,19 +137,38 @@ def main():
         print("[CRON INSTAGRAM] Não existem contas Instagram ligadas e ativas para sincronizar.")
         return 0
 
-    print(f"[CRON INSTAGRAM] Início: {len(accounts)} conta(s) elegível(is).")
+    print(f"[CRON INSTAGRAM] Início: {len(accounts)} registo(s) elegível(is).")
     succeeded = 0
     failed = 0
+    seen_accounts = set()
 
-    for account_id, username, encrypted_token in accounts:
-        if sync_account(account_id, username, encrypted_token):
+    for account_id, workspace_id, username, encrypted_token in accounts:
+        access_token, instagram_id = get_profile_and_token(username, encrypted_token)
+        if not access_token or not instagram_id:
+            failed += 1
+            continue
+
+        # A mesma conta Instagram pode estar ligada mais de uma vez no mesmo
+        # workspace. Deduplicar pelo ID oficial, não pelo username, e manter
+        # cada cliente/workspace independente.
+        dedupe_key = (str(workspace_id), instagram_id)
+        if dedupe_key in seen_accounts:
+            print(
+                f"[CRON INSTAGRAM] Conta {username or account_id}: "
+                "duplicada no mesmo workspace; sincronização ignorada "
+                "(o registo e o histórico foram preservados)."
+            )
+            continue
+
+        seen_accounts.add(dedupe_key)
+        if sync_account(account_id, username, access_token, instagram_id):
             succeeded += 1
         else:
             failed += 1
 
     print(
         f"[CRON INSTAGRAM] Resultado: {succeeded} sucesso(s), "
-        f"{failed} falha(s), de {len(accounts)} conta(s)."
+        f"{failed} falha(s), de {len(accounts)} registo(s) elegível(is)."
     )
     return 1 if failed else 0
 
