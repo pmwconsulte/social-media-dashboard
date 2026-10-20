@@ -740,7 +740,7 @@ app.layout = html.Div(
             [
                 html.H3("🎬 Instagram Reels — métricas específicas", style={"color": "white", "margin": "0 0 12px"}),
                 html.P(
-                    "Este bloco ficará separado das métricas gerais da conta. As métricas de Reels só serão apresentadas depois de a integração consultar e validar os Insights ao nível de cada mídia; não serão copiadas nem inferidas a partir dos totais gerais.",
+                    "Este bloco fica separado das métricas gerais da conta e consulta o breakdown oficial da API por tipo de conteúdo (REELS). Se a API ou as permissões não disponibilizarem esse breakdown, os valores permanecem N/D; não são copiados nem inferidos a partir dos totais gerais.",
                     style={"color": COLORS["muted"], "margin": "0 0 16px"},
                 ),
                 html.Div(id="kpis-reels", children=[
