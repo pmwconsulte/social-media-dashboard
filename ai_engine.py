@@ -162,6 +162,20 @@ def calcular_score(df):
     if dados.empty:
         return 0
 
+    dados_validos = dados.loc[dados["alcance"] > 0].copy()
+    dias_validos = (
+        dados_validos["data"].dt.date.nunique()
+        if "data" in dados_validos.columns
+        else len(dados_validos)
+    )
+
+    # Não publicar um score com amostra diária curta ou alcance inválido.
+    # Exigimos 14 dias distintos com alcance e taxa de engajamento válidos.
+    if dados_validos.empty or dias_validos < 14:
+        return None
+
+    dados = dados_validos
+
     crescimento = calcular_crescimento(
         dados
     )
@@ -256,7 +270,10 @@ def calcular_score(df):
 
 def classificar_score(score):
 
-    score = float(score or 0)
+    if score is None or pd.isna(score):
+        return "⚪ Histórico insuficiente"
+
+    score = float(score)
 
     if score >= 90:
         return "🏆 Excelente"
@@ -370,6 +387,13 @@ def gerar_recomendacao(df):
 
     score = calcular_score(dados)
     crescimento = calcular_crescimento(dados)
+
+    if score is None:
+        return (
+            "💡 Ainda não há pelo menos 14 dias distintos com alcance e "
+            "engajamento válidos. Continue a sincronização diária para obter "
+            "um Score IA mais estável antes de ajustar a estratégia."
+        )
 
     recomendacoes = []
 
@@ -509,7 +533,7 @@ Maior alcance diário no histórico: {f"{alcance_maximo:,}" if alcance_maximo is
 Engajamento médio registado: {engajamento:.2f}%
 Crescimento histórico: {crescimento_formatado}
 
-Score IA: {score}/100
+Score IA: {f"{score}/100" if score is not None else "N/D (histórico diário insuficiente)"}
 Classificação: {classificacao}
 
 =================================================
