@@ -272,6 +272,46 @@ def carregar_dados():
             conn.close()
 
 
+def carregar_insights_reels(periodo_dias):
+    """Carrega o snapshot mais recente de Reels no workspace e janela selecionados."""
+    conn = None
+    try:
+        conn = get_connection()
+        workspace_slug = (
+            session.get("workspace_slug") if has_request_context() else None
+        ) or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT SUM(views), SUM(reach), SUM(interactions), MAX(snapshot_date)
+                FROM (
+                    SELECT DISTINCT ON (m.social_account_id)
+                        m.social_account_id, m.views, m.reach, m.interactions, m.snapshot_date
+                    FROM instagram_reels_period_snapshots m
+                    INNER JOIN social_accounts sa ON sa.id = m.social_account_id
+                    INNER JOIN workspaces w ON w.id = sa.workspace_id
+                    WHERE w.slug = %s AND sa.platform = 'Instagram'
+                      AND COALESCE(sa.is_active, TRUE) = TRUE AND m.period_days = %s
+                    ORDER BY m.social_account_id, m.snapshot_date DESC, m.created_at DESC
+                ) latest
+                """,
+                (workspace_slug, int(periodo_dias or 7)),
+            )
+            row = cur.fetchone()
+        return {
+            "views": int(row[0]) if row and row[0] is not None else None,
+            "reach": int(row[1]) if row and row[1] is not None else None,
+            "interactions": int(row[2]) if row and row[2] is not None else None,
+            "snapshot_date": row[3].isoformat() if row and row[3] else None,
+        }
+    except Exception as erro:
+        print(f"[DATABASE] Insights de Reels indisponíveis: {type(erro).__name__}: {erro}")
+        return {"views": None, "reach": None, "interactions": None, "snapshot_date": None}
+    finally:
+        if conn:
+            conn.close()
+
+
 def carregar_insights_28d():
     """Carrega o snapshot mais recente de 28 dias por conta do workspace."""
     conn = None
@@ -703,15 +743,13 @@ app.layout = html.Div(
                     "Este bloco ficará separado das métricas gerais da conta. As métricas de Reels só serão apresentadas depois de a integração consultar e validar os Insights ao nível de cada mídia; não serão copiadas nem inferidas a partir dos totais gerais.",
                     style={"color": COLORS["muted"], "margin": "0 0 16px"},
                 ),
-                html.Div(
-                    [
-                        criar_kpi("N/D", "Visualizações de Reels", COLORS["primary"], "reels-views"),
-                        criar_kpi("N/D", "Alcance de Reels", COLORS["success"], "reels-reach"),
-                        criar_kpi("N/D", "Interações de Reels", COLORS["warning"], "reels-interactions"),
-                    ],
-                    style={"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))", "gap": "15px", "width": "100%"},
-                ),
-                html.P("Estado: métricas de Reels ainda não ligadas à API de Insights por mídia.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
+                html.Div(id="kpis-reels", children=[
+                    criar_kpi("N/D", "Visualizações de Reels", COLORS["primary"], "reels-views"),
+                    criar_kpi("N/D", "Alcance de Reels", COLORS["success"], "reels-reach"),
+                    criar_kpi("N/D", "Interações de Reels", COLORS["warning"], "reels-interactions"),
+                ], style={"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))", "gap": "15px", "width": "100%"}),
+                html.P(id="nota-reels", children="A aguardar dados oficiais da API.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
+                html.P("Os valores abaixo são totais oficiais de Reels para a janela selecionada; não são a soma dos valores vitalícios de cada vídeo.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
             ],
             style={"background": COLORS["card"], "padding": "20px", "borderRadius": "16px", "marginBottom": "20px", "border": "1px solid rgba(148,163,184,0.10)"},
         ),
@@ -821,6 +859,8 @@ app.layout = html.Div(
         Output("kpis-28d", "children"),
         Output("kpis-periodo", "children"),
         Output("nota-periodo", "children"),
+        Output("kpis-reels", "children"),
+        Output("nota-reels", "children"),
         Output("plataforma", "options"),
         Output("plataforma", "value"),
         Output("kpi-seguidores", "children"),
@@ -891,6 +931,27 @@ def atualizar(plataforma, periodo_insights):
 
     cards_historico, nota_historico = cards_periodo(dados_periodo)
 
+    reels = carregar_insights_reels(dias_periodo) if plataforma_atual == "Instagram" else {
+        "views": None, "reach": None, "interactions": None, "snapshot_date": None
+    }
+    reels_cards = [
+        criar_kpi(numero(reels["views"]), f"Visualizações de Reels ({dias_periodo} dias)", COLORS["primary"], "reels-views"),
+        criar_kpi(numero(reels["reach"]), f"Alcance de Reels ({dias_periodo} dias)", COLORS["success"], "reels-reach"),
+        criar_kpi(numero(reels["interactions"]), f"Interações de Reels ({dias_periodo} dias)", COLORS["warning"], "reels-interactions"),
+    ]
+    if plataforma_atual != "Instagram":
+        reels_note = "Selecione Instagram para consultar métricas de Reels."
+    elif reels["snapshot_date"]:
+        reels_note = (
+            f"Dados oficiais da API por tipo de conteúdo (REELS), janela de {dias_periodo} dias. "
+            f"Última sincronização: {reels['snapshot_date']}. A API pode ter atraso de até 48 horas."
+        )
+    else:
+        reels_note = (
+            "Ainda não existem snapshots oficiais de Reels para este período. "
+            "Aguarde a próxima sincronização automática; os valores não são estimados."
+        )
+
     # Consolidar várias contas da mesma plataforma por dia evita comparar
     # contas diferentes como se fossem dias consecutivos de uma única conta.
     if not dados.empty:
@@ -955,6 +1016,8 @@ def atualizar(plataforma, periodo_insights):
             cards_28d,
             cards_historico,
             nota_historico,
+            reels_cards,
+            reels_note,
             [{"label": p, "value": p} for p in plataformas_atuais],
             plataforma_atual,
             "N/D",
@@ -1117,6 +1180,8 @@ def atualizar(plataforma, periodo_insights):
         cards_28d,
         cards_historico,
         nota_historico,
+        reels_cards,
+        reels_note,
         [{"label": p, "value": p} for p in plataformas_atuais],
         plataforma_atual,
         numero(kpis["seguidores"]),
