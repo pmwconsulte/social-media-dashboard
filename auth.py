@@ -173,13 +173,24 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         # Para consultas agregadas, usar primeiro o total agregado; para séries,
         # usar o último ponto temporal. Evita confundir os dois formatos.
         # Nunca usar o último ponto diário como substituto de um total agregado.
-        candidates = (
-            (total_value,)
-            if metric_type == "total_value"
-            else (last_value,)
-        )
+        if metric_type == "total_value":
+            # Preferir sempre o campo explicitamente agregado. Para a API que
+            # devolve total_over_range dentro de values, aceitar apenas uma
+            # única observação numérica, nunca somar nem escolher o último
+            # ponto de uma série diária como se fosse um total do período.
+            candidates = [total_value]
+            if (
+                total_value is None
+                and params.get("period") == "total_over_range"
+                and len(values) == 1
+                and isinstance(last_value, (int, float))
+            ):
+                candidates.append(last_value)
+        else:
+            candidates = [last_value]
+
         for value in candidates:
-            if isinstance(value, (int, float)):
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
                 return value
     print(
         f"[INSTAGRAM INSIGHTS DEBUG] metric={metric} "
