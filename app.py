@@ -605,7 +605,7 @@ app.layout = html.Div(
             [
                 criar_kpi(numero(kpis_iniciais["seguidores"]), "Seguidores", COLORS["primary"], "kpi-seguidores"),
                 criar_kpi(numero(kpis_iniciais["alcance"]), "Alcance", COLORS["success"], "kpi-alcance"),
-                criar_kpi(percentual(kpis_iniciais["engajamento"]), "Engajamento Médio", COLORS["warning"], "kpi-engajamento"),
+                criar_kpi(percentual(kpis_iniciais["engajamento"]), "Taxa de interação (28 dias)", COLORS["warning"], "kpi-engajamento"),
                 criar_kpi(percentual(kpis_iniciais["crescimento"]), "Crescimento", COLORS["purple"], "kpi-crescimento"),
                 criar_kpi(f'{kpis_iniciais["score"]}/100' if kpis_iniciais["score"] is not None else "N/D", "Score IA*", COLORS["danger"], "kpi-score"),
             ],
@@ -859,9 +859,9 @@ def atualizar(plataforma):
     kpis = calcular_kpis(dados)
     insights_28d = carregar_insights_28d()
 
-    # Os cards principais de alcance e engajamento usam o snapshot da API
-    # dos últimos 28 dias, não o último registo diário (que pode ser zero ou
-    # não conter Insights). A taxa usa interações/alcance do mesmo snapshot.
+    # Os cards principais de alcance e taxa de interação usam o snapshot da
+    # API dos últimos 28 dias. A taxa é interações/alcance agregados, não a
+    # média aritmética das percentagens diárias.
     alcance_28d = insights_28d.get("reach")
     interacoes_28d = insights_28d.get("interactions")
     engajamento_28d = (
@@ -873,9 +873,15 @@ def atualizar(plataforma):
         kpis["alcance"] = alcance_28d
         kpis["engajamento"] = engajamento_28d
 
-    # O Score IA continua baseado em histórico diário consistente. Não o
-    # apresentar quando não existem dias suficientes com métricas válidas.
-    if kpis.get("alcance") is None or dados["data"].nunique() < 2:
+    # O Score IA exige pelo menos 14 dias distintos com alcance positivo e
+    # taxa válida. O motor de IA aplica o mesmo limiar; não exibir 0/100
+    # como se fosse uma avaliação real quando a amostra é insuficiente.
+    dias_com_metricas_validas = dados.loc[
+        (pd.to_numeric(dados["alcance"], errors="coerce") > 0)
+        & pd.to_numeric(dados["engajamento"], errors="coerce").notna(),
+        "data",
+    ].nunique()
+    if kpis.get("alcance") is None or dias_com_metricas_validas < 14:
         kpis["score"] = None
 
     try:
@@ -908,6 +914,13 @@ def atualizar(plataforma):
 
     try:
         relatorio = gerar_relatorio_executivo(dados)
+        if dias_com_metricas_validas < 14:
+            relatorio += (
+                "\n\nQUALIDADE E CONFIANÇA\n"
+                f"Score IA não apresentado: existem {dias_com_metricas_validas} dias distintos "
+                "com alcance positivo e taxa válida; são necessários pelo menos 14. "
+                "A taxa de interação apresentada é agregada para os últimos 28 dias.\n"
+            )
         if dados["data"].nunique() < 2:
             relatorio += (
                 "\n\nQUALIDADE E CONFIANÇA\n"
