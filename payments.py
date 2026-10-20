@@ -11,6 +11,14 @@ TIMEOUT = 20
 def _enabled():
     return os.getenv("PAYMENT_AUTOMATION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
+def _checkout_enabled():
+    """Permite checkout de teste no Sandbox sem ativar alterações automáticas na BD."""
+    if _enabled():
+        return True
+    checkout_flag = os.getenv("PAYPAL_CHECKOUT_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    mode = os.getenv("PAYPAL_MODE", "sandbox").strip().lower()
+    return checkout_flag and mode == "sandbox"
+
 def _api_base():
     mode = os.getenv("PAYPAL_MODE", "sandbox").strip().lower()
     if mode == "sandbox": return "https://api-m.sandbox.paypal.com"
@@ -157,7 +165,7 @@ def register_paypal_routes(server):
     @server.get("/billing/paypal/subscribe/<plan_key>")
     def paypal_subscribe(plan_key):
         if not session.get("authenticated"): return redirect(url_for("login"))
-        if not _enabled(): return "Checkout PayPal desativado durante os testes.",503
+        if not _checkout_enabled(): return "Checkout PayPal desativado. Para testes, ative PAYPAL_CHECKOUT_ENABLED=true em Sandbox.",503
         if plan_key not in PLAN_ENV: abort(404)
         slug=session.get("workspace_slug")
         if not slug or len(slug)>127: return "Workspace invÃ¡lido.",400
@@ -189,13 +197,16 @@ def register_paypal_routes(server):
     @server.get("/billing/paypal/return")
     def paypal_return():
         if not session.get("authenticated"): return redirect(url_for("login"))
-        if not _enabled(): return "Checkout PayPal desativado durante os testes.",503
+        if not _checkout_enabled(): return "Checkout PayPal desativado. Para testes, ative PAYPAL_CHECKOUT_ENABLED=true em Sandbox.",503
         sub_id=request.args.get("subscription_id","").strip()
         if not sub_id or len(sub_id)>255: return redirect(url_for("billing"))
         try:
             sub=_api_request("GET","/v1/billing/subscriptions/"+sub_id)
             slug=session.get("workspace_slug")
             if sub.get("custom_id")!=slug: return "A subscriÃ§Ã£o nÃ£o corresponde ao workspace autenticado.",403
+            # Em modo de teste, o retorno do browser nunca ativa a subscrição na BD.
+            # A ativação deve depender do webhook verificado quando a automação estiver autorizada.
+            if not _enabled(): return redirect("/billing?paypal=pending")
             if _set_active(sub,slug): return redirect("/billing?paypal=active")
             return redirect("/billing?paypal=pending")
         except requests.RequestException as exc:
