@@ -147,6 +147,21 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         values = item.get("values") or []
         total_obj = item.get("total_value") or {}
         last_value = values[-1].get("value") if values and isinstance(values[-1], dict) else None
+        # Diagnóstico temporário: registar datas/valores devolvidos pela série,
+        # sem incluir tokens, URLs de pedido ou outros dados de autenticação.
+        if values:
+            points_debug = [
+                {
+                    "end_time": point.get("end_time"),
+                    "value": point.get("value"),
+                }
+                for point in values[-5:]
+                if isinstance(point, dict)
+            ]
+            print(
+                f"[INSTAGRAM INSIGHTS DEBUG] metric={item.get('name', metric)} "
+                f"period={params.get('period')} últimos_pontos={points_debug!r}."
+            )
         total_value = total_obj.get("value") if isinstance(total_obj, dict) else None
         print(
             f"[INSTAGRAM INSIGHTS DEBUG] metric={item.get('name', metric)} "
