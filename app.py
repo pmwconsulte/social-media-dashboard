@@ -640,16 +640,16 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H3("📆 Instagram — últimos 28 dias",
+                html.H3("📆 Instagram — resumo oficial dos últimos 28 dias",
                         style={"color": "white", "margin": "0 0 12px"}),
                 html.P(
-                    "Alcance único, visualizações e interações agregadas pela API do Instagram.",
+                    "Totais agregados devolvidos pela API. O alcance deste bloco é único para o período e não deve ser substituído pela soma do alcance diário.",
                     style={"color": COLORS["muted"], "margin": "0 0 16px"},
                 ),
                 html.Div(
                     id="kpis-28d",
                     children=[
-                        criar_kpi("N/D", "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
+                        criar_kpi("N/D", "Alcance único (28 dias)", COLORS["success"], "kpi-alcance-28d"),
                         criar_kpi("N/D", "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
                         criar_kpi("N/D", "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
                     ],
@@ -659,6 +659,61 @@ app.layout = html.Div(
             ],
             style={"background": COLORS["card"], "padding": "20px", "borderRadius": "16px",
                    "marginBottom": "20px", "border": "1px solid rgba(148,163,184,0.10)"},
+        ),
+
+        html.Div(
+            [
+                html.H3("📊 Histórico diário por período", style={"color": "white", "margin": "0 0 12px"}),
+                html.P(
+                    "Resumo calculado apenas com os registos diários existentes na base de dados. Os dias sem histórico não são estimados.",
+                    style={"color": COLORS["muted"], "margin": "0 0 14px"},
+                ),
+                html.Label("Período de análise", style={"color": COLORS["text"], "fontWeight": "600", "display": "block", "marginBottom": "8px"}),
+                dcc.Dropdown(
+                    id="periodo-insights",
+                    options=[
+                        {"label": "Últimos 7 dias", "value": 7},
+                        {"label": "Últimos 14 dias", "value": 14},
+                        {"label": "Últimos 30 dias", "value": 30},
+                        {"label": "Últimos 60 dias", "value": 60},
+                    ],
+                    value=7,
+                    clearable=False,
+                    searchable=False,
+                    style={"color": "#111827", "maxWidth": "320px", "marginBottom": "16px"},
+                ),
+                html.Div(
+                    id="kpis-periodo",
+                    children=[
+                        criar_kpi("N/D", "Views registadas", COLORS["primary"], "periodo-views"),
+                        criar_kpi("N/D", "Alcance diário acumulado", COLORS["success"], "periodo-reach"),
+                        criar_kpi("N/D", "Interações registadas", COLORS["warning"], "periodo-interacoes"),
+                    ],
+                    style={"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))", "gap": "15px", "width": "100%"},
+                ),
+                html.P(id="nota-periodo", children="Selecione um período para consultar o histórico disponível.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
+            ],
+            style={"background": COLORS["card"], "padding": "20px", "borderRadius": "16px", "marginBottom": "20px", "border": "1px solid rgba(148,163,184,0.10)"},
+        ),
+
+        html.Div(
+            [
+                html.H3("🎬 Instagram Reels — métricas específicas", style={"color": "white", "margin": "0 0 12px"}),
+                html.P(
+                    "Este bloco ficará separado das métricas gerais da conta. As métricas de Reels só serão apresentadas depois de a integração consultar e validar os Insights ao nível de cada mídia; não serão copiadas nem inferidas a partir dos totais gerais.",
+                    style={"color": COLORS["muted"], "margin": "0 0 16px"},
+                ),
+                html.Div(
+                    [
+                        criar_kpi("N/D", "Visualizações de Reels", COLORS["primary"], "reels-views"),
+                        criar_kpi("N/D", "Alcance de Reels", COLORS["success"], "reels-reach"),
+                        criar_kpi("N/D", "Interações de Reels", COLORS["warning"], "reels-interactions"),
+                    ],
+                    style={"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))", "gap": "15px", "width": "100%"},
+                ),
+                html.P("Estado: métricas de Reels ainda não ligadas à API de Insights por mídia.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
+            ],
+            style={"background": COLORS["card"], "padding": "20px", "borderRadius": "16px", "marginBottom": "20px", "border": "1px solid rgba(148,163,184,0.10)"},
         ),
 
         html.Div(
@@ -764,6 +819,8 @@ app.layout = html.Div(
 @app.callback(
     [
         Output("kpis-28d", "children"),
+        Output("kpis-periodo", "children"),
+        Output("nota-periodo", "children"),
         Output("plataforma", "options"),
         Output("plataforma", "value"),
         Output("kpi-seguidores", "children"),
@@ -779,9 +836,9 @@ app.layout = html.Div(
         Output("grafico_engajamento", "figure"),
         Output("grafico_previsao", "figure"),
     ],
-    [Input("plataforma", "value")],
+    [Input("plataforma", "value"), Input("periodo-insights", "value")],
 )
-def atualizar(plataforma):
+def atualizar(plataforma, periodo_insights):
     workspace_dados = preparar_dados(carregar_dados())
 
     if workspace_dados.empty and os.getenv("ALLOW_DEMO_DATA", "false").strip().lower() in {
@@ -800,6 +857,37 @@ def atualizar(plataforma):
     plataforma_atual = str(plataforma) if plataforma in plataformas_atuais else plataformas_atuais[0]
     dados = workspace_dados[workspace_dados["plataforma"].astype(str) == plataforma_atual].copy()
     dados = dados.sort_values("data")
+
+    # Resumo temporal baseado exclusivamente no histórico diário existente.
+    dias_periodo = int(periodo_insights or 7)
+    fim_periodo = dados["data"].max() if not dados.empty else pd.Timestamp.utcnow().tz_localize(None)
+    inicio_periodo = fim_periodo.normalize() - pd.Timedelta(days=dias_periodo - 1)
+    dados_periodo = dados[
+        (dados["data"] >= inicio_periodo) & (dados["data"] <= fim_periodo)
+    ].copy() if not dados.empty else dados.copy()
+
+    def cards_periodo(frame):
+        if frame.empty:
+            return [
+                criar_kpi("N/D", f"Views registadas ({dias_periodo} dias)", COLORS["primary"], "periodo-views"),
+                criar_kpi("N/D", f"Alcance diário acumulado ({dias_periodo} dias)", COLORS["success"], "periodo-reach"),
+                criar_kpi("N/D", f"Interações registadas ({dias_periodo} dias)", COLORS["warning"], "periodo-interacoes"),
+            ], f"Sem registos diários no intervalo selecionado ({dias_periodo} dias)."
+        values = {}
+        for column, key in (("impressoes", "views"), ("alcance", "reach"), ("interacoes", "interactions")):
+            series = pd.to_numeric(frame[column], errors="coerce") if column in frame.columns else pd.Series(dtype="float64")
+            values[key] = series.sum(min_count=1)
+        fmt = lambda value: numero(int(value)) if pd.notna(value) else "N/D"
+        cards = [
+            criar_kpi(fmt(values["views"]), f"Views registadas ({dias_periodo} dias)", COLORS["primary"], "periodo-views"),
+            criar_kpi(fmt(values["reach"]), f"Alcance diário acumulado ({dias_periodo} dias)", COLORS["success"], "periodo-reach"),
+            criar_kpi(fmt(values["interactions"]), f"Interações registadas ({dias_periodo} dias)", COLORS["warning"], "periodo-interacoes"),
+        ]
+        available_days = frame["data"].dt.normalize().nunique()
+        note = f"Histórico encontrado: {available_days} dia(s) com registos no intervalo pedido de {dias_periodo} dias. Views e interações são somas dos registos disponíveis; alcance é a soma diária, não alcance único do período."
+        return cards, note
+
+    cards_historico, nota_historico = cards_periodo(dados_periodo)
 
     # Consolidar várias contas da mesma plataforma por dia evita comparar
     # contas diferentes como se fossem dias consecutivos de uma única conta.
@@ -863,6 +951,8 @@ def atualizar(plataforma):
         # têm correspondência directa. Crescimento continua N/D sem histórico.
         return (
             cards_28d,
+            cards_historico,
+            nota_historico,
             [{"label": p, "value": p} for p in plataformas_atuais],
             plataforma_atual,
             "N/D",
@@ -1023,6 +1113,8 @@ def atualizar(plataforma):
 
     return (
         cards_28d,
+        cards_historico,
+        nota_historico,
         [{"label": p, "value": p} for p in plataformas_atuais],
         plataforma_atual,
         numero(kpis["seguidores"]),
