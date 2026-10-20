@@ -228,9 +228,9 @@ def _sync_instagram_period_snapshots(social_account_id, ig_id, access_token):
                         (social_account_id, period_days, snapshot_date, reach, views, interactions)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (social_account_id, period_days, snapshot_date) DO UPDATE SET
-                        reach = EXCLUDED.reach,
-                        views = EXCLUDED.views,
-                        interactions = EXCLUDED.interactions,
+                        reach = COALESCE(EXCLUDED.reach, instagram_period_snapshots.reach),
+                        views = COALESCE(EXCLUDED.views, instagram_period_snapshots.views),
+                        interactions = COALESCE(EXCLUDED.interactions, instagram_period_snapshots.interactions),
                         created_at = NOW()
                     """,
                     (social_account_id, days, now.date(), metrics["reach"], metrics["views"], metrics["total_interactions"]),
