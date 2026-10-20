@@ -360,11 +360,11 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
         ig_id, access_token, "reach", metric_type="time_series", period="day"
     )
     views_value = _read_instagram_insight(
-        ig_id, access_token, "views", metric_type="total_value", period="day"
+        ig_id, access_token, "views", metric_type="time_series", period="day"
     )
     interactions_value = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
-        metric_type="total_value", period="day"
+        metric_type="time_series", period="day"
     )
 
     # Totais oficiais de 28 dias. Não somar reach diário: a mesma pessoa pode
