@@ -172,10 +172,11 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
 
         # Para consultas agregadas, usar primeiro o total agregado; para séries,
         # usar o último ponto temporal. Evita confundir os dois formatos.
+        # Nunca usar o último ponto diário como substituto de um total agregado.
         candidates = (
-            (total_value, last_value)
+            (total_value,)
             if metric_type == "total_value"
-            else (last_value, total_value)
+            else (last_value,)
         )
         for value in candidates:
             if isinstance(value, (int, float)):
@@ -186,6 +187,59 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         f"HTTP={response.status_code} data_items={len(items)} valor_numérico_ausente."
     )
     return None
+
+def _sync_instagram_period_snapshots(social_account_id, ig_id, access_token):
+    """Guarda totais agregados oficiais para janelas móveis de 7/14/30/60 dias."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    until = int(now.timestamp())
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            for days in (7, 14, 30, 60):
+                since = int((now - timedelta(days=days)).timestamp())
+                metrics = {
+                    metric: _read_instagram_insight(
+                        ig_id, access_token, metric,
+                        metric_type="total_value", period="day",
+                        since=since, until=until,
+                    )
+                    for metric in ("reach", "views", "total_interactions")
+                }
+                if not any(value is not None for value in metrics.values()):
+                    print(f"[INSTAGRAM PERÍODO] Sem totais agregados disponíveis para {days} dias.")
+                    continue
+                cur.execute(
+                    """
+                    INSERT INTO instagram_period_snapshots
+                        (social_account_id, period_days, snapshot_date, reach, views, interactions)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (social_account_id, period_days, snapshot_date) DO UPDATE SET
+                        reach = EXCLUDED.reach,
+                        views = EXCLUDED.views,
+                        interactions = EXCLUDED.interactions,
+                        created_at = NOW()
+                    """,
+                    (social_account_id, days, now.date(), metrics["reach"], metrics["views"], metrics["total_interactions"]),
+                )
+                print(
+                    f"[INSTAGRAM PERÍODO] janela={days} dias; "
+                    f"reach={metrics['reach']!r}; views={metrics['views']!r}; "
+                    f"interactions={metrics['total_interactions']!r}."
+                )
+        conn.commit()
+        return True
+    except Exception as erro:
+        if conn:
+            conn.rollback()
+        print(f"[INSTAGRAM PERÍODO ERROR] Falha ao guardar totais oficiais: {type(erro).__name__}: {erro}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
 
 def _read_instagram_reels_breakdown(ig_id, access_token, metric, since, until):
     """Lê o total oficial da métrica apenas para media_product_type=REELS."""
@@ -381,6 +435,9 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
         f"reach={reach_28d!r}, views={views_28d!r}, "
         f"total_interactions={interactions_28d!r}."
     )
+
+    # Guardar os totais oficiais de cada janela, sem somar amostras diárias.
+    _sync_instagram_period_snapshots(social_account_id, ig_id, access_token)
 
     # Consultar métricas de Reels separadamente dos totais gerais da conta.
     _sync_instagram_reels_periods(social_account_id, ig_id, access_token)
