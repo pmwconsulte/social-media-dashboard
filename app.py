@@ -293,6 +293,7 @@ def carregar_insights_periodo(periodo_dias):
                     WHERE w.slug = %s
                       AND LOWER(sa.platform) LIKE '%instagram%'
                       AND COALESCE(sa.is_active, TRUE) = TRUE
+                      AND m.snapshot_date >= CURRENT_DATE - INTERVAL '2 days'
                       AND m.period_days = %s
                     ORDER BY m.social_account_id, m.snapshot_date DESC, m.created_at DESC
                 ) latest
@@ -333,7 +334,9 @@ def carregar_insights_reels(periodo_dias):
                     INNER JOIN social_accounts sa ON sa.id = m.social_account_id
                     INNER JOIN workspaces w ON w.id = sa.workspace_id
                     WHERE w.slug = %s AND sa.platform = 'Instagram'
-                      AND COALESCE(sa.is_active, TRUE) = TRUE AND m.period_days = %s
+                      AND COALESCE(sa.is_active, TRUE) = TRUE
+                      AND m.snapshot_date >= CURRENT_DATE - INTERVAL '2 days'
+                      AND m.period_days = %s
                     ORDER BY m.social_account_id, m.snapshot_date DESC, m.created_at DESC
                 ) latest
                 """,
@@ -372,6 +375,7 @@ def carregar_insights_28d():
                 INNER JOIN workspaces w ON w.id = sa.workspace_id
                 WHERE w.slug = %s
                   AND COALESCE(sa.is_active, TRUE) = TRUE
+                  AND m.snapshot_date >= CURRENT_DATE - INTERVAL '2 days'
                 ORDER BY m.social_account_id, m.snapshot_date DESC, m.created_at DESC
             ) latest
         """
