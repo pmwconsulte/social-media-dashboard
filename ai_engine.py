@@ -46,55 +46,32 @@ def _preparar(df):
 # PREVISÃO IA
 # ============================================================
 
-def prever_crescimento(df, dias=30):
 
+def prever_crescimento(df, dias=30):
+    """Prevê seguidores apenas quando existe uma amostra temporal mínima útil."""
     if dias <= 0:
         return []
-
     dados = _preparar(df)
-
-    if dados.empty or "seguidores" not in dados.columns:
-        return [0] * dias
-
-    dados = dados.dropna(subset=["seguidores"])
-
-    if len(dados) < 2:
-        ultimo = (
-            float(dados["seguidores"].iloc[-1])
-            if not dados.empty
-            else 0
-        )
-
-        return [round(ultimo, 2)] * dias
-
-    y = dados["seguidores"].astype(float).values
-
-    X = np.arange(len(y)).reshape(-1, 1)
-
-    modelo = LinearRegression()
-    modelo.fit(X, y)
-
-    futuro = np.arange(
-        len(y),
-        len(y) + dias
-    ).reshape(-1, 1)
-
-    previsao = modelo.predict(futuro)
-
-    previsao = np.maximum(
-        previsao,
-        0
+    if dados.empty or not {"data", "seguidores"}.issubset(dados.columns):
+        return []
+    historico = dados[["data", "seguidores"]].copy()
+    historico["seguidores"] = _numero(historico["seguidores"])
+    historico = (
+        historico.dropna(subset=["data", "seguidores"])
+        .sort_values("data")
+        .drop_duplicates(subset=["data"], keep="last")
     )
-
-    return [
-        round(float(valor), 2)
-        for valor in previsao
-    ]
-
-
-# ============================================================
-# CRESCIMENTO
-# ============================================================
+    # Nunca repetir o último valor ou zeros como se fossem uma previsão.
+    if historico["data"].dt.date.nunique() < 7:
+        return []
+    y = historico["seguidores"].astype(float).to_numpy()
+    if len(y) < 7 or not np.isfinite(y).all():
+        return []
+    X = np.arange(len(y), dtype=float).reshape(-1, 1)
+    modelo = LinearRegression().fit(X, y)
+    futuro = np.arange(len(y), len(y) + dias, dtype=float).reshape(-1, 1)
+    previsao = np.maximum(modelo.predict(futuro), 0)
+    return [round(float(valor), 2) for valor in previsao]
 
 def calcular_crescimento(df):
 
@@ -303,86 +280,50 @@ def classificar_score(score):
 # ALERTAS IA
 # ============================================================
 
+
 def gerar_alerta(df):
-
+    """Compara dias recentes com uma linha de base, evitando alertas espúrios."""
     dados = _preparar(df)
-
-    if dados.empty:
+    if dados.empty or not {"data", "alcance", "engajamento"}.issubset(dados.columns):
         return "⚠️ Dados insuficientes para análise."
-
-    mensagens = []
-
-    indicadores = [
-        ("engajamento", "engajamento"),
-        ("seguidores", "seguidores"),
-        ("alcance", "alcance"),
-    ]
-
-    for coluna, nome in indicadores:
-
-        if coluna not in dados.columns:
-            continue
-
-        serie = (
-            _numero(dados[coluna])
-            .dropna()
-        )
-
-        if len(serie) < 3:
-            continue
-
-        atual = float(serie.iloc[-1])
-        media = float(serie.mean())
-
-        if media <= 0:
-            continue
-
-        variacao = (
-            (atual - media)
-            / media
-        ) * 100
-
-        if variacao <= -20:
-
-            mensagens.append(
-                f"🚨 {nome.capitalize()} "
-                f"{abs(variacao):.1f}% abaixo da média."
-            )
-
-        elif variacao >= 20:
-
-            mensagens.append(
-                f"🚀 {nome.capitalize()} "
-                f"{variacao:.1f}% acima da média."
-            )
-
-    crescimento = calcular_crescimento(
-        dados
+    dados = dados.dropna(subset=["data"]).copy()
+    for coluna in ("alcance", "engajamento", "seguidores"):
+        if coluna in dados.columns:
+            dados[coluna] = _numero(dados[coluna])
+    dados = (
+        dados.sort_values("data")
+        .drop_duplicates(subset=["data"], keep="last")
+        .tail(14)
     )
-
-    if crescimento < -5:
-
-        mensagens.append(
-            f"⚠️ Crescimento negativo: "
-            f"{crescimento:.2f}%."
-        )
-
-    elif crescimento > 10:
-
-        mensagens.append(
-            f"📈 Crescimento forte: "
-            f"{crescimento:.2f}%."
-        )
-
-    if not mensagens:
-        return "✅ Indicadores estáveis."
-
-    return "\n".join(mensagens)
-
-
-# ============================================================
-# RECOMENDAÇÕES IA
-# ============================================================
+    if dados["data"].dt.date.nunique() < 7:
+        return "⚠️ Histórico insuficiente para comparar tendências; são necessários pelo menos 7 dias distintos."
+    mensagens = []
+    recentes = dados.tail(3)
+    base = dados.iloc[:-3].tail(7)
+    if len(base) >= 4:
+        for coluna, nome in (("engajamento", "engajamento"), ("alcance", "alcance")):
+            atual = _numero(recentes[coluna]).dropna()
+            anterior = _numero(base[coluna]).dropna()
+            if len(atual) < 2 or len(anterior) < 4:
+                continue
+            media_atual = float(atual.mean())
+            media_base = float(anterior.mean())
+            if not np.isfinite(media_base) or media_base <= 0:
+                continue
+            variacao = ((media_atual - media_base) / media_base) * 100
+            if variacao <= -20:
+                mensagens.append(f"🚨 {nome.capitalize()} {abs(variacao):.1f}% abaixo da média da linha de base.")
+            elif variacao >= 20:
+                mensagens.append(f"🚀 {nome.capitalize()} {variacao:.1f}% acima da média da linha de base.")
+    if "seguidores" in dados.columns:
+        seguidores = dados[["data", "seguidores"]].dropna().drop_duplicates("data").sort_values("data")
+        if len(seguidores) >= 7 and float(seguidores["seguidores"].iloc[0]) > 0:
+            crescimento = ((float(seguidores["seguidores"].iloc[-1]) - float(seguidores["seguidores"].iloc[0])) / float(seguidores["seguidores"].iloc[0])) * 100
+            if crescimento < -5:
+                mensagens.append(f"⚠️ Crescimento negativo no histórico observado: {crescimento:.2f}%.")
+            elif crescimento > 10:
+                mensagens.append(f"📈 Crescimento forte no histórico observado: {crescimento:.2f}%.")
+    return "\n".join(mensagens) if mensagens else "ℹ️ Sem alteração relevante demonstrada nos dados disponíveis."
 
 def gerar_recomendacao(df):
 
@@ -516,16 +457,8 @@ def gerar_relatorio_executivo(df):
         else None
     )
 
-    previsao = prever_crescimento(
-        dados,
-        dias=30
-    )
-
-    seguidores_30 = (
-        int(previsao[-1])
-        if previsao
-        else seguidores
-    )
+    previsao = prever_crescimento(dados, dias=30)
+    seguidores_30 = int(round(previsao[-1])) if previsao else None
     crescimento_formatado = (
         f"{crescimento:.2f}%"
         if crescimento is not None
@@ -539,7 +472,7 @@ RELATÓRIO EXECUTIVO IA
 Seguidores atuais: {seguidores:,}
 Alcance mais recente registado: {f"{alcance_atual:,}" if alcance_atual is not None else "N/D"}
 Maior alcance diário no histórico: {f"{alcance_maximo:,}" if alcance_maximo is not None else "N/D"}
-Engajamento médio registado: {engajamento:.2f}%
+Taxa média diária registada: {engajamento:.2f}% (não é o total agregado de 28 dias)
 Crescimento histórico: {crescimento_formatado}
 
 Score IA: {f"{score}/100" if score is not None else "N/D (histórico diário insuficiente)"}
@@ -548,7 +481,7 @@ Classificação: {classificacao}
 =================================================
 PREVISÃO IA — 30 DIAS
 
-Seguidores estimados: {seguidores_30:,}
+Seguidores estimados: {f"{seguidores_30:,}" if seguidores_30 is not None else "N/D (necessários pelo menos 7 dias distintos)"}
 
 =================================================
 RECOMENDAÇÃO
