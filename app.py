@@ -860,8 +860,10 @@ def atualizar(plataforma, periodo_insights):
 
     # Resumo temporal baseado exclusivamente no histórico diário existente.
     dias_periodo = int(periodo_insights or 7)
-    fim_periodo = dados["data"].max() if not dados.empty else pd.Timestamp.utcnow().tz_localize(None)
-    inicio_periodo = fim_periodo.normalize() - pd.Timedelta(days=dias_periodo - 1)
+    # O período selecionado é relativo à data actual, não ao último registo
+    # disponível; assim, a interface não apresenta dados antigos como recentes.
+    fim_periodo = pd.Timestamp.utcnow().tz_localize(None).normalize()
+    inicio_periodo = fim_periodo - pd.Timedelta(days=dias_periodo - 1)
     dados_periodo = dados[
         (dados["data"] >= inicio_periodo) & (dados["data"] <= fim_periodo)
     ].copy() if not dados.empty else dados.copy()
