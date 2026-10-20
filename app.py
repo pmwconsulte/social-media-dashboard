@@ -272,6 +272,48 @@ def carregar_dados():
             conn.close()
 
 
+def carregar_insights_periodo(periodo_dias):
+    """Carrega o último total oficial do período por conta Instagram no workspace."""
+    conn = None
+    try:
+        conn = get_connection()
+        workspace_slug = (
+            session.get("workspace_slug") if has_request_context() else None
+        ) or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT SUM(reach), SUM(views), SUM(interactions), MAX(snapshot_date)
+                FROM (
+                    SELECT DISTINCT ON (m.social_account_id)
+                        m.social_account_id, m.reach, m.views, m.interactions, m.snapshot_date
+                    FROM instagram_period_snapshots m
+                    INNER JOIN social_accounts sa ON sa.id = m.social_account_id
+                    INNER JOIN workspaces w ON w.id = sa.workspace_id
+                    WHERE w.slug = %s
+                      AND LOWER(sa.platform) LIKE '%instagram%'
+                      AND COALESCE(sa.is_active, TRUE) = TRUE
+                      AND m.period_days = %s
+                    ORDER BY m.social_account_id, m.snapshot_date DESC, m.created_at DESC
+                ) latest
+                """,
+                (workspace_slug, int(periodo_dias or 7)),
+            )
+            row = cur.fetchone()
+        return {
+            "reach": int(row[0]) if row and row[0] is not None else None,
+            "views": int(row[1]) if row and row[1] is not None else None,
+            "interactions": int(row[2]) if row and row[2] is not None else None,
+            "snapshot_date": row[3].isoformat() if row and row[3] else None,
+        }
+    except Exception as erro:
+        print(f"[DATABASE] Totais oficiais do período indisponíveis: {type(erro).__name__}: {erro}")
+        return {"reach": None, "views": None, "interactions": None, "snapshot_date": None}
+    finally:
+        if conn:
+            conn.close()
+
+
 def carregar_insights_reels(periodo_dias):
     """Carrega o snapshot mais recente de Reels no workspace e janela selecionados."""
     conn = None
@@ -703,9 +745,9 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H3("📊 Histórico diário por período", style={"color": "white", "margin": "0 0 12px"}),
+                html.H3("📊 Instagram — totais oficiais por período", style={"color": "white", "margin": "0 0 12px"}),
                 html.P(
-                    "Resumo calculado apenas com os registos diários existentes na base de dados. Os dias sem histórico não são estimados.",
+                    "Valores agregados consultados na API oficial para a janela selecionada. Não são somas de snapshots diários; se a API não devolver um total válido, o cartão mostra N/D.",
                     style={"color": COLORS["muted"], "margin": "0 0 14px"},
                 ),
                 html.Label("Período de análise", style={"color": COLORS["text"], "fontWeight": "600", "display": "block", "marginBottom": "8px"}),
@@ -898,38 +940,31 @@ def atualizar(plataforma, periodo_insights):
     dados = workspace_dados[workspace_dados["plataforma"].astype(str) == plataforma_atual].copy()
     dados = dados.sort_values("data")
 
-    # Resumo temporal baseado exclusivamente no histórico diário existente.
+    # Totais oficiais agregados por janela, separados dos registos diários.
     dias_periodo = int(periodo_insights or 7)
-    # O período selecionado é relativo à data actual, não ao último registo
-    # disponível; assim, a interface não apresenta dados antigos como recentes.
-    fim_periodo = pd.Timestamp.utcnow().tz_localize(None).normalize()
-    inicio_periodo = fim_periodo - pd.Timedelta(days=dias_periodo - 1)
-    dados_periodo = dados[
-        (dados["data"] >= inicio_periodo) & (dados["data"] <= fim_periodo)
-    ].copy() if not dados.empty else dados.copy()
-
-    def cards_periodo(frame):
-        if frame.empty:
-            return [
-                criar_kpi("N/D", f"Views registadas ({dias_periodo} dias)", COLORS["primary"], "periodo-views"),
-                criar_kpi("N/D", f"Alcance diário acumulado ({dias_periodo} dias)", COLORS["success"], "periodo-reach"),
-                criar_kpi("N/D", f"Interações registadas ({dias_periodo} dias)", COLORS["warning"], "periodo-interacoes"),
-            ], f"Sem registos diários no intervalo selecionado ({dias_periodo} dias)."
-        values = {}
-        for column, key in (("impressoes", "views"), ("alcance", "reach"), ("interacoes", "interactions")):
-            series = pd.to_numeric(frame[column], errors="coerce") if column in frame.columns else pd.Series(dtype="float64")
-            values[key] = series.sum(min_count=1)
-        fmt = lambda value: numero(int(value)) if pd.notna(value) else "N/D"
-        cards = [
-            criar_kpi(fmt(values["views"]), f"Views registadas ({dias_periodo} dias)", COLORS["primary"], "periodo-views"),
-            criar_kpi(fmt(values["reach"]), f"Alcance diário acumulado ({dias_periodo} dias)", COLORS["success"], "periodo-reach"),
-            criar_kpi(fmt(values["interactions"]), f"Interações registadas ({dias_periodo} dias)", COLORS["warning"], "periodo-interacoes"),
-        ]
-        available_days = frame["data"].dt.normalize().nunique()
-        note = f"Histórico encontrado: {available_days} dia(s) com registos no intervalo pedido de {dias_periodo} dias. Views e interações são somas dos registos disponíveis; alcance é a soma diária, não alcance único do período."
-        return cards, note
-
-    cards_historico, nota_historico = cards_periodo(dados_periodo)
+    snapshot_periodo = (
+        carregar_insights_periodo(dias_periodo)
+        if plataforma_atual.lower().startswith("instagram")
+        else {"reach": None, "views": None, "interactions": None, "snapshot_date": None}
+    )
+    def fmt_periodo(value):
+        return numero(value) if value is not None else "N/D"
+    cards_historico = [
+        criar_kpi(fmt_periodo(snapshot_periodo["views"]), f"Visualizações oficiais ({dias_periodo} dias)", COLORS["primary"], "periodo-views"),
+        criar_kpi(fmt_periodo(snapshot_periodo["reach"]), f"Alcance único oficial ({dias_periodo} dias)", COLORS["success"], "periodo-reach"),
+        criar_kpi(fmt_periodo(snapshot_periodo["interactions"]), f"Interações oficiais ({dias_periodo} dias)", COLORS["warning"], "periodo-interacoes"),
+    ]
+    if snapshot_periodo["snapshot_date"]:
+        nota_historico = (
+            f"Totais agregados da API oficial para a janela de {dias_periodo} dias. "
+            f"Última sincronização: {snapshot_periodo['snapshot_date']}. "
+            "Os valores não são somados a partir dos registos diários."
+        )
+    else:
+        nota_historico = (
+            f"A API ainda não devolveu totais agregados válidos para a janela de {dias_periodo} dias. "
+            "Os valores permanecem N/D até à próxima sincronização; não são estimados."
+        )
 
     reels = carregar_insights_reels(dias_periodo) if plataforma_atual == "Instagram" else {
         "views": None, "reach": None, "interactions": None, "snapshot_date": None
