@@ -162,7 +162,16 @@ def calcular_score(df):
     if dados.empty:
         return 0
 
-    dados_validos = dados.loc[dados["alcance"] > 0].copy()
+    # Manter o Score IA no mesmo horizonte temporal do KPI de interação:
+    # últimos 28 dias em relação à data mais recente disponível.
+    if "data" in dados.columns and dados["data"].notna().any():
+        data_fim = dados["data"].max()
+        data_inicio = data_fim - pd.Timedelta(days=27)
+        dados = dados.loc[dados["data"].between(data_inicio, data_fim)].copy()
+
+    dados_validos = dados.loc[
+        (dados["alcance"] > 0) & dados["engajamento"].notna()
+    ].copy()
     dias_validos = (
         dados_validos["data"].dt.date.nunique()
         if "data" in dados_validos.columns
