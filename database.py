@@ -244,6 +244,30 @@ def create_tables():
 
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS instagram_reels_period_snapshots (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    social_account_id UUID NOT NULL
+                        REFERENCES social_accounts(id) ON DELETE CASCADE,
+                    period_days INTEGER NOT NULL CHECK (period_days IN (7, 14, 30, 60)),
+                    snapshot_date DATE NOT NULL,
+                    views INTEGER,
+                    reach INTEGER,
+                    interactions INTEGER,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE (social_account_id, period_days, snapshot_date)
+                );
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_instagram_reels_period_latest
+                ON instagram_reels_period_snapshots(social_account_id, period_days, snapshot_date DESC);
+                """
+            )
+
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS
                 idx_daily_metrics_date
                 ON daily_metrics(report_date);
