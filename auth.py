@@ -1023,7 +1023,16 @@ def setup_auth(server: Flask):
             days_left=access.get("days_left", 0),
             expired=not access.get("allowed", False),
             plans=PLANS,
-            paypal_ready=(os.getenv("PAYMENT_AUTOMATION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"} and all(os.getenv(k, "").strip() for k in ("PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_PLAN_STARTER_ID", "PAYPAL_PLAN_PRO_ID", "PAYPAL_PLAN_BUSINESS_ID"))),
+            paypal_ready=(
+                all(os.getenv(k, "").strip() for k in ("PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_PLAN_STARTER_ID", "PAYPAL_PLAN_PRO_ID", "PAYPAL_PLAN_BUSINESS_ID"))
+                and (
+                    os.getenv("PAYMENT_AUTOMATION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+                    or (
+                        os.getenv("PAYPAL_CHECKOUT_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+                        and os.getenv("PAYPAL_MODE", "sandbox").strip().lower() == "sandbox"
+                    )
+                )
+            ),
         )
 
     @server.after_request
