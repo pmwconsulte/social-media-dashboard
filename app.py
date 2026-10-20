@@ -399,6 +399,17 @@ def calcular_kpis(dados):
     historico_seguidores = dados[["data", "seguidores"]].dropna(
         subset=["data", "seguidores"]
     ).drop_duplicates(subset=["data"], keep="last").sort_values("data")
+
+    # O KPI de crescimento deve usar o mesmo horizonte temporal de 28 dias
+    # dos Insights. A janela é relativa à data mais recente disponível no
+    # histórico, não à data do servidor, para evitar comparar períodos sem dados.
+    if not historico_seguidores.empty:
+        data_fim = historico_seguidores["data"].max()
+        data_inicio = data_fim - pd.Timedelta(days=27)
+        historico_seguidores = historico_seguidores.loc[
+            historico_seguidores["data"].between(data_inicio, data_fim)
+        ].sort_values("data")
+
     if (
         historico_seguidores["data"].nunique() >= 2
         and float(historico_seguidores["seguidores"].iloc[0]) > 0
