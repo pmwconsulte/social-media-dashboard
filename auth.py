@@ -187,6 +187,101 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
     )
     return None
 
+def _read_instagram_reels_breakdown(ig_id, access_token, metric, since, until):
+    """Lê o total oficial da métrica apenas para media_product_type=REELS."""
+    api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+    try:
+        response = requests.get(
+            f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
+            params={
+                "metric": metric, "period": "day", "metric_type": "total_value",
+                "breakdown": "media_product_type", "since": int(since),
+                "until": int(until), "access_token": access_token,
+            },
+            timeout=20,
+        )
+        if not response.ok:
+            try:
+                error = response.json().get("error", {})
+                print(f"[INSTAGRAM REELS] {metric} indisponível HTTP={response.status_code} code={error.get('code')} motivo={str(error.get('message', ''))[:140]}")
+            except (ValueError, AttributeError):
+                print(f"[INSTAGRAM REELS] {metric} indisponível HTTP={response.status_code}.")
+            return None
+        payload = response.json()
+    except (requests.RequestException, ValueError) as erro:
+        print(f"[INSTAGRAM REELS] Falha em {metric}: {type(erro).__name__}.")
+        return None
+
+    def find_reels_value(node):
+        if isinstance(node, dict):
+            dims = node.get("dimension_values") or node.get("dimension_keys") or []
+            value = node.get("value")
+            if isinstance(dims, list) and any(str(dim).upper() in {"REELS", "REEL"} for dim in dims) and isinstance(value, (int, float)):
+                return value
+            if str(node.get("dimension_value", "")).upper() in {"REELS", "REEL"} and isinstance(value, (int, float)):
+                return value
+            for child in node.values():
+                found = find_reels_value(child)
+                if found is not None:
+                    return found
+        elif isinstance(node, list):
+            for child in node:
+                found = find_reels_value(child)
+                if found is not None:
+                    return found
+        return None
+
+    value = find_reels_value(payload.get("data", []))
+    if value is None:
+        print(f"[INSTAGRAM REELS] A API não devolveu valor REELS para {metric}.")
+        return None
+    return int(value)
+
+
+def _sync_instagram_reels_periods(social_account_id, ig_id, access_token):
+    """Guarda totais oficiais de Reels para janelas móveis de 7/14/30/60 dias."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    until = int(now.timestamp())
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            for days in (7, 14, 30, 60):
+                since = int((now - timedelta(days=days)).timestamp())
+                metrics = {
+                    metric: _read_instagram_reels_breakdown(ig_id, access_token, metric, since, until)
+                    for metric in ("views", "reach", "total_interactions")
+                }
+                if not any(value is not None for value in metrics.values()):
+                    continue
+                cur.execute(
+                    """
+                    INSERT INTO instagram_reels_period_snapshots
+                        (social_account_id, period_days, snapshot_date, views, reach, interactions)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (social_account_id, period_days, snapshot_date) DO UPDATE SET
+                        views = COALESCE(EXCLUDED.views, instagram_reels_period_snapshots.views),
+                        reach = COALESCE(EXCLUDED.reach, instagram_reels_period_snapshots.reach),
+                        interactions = COALESCE(EXCLUDED.interactions, instagram_reels_period_snapshots.interactions),
+                        created_at = NOW()
+                    """,
+                    (social_account_id, days, now.date(), metrics["views"], metrics["reach"], metrics["total_interactions"]),
+                )
+        conn.commit()
+        print(f"[INSTAGRAM REELS] Snapshots por período atualizados para a conta {social_account_id}.")
+        return True
+    except Exception as erro:
+        if conn:
+            conn.rollback()
+        print(f"[INSTAGRAM REELS ERROR] Não foi possível guardar snapshots: {type(erro).__name__}: {erro}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     """Guarda métricas válidas da conta, sem inventar valores indisponíveis."""
     from datetime import datetime, timedelta, timezone
@@ -286,6 +381,9 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
         f"reach={reach_28d!r}, views={views_28d!r}, "
         f"total_interactions={interactions_28d!r}."
     )
+
+    # Consultar métricas de Reels separadamente dos totais gerais da conta.
+    _sync_instagram_reels_periods(social_account_id, ig_id, access_token)
 
     available_values = (
         reach_value,
