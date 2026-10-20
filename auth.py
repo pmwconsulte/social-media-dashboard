@@ -203,7 +203,7 @@ def _sync_instagram_period_snapshots(social_account_id, ig_id, access_token):
                 metrics = {
                     metric: _read_instagram_insight(
                         ig_id, access_token, metric,
-                        metric_type="total_value", period="day",
+                        metric_type="total_value", period="total_over_range",
                         since=since, until=until,
                     )
                     for metric in ("reach", "views", "total_interactions")
@@ -248,7 +248,7 @@ def _read_instagram_reels_breakdown(ig_id, access_token, metric, since, until):
         response = requests.get(
             f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
             params={
-                "metric": metric, "period": "day", "metric_type": "total_value",
+                "metric": metric, "period": "total_over_range", "metric_type": "total_value",
                 "breakdown": "media_product_type", "since": int(since),
                 "until": int(until), "access_token": access_token,
             },
@@ -266,21 +266,26 @@ def _read_instagram_reels_breakdown(ig_id, access_token, metric, since, until):
         print(f"[INSTAGRAM REELS] Falha em {metric}: {type(erro).__name__}.")
         return None
 
-    def find_reels_value(node):
+    def find_reels_value(node, reels_context=False):
         if isinstance(node, dict):
             dims = node.get("dimension_values") or node.get("dimension_keys") or []
+            dim_value = str(node.get("dimension_value", "")).upper()
+            is_reels = reels_context or dim_value in {"REELS", "REEL"} or (
+                isinstance(dims, list) and any(str(dim).upper() in {"REELS", "REEL"} for dim in dims)
+            )
             value = node.get("value")
-            if isinstance(dims, list) and any(str(dim).upper() in {"REELS", "REEL"} for dim in dims) and isinstance(value, (int, float)):
+            if is_reels and isinstance(value, (int, float)):
                 return value
-            if str(node.get("dimension_value", "")).upper() in {"REELS", "REEL"} and isinstance(value, (int, float)):
-                return value
-            for child in node.values():
-                found = find_reels_value(child)
+            total = node.get("total_value")
+            if is_reels and isinstance(total, dict) and isinstance(total.get("value"), (int, float)):
+                return total["value"]
+            for key, child in node.items():
+                found = find_reels_value(child, is_reels or str(key).upper() in {"REELS", "REEL"})
                 if found is not None:
                     return found
         elif isinstance(node, list):
             for child in node:
-                found = find_reels_value(child)
+                found = find_reels_value(child, reels_context)
                 if found is not None:
                     return found
         return None
