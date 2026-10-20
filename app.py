@@ -256,6 +256,7 @@ def carregar_dados():
             INNER JOIN workspaces w
                 ON w.id = sa.workspace_id
             WHERE w.slug = %s
+              AND COALESCE(sa.is_active, TRUE) = TRUE
             ORDER BY dm.report_date ASC
         """
         workspace_slug = (session.get("workspace_slug") if has_request_context() else None) or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
@@ -288,6 +289,7 @@ def carregar_insights_28d():
                 INNER JOIN social_accounts sa ON sa.id = m.social_account_id
                 INNER JOIN workspaces w ON w.id = sa.workspace_id
                 WHERE w.slug = %s
+                  AND COALESCE(sa.is_active, TRUE) = TRUE
                 ORDER BY m.social_account_id, m.snapshot_date DESC, m.created_at DESC
             ) latest
         """
@@ -410,8 +412,15 @@ def calcular_kpis(dados):
             historico_seguidores["data"].between(data_inicio, data_fim)
         ].sort_values("data")
 
+    # Exigir cobertura real de 28 dias antes de publicar o KPI de crescimento.
+    # Dois ou oito dias de dados não representam uma janela completa de 28 dias.
+    cobertura_dias = (
+        (historico_seguidores["data"].max() - historico_seguidores["data"].min()).days
+        if not historico_seguidores.empty else 0
+    )
     if (
         historico_seguidores["data"].nunique() >= 2
+        and cobertura_dias >= 27
         and float(historico_seguidores["seguidores"].iloc[0]) > 0
     ):
         inicial = float(historico_seguidores["seguidores"].iloc[0])
