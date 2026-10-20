@@ -294,15 +294,22 @@ def carregar_insights_28d():
         with conn.cursor() as cur:
             cur.execute(query, (workspace_slug,))
             row = cur.fetchone()
-        if not row:
-            return {"reach": None, "views": None, "interactions": None}
-        return {
-            "reach": int(row[0]) if row[0] is not None else None,
-            "views": int(row[1]) if row[1] is not None else None,
-            "interactions": int(row[2]) if row[2] is not None else None,
+        valores = {
+            "reach": int(row[0]) if row and row[0] is not None else None,
+            "views": int(row[1]) if row and row[1] is not None else None,
+            "interactions": int(row[2]) if row and row[2] is not None else None,
         }
+        print(
+            "[INSIGHTS 28D DEBUG] "
+            f"workspace={workspace_slug!r} valores={valores!r}"
+        )
+        return valores
     except Exception as erro:
-        print(f"[DATABASE] Não foi possível carregar Insights de 28 dias: {type(erro).__name__}")
+        print(
+            "[DATABASE] Não foi possível carregar Insights de 28 dias: "
+            f"{type(erro).__name__}: {erro}"
+        )
+        traceback.print_exc()
         return {"reach": None, "views": None, "interactions": None}
     finally:
         if conn:
