@@ -98,7 +98,7 @@ PUBLIC_HOME_PAGE = """<!doctype html>
   <style>
     :root{color-scheme:dark;--bg:#020617;--panel:#111827;--line:#263449;--text:#f8fafc;--muted:#a7b4c7;--blue:#38bdf8;--green:#22c55e}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#0c2344 0,var(--bg) 55%);color:var(--text);font-family:Inter,Arial,sans-serif;line-height:1.6}
-    a{color:inherit}.wrap{width:min(1120px,92%);margin:auto}.nav{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:22px 0}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:18px}.brand img{width:64px;height:64px;object-fit:cover;object-position:center;border-radius:12px;background:#fff;padding:0;flex:0 0 64px}.brand-copy{display:flex;flex-direction:column;gap:3px}.brand-slogan{display:block;max-width:270px;color:var(--muted);font-size:13px;line-height:1.35;font-weight:700}.navlinks{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.btn{display:inline-block;text-decoration:none;font-weight:700;padding:11px 17px;border-radius:10px;background:var(--blue);color:#06111f}.btn.secondary{background:transparent;border:1px solid #456078;color:var(--text)}
+    a{color:inherit}.wrap{width:min(1120px,92%);margin:auto}.nav{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:22px 0}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:18px}.brand img{width:64px;height:64px;object-fit:cover;object-position:center;border-radius:12px;background:#fff;padding:0;flex:0 0 64px}.brand-copy{display:flex;flex-direction:column;gap:3px}.brand-slogan{display:block;max-width:270px;color:var(--muted);font-size:13px;line-height:1.35;font-weight:700}.navlinks{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.btn{display:inline-block;text-decoration:none;font-weight:700;padding:11px 17px;border-radius:10px;background:var(--blue);color:#06111f}.btn.secondary{background:transparent;border:1px solid #456078;color:var(--text)}.btn:hover{filter:brightness(1.08);transform:translateY(-1px)}.btn:focus-visible,a:focus-visible{outline:3px solid #7dd3fc;outline-offset:3px}.trust-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:8px 0 24px}.trust-item{display:flex;gap:10px;align-items:flex-start;padding:15px;border:1px solid var(--line);border-radius:12px;background:rgba(15,23,42,.72)}.trust-item strong{display:block;font-size:14px}.trust-item span{display:block;color:var(--muted);font-size:13px;line-height:1.45}.microcopy{color:var(--muted);font-size:13px;max-width:680px;margin-top:14px}.step-number{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#0b2b45;color:var(--blue);font-weight:800}
     .hero{padding:72px 0 64px;max-width:850px}.eyebrow{color:var(--blue);font-weight:800;letter-spacing:.12em;font-size:12px;text-transform:uppercase}.hero h1{font-size:clamp(36px,6vw,64px);line-height:1.08;letter-spacing:-.04em;margin:18px 0}.hero p{font-size:19px;color:var(--muted);max-width:720px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
     .section{padding:42px 0}.section h2{font-size:clamp(26px,4vw,36px);margin:0 0 12px}.intro{color:var(--muted);max-width:760px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:24px}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:16px;padding:22px}.card h3{margin:8px 0}.card p{color:var(--muted);margin-bottom:0}.symbol{font-size:25px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:30px}.metric{padding:18px;border-radius:14px;background:#0b1730;border:1px solid #1d3554}.metric strong{display:block;color:var(--blue);font-size:21px}.metric span{color:var(--muted);font-size:13px}.cta{margin:45px 0;padding:30px;border-radius:18px;border:1px solid #1d4562;background:linear-gradient(120deg,#0c2440,#111827)}footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-size:13px}
     @media(max-width:600px){.nav{align-items:flex-start;flex-direction:column}.hero{padding:46px 0 35px}.hero p{font-size:17px}}
@@ -116,11 +116,17 @@ PUBLIC_HOME_PAGE = """<!doctype html>
 <main class="wrap">
   <section class="hero">
     <div class="eyebrow">Analytics • Métricas • Inteligência Artificial</div>
-    <h1>Transforme métricas de redes sociais em decisões mais informadas.</h1>
-    <p>Consulte indicadores de desempenho, acompanhe tendências e obtenha apoio para interpretar resultados num dashboard concebido para tornar a análise de redes sociais mais clara e prática.</p>
+    <h1>Acompanhe as suas redes sociais. Decida com inteligência.</h1>
+    <p>Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio — com indicadores claros e apoio de inteligência artificial.</p>
     <div class="actions">
       <a class="btn" href="/signup">Começar o trial de 30 dias</a>
       <a class="btn secondary" href="/login">Já tenho uma conta</a>
+    </div>
+    <p class="microcopy">Comece com uma visão mais clara do desempenho das suas redes sociais. Crie a sua conta e explore as funcionalidades disponíveis durante o período de experiência de 30 dias.</p>
+    <div class="trust-strip" aria-label="Benefícios e confiança">
+      <div class="trust-item"><span aria-hidden="true">🔎</span><div><strong>Visão clara</strong><span>Métricas organizadas para compreender o desempenho.</span></div></div>
+      <div class="trust-item"><span aria-hidden="true">🔐</span><div><strong>Acesso protegido</strong><span>As áreas privadas exigem autenticação.</span></div></div>
+      <div class="trust-item"><span aria-hidden="true">🔗</span><div><strong>Ligação autorizada</strong><span>Conecte contas através do fluxo oficial de autorização disponível.</span></div></div>
     </div>
     <div class="metrics" aria-label="Indicadores disponíveis">
       <div class="metric"><strong>Seguidores</strong><span>Evolução da audiência</span></div>
@@ -135,13 +141,23 @@ PUBLIC_HOME_PAGE = """<!doctype html>
     <div class="grid">
       <article class="card"><div class="symbol">📈</div><h3>Métricas num só lugar</h3><p>Visualize seguidores, alcance, impressões, visualizações do perfil, cliques e taxa de envolvimento quando esses dados estiverem disponíveis.</p></article>
       <article class="card"><div class="symbol">🤖</div><h3>Apoio de inteligência artificial</h3><p>Consulte alertas, recomendações e um relatório executivo gerados a partir dos dados disponíveis no dashboard.</p></article>
-      <article class="card"><div class="symbol">🔐</div><h3>Acesso protegido</h3><p>O dashboard e os dados da conta exigem autenticação. A ligação ao Instagram utiliza o fluxo oficial de autorização configurado no serviço.</p></article>
+      <article class="card"><div class="symbol">🔐</div><h3>Privacidade e controlo</h3><p>O acesso ao dashboard exige autenticação. A ligação ao Instagram é feita através do processo oficial de autorização; a PMW não precisa de receber a palavra-passe do Instagram. Os indicadores apresentados dependem das permissões concedidas e da disponibilidade da API.</p></article>
     </div>
   </section>
   <section class="cta">
-    <h2>Conheça melhor o desempenho das suas redes sociais.</h2>
-    <p class="intro">Crie uma conta para aceder ao dashboard. A disponibilidade dos indicadores depende dos dados e das integrações configuradas.</p>
-    <div class="actions"><a class="btn" href="/signup">Criar conta</a><a class="btn secondary" href="/login">Entrar no dashboard</a></div>
+    <h2>Experimente uma forma mais inteligente de acompanhar as suas redes sociais.</h2>
+    <p class="intro">Comece com o período de experiência de 30 dias e descubra como os indicadores, alertas e recomendações podem apoiar a sua análise. A disponibilidade de cada métrica depende da rede social, das permissões e dos dados recebidos.</p>
+    <div class="actions"><a class="btn" href="/signup">Experimentar gratuitamente por 30 dias</a><a class="btn secondary" href="/login">Já tenho uma conta</a></div>
+    <p class="microcopy">Sem promessas de resultados automáticos: a plataforma ajuda a interpretar dados para apoiar decisões mais informadas. Consulte os detalhes do plano antes de subscrever.</p>
+  </section>
+  <section class="section">
+    <h2>Como começar</h2>
+    <p class="intro">São três passos simples para começar a explorar a plataforma.</p>
+    <div class="grid">
+      <article class="card"><span class="step-number">1</span><h3>Crie a sua conta</h3><p>Registe-se para iniciar o período de experiência de 30 dias.</p></article>
+      <article class="card"><span class="step-number">2</span><h3>Ligue uma rede social</h3><p>Autorize a ligação através do fluxo oficial e conceda apenas as permissões solicitadas.</p></article>
+      <article class="card"><span class="step-number">3</span><h3>Explore os indicadores</h3><p>Consulte os dados disponíveis, acompanhe tendências e reveja as recomendações.</p></article>
+    </div>
   </section>
   <section class="section" id="contacto">
     <h2>Contacte a PMW Consultoria</h2>
