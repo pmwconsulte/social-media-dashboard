@@ -98,7 +98,7 @@ PUBLIC_HOME_PAGE = """<!doctype html>
   <style>
     :root{color-scheme:dark;--bg:#020617;--panel:#111827;--line:#263449;--text:#f8fafc;--muted:#a7b4c7;--blue:#38bdf8;--green:#22c55e}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#0c2344 0,var(--bg) 55%);color:var(--text);font-family:Inter,Arial,sans-serif;line-height:1.6}
-    a{color:inherit}.wrap{width:min(1120px,92%);margin:auto}.nav{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:22px 0}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:18px}.brand img{width:64px;height:64px;object-fit:cover;object-position:center;border-radius:12px;background:#fff;padding:0;flex:0 0 64px}.navlinks{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.btn{display:inline-block;text-decoration:none;font-weight:700;padding:11px 17px;border-radius:10px;background:var(--blue);color:#06111f}.btn.secondary{background:transparent;border:1px solid #456078;color:var(--text)}
+    a{color:inherit}.wrap{width:min(1120px,92%);margin:auto}.nav{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:22px 0}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:18px}.brand img{width:64px;height:64px;object-fit:cover;object-position:center;border-radius:12px;background:#fff;padding:0;flex:0 0 64px}.brand-copy{display:flex;flex-direction:column;gap:3px}.brand-slogan{display:block;max-width:270px;color:var(--muted);font-size:13px;line-height:1.35;font-weight:700}.navlinks{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.btn{display:inline-block;text-decoration:none;font-weight:700;padding:11px 17px;border-radius:10px;background:var(--blue);color:#06111f}.btn.secondary{background:transparent;border:1px solid #456078;color:var(--text)}
     .hero{padding:72px 0 64px;max-width:850px}.eyebrow{color:var(--blue);font-weight:800;letter-spacing:.12em;font-size:12px;text-transform:uppercase}.hero h1{font-size:clamp(36px,6vw,64px);line-height:1.08;letter-spacing:-.04em;margin:18px 0}.hero p{font-size:19px;color:var(--muted);max-width:720px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
     .section{padding:42px 0}.section h2{font-size:clamp(26px,4vw,36px);margin:0 0 12px}.intro{color:var(--muted);max-width:760px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:24px}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:16px;padding:22px}.card h3{margin:8px 0}.card p{color:var(--muted);margin-bottom:0}.symbol{font-size:25px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:30px}.metric{padding:18px;border-radius:14px;background:#0b1730;border:1px solid #1d3554}.metric strong{display:block;color:var(--blue);font-size:21px}.metric span{color:var(--muted);font-size:13px}.cta{margin:45px 0;padding:30px;border-radius:18px;border:1px solid #1d4562;background:linear-gradient(120deg,#0c2440,#111827)}footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-size:13px}
     @media(max-width:600px){.nav{align-items:flex-start;flex-direction:column}.hero{padding:46px 0 35px}.hero p{font-size:17px}}
@@ -106,7 +106,7 @@ PUBLIC_HOME_PAGE = """<!doctype html>
 </head>
 <body>
 <header class="wrap nav">
-  <div class="brand"><img src="/logo.png" alt="Logótipo PMW Consultoria"> <span>PMW Dashboard AI</span></div>
+  <div class="brand"><img src="/logo.png" alt="Símbolo PMW Consultoria"><span class="brand-copy"><span>PMW Dashboard AI</span><span class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</span></span></div>
   <nav class="navlinks" aria-label="Navegação principal">
     <a class="btn secondary" href="/login">Entrar</a>
     <a class="btn" href="/signup">Criar conta</a>
@@ -641,6 +641,18 @@ app.layout = html.Div(
                                         "objectFit": "cover", "objectPosition": "center", "borderRadius": "14px",
                                         "background": "white", "padding": "0",
                                         "margin": "0 auto 10px", "display": "block",
+                                    },
+                                ),
+html.P(
+                                    "Transforme os Seus Dados em Oportunidades de Negócio",
+                                    style={
+                                        "textAlign": "center",
+                                        "fontSize": "14px",
+                                        "lineHeight": "1.45",
+                                        "fontWeight": "700",
+                                        "color": COLORS["blue"],
+                                        "maxWidth": "380px",
+                                        "margin": "0 auto 12px",
                                     },
                                 ),
                                 html.H1(
