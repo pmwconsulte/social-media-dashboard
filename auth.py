@@ -655,14 +655,15 @@ SIGNUP_PAGE = """
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;background:#020617;color:#f8fafc}
 .card{width:min(92%,460px);padding:34px;border-radius:18px;background:#111827;border:1px solid #1e293b;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.brand-logo{display:block;width:104px;height:104px;object-fit:cover;object-position:center;margin:0 auto 16px;padding:0;border-radius:16px;background:#fff}
+.brand-logo{display:block;width:104px;height:104px;object-fit:cover;object-position:center;margin:0 auto 10px;padding:0;border-radius:16px;background:#fff}.brand-slogan{display:block;max-width:360px;margin:0 auto 22px;text-align:center;font-size:14px;line-height:1.45;font-weight:700;color:#38bdf8}
 h1{margin:0 0 8px;text-align:center}p{color:#94a3b8;text-align:center;margin-bottom:24px}
 label{display:block;margin:14px 0 7px;font-weight:600}input{width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#020617;color:#fff;outline:none}
 input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;border:0;border-radius:10px;background:#38bdf8;color:#020617;font-weight:700;cursor:pointer}
 .error{margin-top:16px;padding:10px;border-radius:8px;background:rgba(239,68,68,.12);color:#fca5a5;text-align:center}
 .link{display:block;text-align:center;margin-top:18px;color:#38bdf8;text-decoration:none}.footer{margin-top:22px;font-size:12px;color:#64748b;text-align:center}
 </style></head><body><main class="card">
-<img class="brand-logo" src="/logo.png" alt="Logótipo PMW Consultoria">
+<img class="brand-logo" src="/logo.png" alt="Símbolo PMW Consultoria">
+<p class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</p>
 <h1>🚀 Criar conta</h1><p>Comece o seu trial gratuito de 30 dias</p>
 <form method="post" action="/signup">
 <label for="name">Nome / Empresa</label><input id="name" name="name" type="text" autocomplete="name" required>
@@ -740,6 +741,8 @@ LOGIN_PAGE = """
             background: #fff;
             box-shadow: 0 8px 28px rgba(82,209,245,.2);
         }
+        .brand-logo-stack { display: flex; flex: 0 0 190px; flex-direction: column; align-items: center; gap: 8px; }
+        .brand-slogan { display: block; max-width: 190px; color: #38bdf8; font-size: 13px; line-height: 1.4; font-weight: 700; text-align: center; }
         .brand-name { display: block; font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
         .brand-sub { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
         .eyebrow {
@@ -869,7 +872,10 @@ LOGIN_PAGE = """
     <main class="page">
         <section class="intro-panel" aria-label="Apresentação da plataforma">
             <a class="brand" href="/login" aria-label="PMW Social Media Dashboard AI">
-                <img class="brand-mark" src="/logo.png" alt="Logótipo PMW Consultoria">
+                <span class="brand-logo-stack">
+                    <img class="brand-mark" src="/logo.png" alt="Símbolo PMW Consultoria">
+                    <span class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</span>
+                </span>
                 <span>
                     <span class="brand-name">PMW Dashboard AI</span>
                     <span class="brand-sub">Social Media Intelligence</span>
@@ -896,7 +902,10 @@ LOGIN_PAGE = """
 
         <section class="login-wrap" aria-labelledby="login-title">
             <a class="brand mobile-brand" href="/login" aria-label="PMW Social Media Dashboard AI">
-                <span class="brand-mark" aria-hidden="true">↗</span>
+                <span class="brand-logo-stack">
+                    <img class="brand-mark" src="/logo.png" alt="Símbolo PMW Consultoria">
+                    <span class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</span>
+                </span>
                 <span>
                     <span class="brand-name">PMW Dashboard AI</span>
                     <span class="brand-sub">Social Media Intelligence</span>
