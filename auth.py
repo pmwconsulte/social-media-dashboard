@@ -827,8 +827,8 @@ LOGIN_PAGE = """
             </div>
         </section>
         <section class="value-section" aria-label="Vantagens do PMW Dashboard AI">
-            <h2 class="value-heading">As suas redes sociais. Uma visão mais inteligente.</h2>
-            <p class="value-lead">Acompanhe o desempenho, compreenda as tendências e transforme os dados disponíveis em decisões mais informadas.</p>
+            <h2 class="value-heading">Acompanhe as suas redes sociais. Decida com inteligência.</h2>
+            <p class="value-lead">Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio.</p>
             <div class="feature-grid">
                 <article class="feature-card">
                     <span class="feature-icon" aria-hidden="true">↗</span>
