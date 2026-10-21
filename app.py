@@ -1207,23 +1207,24 @@ def atualizar(plataforma, periodo_insights):
 
     try:
         previsao = prever_crescimento(dados, dias=7)
-        datas = pd.date_range(
-            start=dados["data"].max() + pd.Timedelta(days=1),
-            periods=len(previsao),
-            freq="D",
-        )
-        fig4 = px.line(
-            x=datas,
-            y=previsao,
-            markers=True,
-            title=f"🤖 Previsão de Seguidores — {plataforma}",
-            labels={"x": "Data", "y": "Seguidores previstos"},
-        )
-        fig4.update_traces(
-            line={"width": 3, "dash": "dash"},
-            marker={"size": 8},
-        )
-        configurar_grafico(fig4)
+        if previsao:
+            datas = pd.date_range(
+                start=dados["data"].max() + pd.Timedelta(days=1),
+                periods=len(previsao),
+                freq="D",
+            )
+            fig4 = px.line(
+                x=datas,
+                y=previsao,
+                markers=True,
+                title=f"🤖 Previsão de Seguidores — {plataforma}",
+                labels={"x": "Data", "y": "Seguidores previstos"},
+            )
+            configurar_grafico(fig4)
+        else:
+            fig4 = grafico_sem_dados(
+                "🤖 Previsão indisponível — necessários pelo menos 7 dias distintos"
+            )
     except Exception as erro:
         print(f"[AI FORECAST ERROR] {erro}")
         fig4 = grafico_sem_dados("🤖 Previsão IA")

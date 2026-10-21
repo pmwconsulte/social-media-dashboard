@@ -173,13 +173,24 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         # Para consultas agregadas, usar primeiro o total agregado; para séries,
         # usar o último ponto temporal. Evita confundir os dois formatos.
         # Nunca usar o último ponto diário como substituto de um total agregado.
-        candidates = (
-            (total_value,)
-            if metric_type == "total_value"
-            else (last_value,)
-        )
+        if metric_type == "total_value":
+            # Preferir sempre o campo explicitamente agregado. Para a API que
+            # devolve total_over_range dentro de values, aceitar apenas uma
+            # única observação numérica, nunca somar nem escolher o último
+            # ponto de uma série diária como se fosse um total do período.
+            candidates = [total_value]
+            if (
+                total_value is None
+                and params.get("period") == "total_over_range"
+                and len(values) == 1
+                and isinstance(last_value, (int, float))
+            ):
+                candidates.append(last_value)
+        else:
+            candidates = [last_value]
+
         for value in candidates:
-            if isinstance(value, (int, float)):
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
                 return value
     print(
         f"[INSTAGRAM INSIGHTS DEBUG] metric={metric} "
@@ -217,9 +228,9 @@ def _sync_instagram_period_snapshots(social_account_id, ig_id, access_token):
                         (social_account_id, period_days, snapshot_date, reach, views, interactions)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (social_account_id, period_days, snapshot_date) DO UPDATE SET
-                        reach = EXCLUDED.reach,
-                        views = EXCLUDED.views,
-                        interactions = EXCLUDED.interactions,
+                        reach = COALESCE(EXCLUDED.reach, instagram_period_snapshots.reach),
+                        views = COALESCE(EXCLUDED.views, instagram_period_snapshots.views),
+                        interactions = COALESCE(EXCLUDED.interactions, instagram_period_snapshots.interactions),
                         created_at = NOW()
                     """,
                     (social_account_id, days, now.date(), metrics["reach"], metrics["views"], metrics["total_interactions"]),
