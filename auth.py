@@ -991,7 +991,7 @@ def _env_bool(name, default=True):
 ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Minha Conta — PMW Social Media Dashboard AI</title>
 <style>body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}.wrap{max-width:1050px;margin:35px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:24px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}label{display:block;margin:12px 0 7px;font-weight:600}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #334155;background:#020617;color:#fff;box-sizing:border-box}button,.btn{display:inline-block;padding:11px 16px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;text-decoration:none;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#172554;color:#7dd3fc;font-size:12px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #1e293b}</style></head><body><div class="wrap">
-<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
+<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p><form method="post" action="/social-accounts/sync" style="display:inline-block;margin:8px 0 0"><button type="submit" style="background:#22c55e;color:#052e16">🔄 Sincronizar métricas agora</button></form>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
 <div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
 <div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
 <div class="card" style="border:2px solid #a855f7;background:#111827">
@@ -1824,6 +1824,95 @@ def setup_auth(server: Flask):
         finally:
             if conn:
                 conn.close()
+
+
+    @server.post("/social-accounts/sync")
+    def sync_social_accounts():
+        """Sincroniza manualmente as contas ligadas ao workspace autenticado."""
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+
+        workspace_slug = session.get("workspace_slug")
+        conn = None
+        accounts = []
+        try:
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT sa.id, sa.platform, sa.username, sa.access_token
+                       FROM social_accounts sa
+                       JOIN workspaces w ON w.id = sa.workspace_id
+                       WHERE w.slug=%s
+                         AND sa.is_active=TRUE
+                         AND LOWER(COALESCE(sa.connection_status, ''))='connected'
+                         AND COALESCE(sa.access_token, '') <> ''
+                       ORDER BY sa.created_at ASC""",
+                    (workspace_slug,),
+                )
+                accounts = cur.fetchall()
+        except Exception as erro:
+            print(f"[SOCIAL SYNC] Não foi possível carregar as contas: {type(erro).__name__}.")
+            return redirect(url_for("account", error="Não foi possível carregar as contas para sincronização."))
+        finally:
+            if conn:
+                conn.close()
+
+        if not accounts:
+            return redirect(url_for("account", message="Não existem contas sociais ligadas e ativas para sincronizar."))
+
+        success_count = 0
+        failed_count = 0
+        for account_id, platform, username, encrypted_token in accounts:
+            try:
+                access_token = _token_cipher().decrypt(
+                    encrypted_token.encode("utf-8")
+                ).decode("utf-8")
+                normalized_platform = (platform or "").strip().lower()
+
+                if normalized_platform == "instagram":
+                    api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+                    response = requests.get(
+                        f"https://graph.instagram.com/{api_version}/me",
+                        params={"fields": "id,username", "access_token": access_token},
+                        timeout=15,
+                    )
+                    if not response.ok:
+                        print(f"[SOCIAL SYNC] Instagram conta={account_id}: /me HTTP={response.status_code}.")
+                        failed_count += 1
+                        continue
+                    ig_id = response.json().get("id")
+                    if not ig_id:
+                        print(f"[SOCIAL SYNC] Instagram conta={account_id}: API não devolveu ID.")
+                        failed_count += 1
+                        continue
+                    synced = _sync_instagram_metrics(account_id, str(ig_id), access_token)
+                elif normalized_platform == "facebook":
+                    # O callback guarda o ID da Página no campo username.
+                    synced = _sync_facebook_metrics(account_id, str(username), access_token)
+                else:
+                    print(f"[SOCIAL SYNC] Plataforma não suportada para sincronização: {platform!r}.")
+                    failed_count += 1
+                    continue
+
+                if synced:
+                    success_count += 1
+                else:
+                    failed_count += 1
+            except (InvalidToken, requests.RequestException, ValueError) as erro:
+                print(f"[SOCIAL SYNC] Falha na conta={account_id}: {type(erro).__name__}.")
+                failed_count += 1
+            except Exception as erro:
+                print(f"[SOCIAL SYNC] Erro na conta={account_id}: {type(erro).__name__}.")
+                failed_count += 1
+
+        print(f"[SOCIAL SYNC] Resultado workspace={workspace_slug!r}: sucesso={success_count}, falhas={failed_count}.")
+        if success_count and not failed_count:
+            message = f"Sincronização concluída: {success_count} conta(s) atualizada(s)."
+        elif success_count:
+            message = f"Sincronização parcial: {success_count} conta(s) atualizada(s), {failed_count} sem dados atualizados. Consulte os logs do Render."
+        else:
+            message = f"Sincronização executada, mas nenhuma conta devolveu métricas válidas ({failed_count} falha(s)). Consulte os logs do Render."
+        return redirect(url_for("account", message=message))
 
 
     @server.route("/account", methods=["GET", "POST"])
