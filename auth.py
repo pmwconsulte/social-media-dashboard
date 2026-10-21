@@ -655,12 +655,14 @@ SIGNUP_PAGE = """
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;background:#020617;color:#f8fafc}
 .card{width:min(92%,460px);padding:34px;border-radius:18px;background:#111827;border:1px solid #1e293b;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.brand-logo{display:block;width:76px;height:76px;object-fit:contain;margin:0 auto 16px;padding:4px;border-radius:14px;background:#fff}
 h1{margin:0 0 8px;text-align:center}p{color:#94a3b8;text-align:center;margin-bottom:24px}
 label{display:block;margin:14px 0 7px;font-weight:600}input{width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#020617;color:#fff;outline:none}
 input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;border:0;border-radius:10px;background:#38bdf8;color:#020617;font-weight:700;cursor:pointer}
 .error{margin-top:16px;padding:10px;border-radius:8px;background:rgba(239,68,68,.12);color:#fca5a5;text-align:center}
 .link{display:block;text-align:center;margin-top:18px;color:#38bdf8;text-decoration:none}.footer{margin-top:22px;font-size:12px;color:#64748b;text-align:center}
 </style></head><body><main class="card">
+<img class="brand-logo" src="/logo.png" alt="Logótipo PMW Consultoria">
 <h1>🚀 Criar conta</h1><p>Comece o seu trial gratuito de 30 dias</p>
 <form method="post" action="/signup">
 <label for="name">Nome / Empresa</label><input id="name" name="name" type="text" autocomplete="name" required>
@@ -728,14 +730,13 @@ LOGIN_PAGE = """
             text-decoration: none;
         }
         .brand-mark {
-            width: 44px;
-            height: 44px;
-            display: grid;
-            place-items: center;
-            border-radius: 14px;
-            color: #05121d;
-            font-size: 23px;
-            background: linear-gradient(135deg, var(--blue), #9cecff);
+            width: 48px;
+            height: 48px;
+            display: block;
+            object-fit: contain;
+            padding: 3px;
+            border-radius: 12px;
+            background: #fff;
             box-shadow: 0 8px 28px rgba(82,209,245,.2);
         }
         .brand-name { display: block; font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
@@ -867,7 +868,7 @@ LOGIN_PAGE = """
     <main class="page">
         <section class="intro-panel" aria-label="Apresentação da plataforma">
             <a class="brand" href="/login" aria-label="PMW Social Media Dashboard AI">
-                <span class="brand-mark" aria-hidden="true">↗</span>
+                <img class="brand-mark" src="/logo.png" alt="Logótipo PMW Consultoria">
                 <span>
                     <span class="brand-name">PMW Dashboard AI</span>
                     <span class="brand-sub">Social Media Intelligence</span>
