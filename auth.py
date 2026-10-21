@@ -655,7 +655,7 @@ SIGNUP_PAGE = """
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;background:#020617;color:#f8fafc}
 .card{width:min(92%,460px);padding:34px;border-radius:18px;background:#111827;border:1px solid #1e293b;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.brand-logo{display:block;width:104px;height:104px;object-fit:contain;margin:0 auto 16px;padding:2px;border-radius:16px;background:#fff;transform:scale(1.15);transform-origin:center}
+.brand-logo{display:block;width:104px;height:104px;object-fit:cover;object-position:center;margin:0 auto 16px;padding:0;border-radius:16px;background:#fff}
 h1{margin:0 0 8px;text-align:center}p{color:#94a3b8;text-align:center;margin-bottom:24px}
 label{display:block;margin:14px 0 7px;font-weight:600}input{width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#020617;color:#fff;outline:none}
 input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;border:0;border-radius:10px;background:#38bdf8;color:#020617;font-weight:700;cursor:pointer}
@@ -733,10 +733,9 @@ LOGIN_PAGE = """
             width: 72px;
             height: 72px;
             display: block;
-            object-fit: contain;
-            transform: scale(1.15);
-            transform-origin: center;
-            padding: 2px;
+            object-fit: cover;
+            object-position: center;
+            padding: 0;
             border-radius: 14px;
             background: #fff;
             box-shadow: 0 8px 28px rgba(82,209,245,.2);
