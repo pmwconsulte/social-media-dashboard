@@ -650,7 +650,7 @@ html.P(
                                         "fontSize": "14px",
                                         "lineHeight": "1.45",
                                         "fontWeight": "700",
-                                        "color": COLORS["blue"],
+                                        "color": COLORS["primary"],
                                         "maxWidth": "380px",
                                         "margin": "0 auto 12px",
                                     },
