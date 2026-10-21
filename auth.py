@@ -752,6 +752,21 @@ LOGIN_PAGE = """
         .signup a { color: #a7edff; font-weight: 800; text-decoration: none; }
         .signup a:hover { text-decoration: underline; }
         .security-note { display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 22px; color: #93a6bc; font-size: 11px; text-align: center; }
+        .login-content { width: 100%; max-width: 760px; }
+        .value-section { margin-top: 26px; }
+        .value-heading { margin: 0 0 7px; font-size: 19px; font-weight: 800; letter-spacing: -.025em; text-align: center; }
+        .value-lead { max-width: 620px; margin: 0 auto 18px; color: var(--muted); font-size: 13px; text-align: center; }
+        .feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .feature-card { min-width: 0; padding: 16px; border: 1px solid rgba(148,163,184,.18); border-radius: 13px; background: rgba(16,29,48,.72); }
+        .feature-icon { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(56,189,248,.08); color: var(--blue); font-size: 18px; }
+        .feature-title { margin: 0 0 5px; color: var(--text); font-size: 13px; font-weight: 800; }
+        .feature-copy { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+        @media (max-width: 620px) {
+            .feature-grid { grid-template-columns: 1fr; gap: 9px; }
+            .feature-card { display: grid; grid-template-columns: 34px minmax(0,1fr); column-gap: 12px; align-items: start; padding: 13px; }
+            .feature-icon { grid-row: span 2; margin-bottom: 0; }
+            .feature-title { margin-top: 1px; }
+        }
         .error {
             margin-top: 18px; padding: 12px 13px; border: 1px solid rgba(248,113,113,.25);
             border-radius: 10px; background: var(--danger-bg); color: var(--danger); font-size: 13px; overflow-wrap: anywhere;
@@ -785,6 +800,7 @@ LOGIN_PAGE = """
         </div>
     </header>
     <main>
+        <div class="login-content">
         <section class="login-wrap" aria-labelledby="login-title">
             <div class="login-card">
                 <p class="form-kicker">Bem-vindo de volta</p>
@@ -810,6 +826,28 @@ LOGIN_PAGE = """
                 <div class="security-note"><span aria-hidden="true">🔒</span> Acesso reservado a utilizadores autenticados</div>
             </div>
         </section>
+        <section class="value-section" aria-label="Vantagens do PMW Dashboard AI">
+            <h2 class="value-heading">As suas redes sociais. Uma visão mais inteligente.</h2>
+            <p class="value-lead">Acompanhe o desempenho, compreenda as tendências e transforme os dados disponíveis em decisões mais informadas.</p>
+            <div class="feature-grid">
+                <article class="feature-card">
+                    <span class="feature-icon" aria-hidden="true">↗</span>
+                    <h3 class="feature-title">Métricas organizadas</h3>
+                    <p class="feature-copy">Acompanhe seguidores, alcance e envolvimento num só espaço.</p>
+                </article>
+                <article class="feature-card">
+                    <span class="feature-icon" aria-hidden="true">✦</span>
+                    <h3 class="feature-title">Inteligência artificial</h3>
+                    <p class="feature-copy">Consulte alertas, recomendações e relatórios com base nos dados disponíveis.</p>
+                </article>
+                <article class="feature-card">
+                    <span class="feature-icon" aria-hidden="true">⌁</span>
+                    <h3 class="feature-title">Área de trabalho protegida</h3>
+                    <p class="feature-copy">Aceda ao dashboard e aos dados autorizados através da sua conta.</p>
+                </article>
+            </div>
+        </section>
+        </div>
     </main>
     <footer>© 2026 PMW Consultoria &amp; Tecnologia</footer>
 </body>
