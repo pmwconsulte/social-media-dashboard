@@ -629,54 +629,60 @@ app.layout = html.Div(
     [
         html.Div(
             [
+                # Marca compacta à esquerda: logótipo, nome e slogan legíveis.
                 html.Div(
                     [
+                        html.Img(
+                            src="/logo.png",
+                            alt="Logótipo PMW Consultoria",
+                            style={
+                                "width": "58px", "height": "58px",
+                                "objectFit": "cover", "objectPosition": "center",
+                                "borderRadius": "10px", "background": "white",
+                                "padding": "0", "flex": "0 0 58px",
+                            },
+                        ),
                         html.Div(
                             [
-                                html.Img(
-                                    src="/logo.png",
-                                    alt="Logótipo PMW Consultoria",
+                                html.Div(
+                                    "PMW Dashboard AI",
                                     style={
-                                        "width": "88px", "height": "88px",
-                                        "objectFit": "cover", "objectPosition": "center", "borderRadius": "14px",
-                                        "background": "white", "padding": "0",
-                                        "margin": "0 auto 10px", "display": "block",
+                                        "fontSize": "15px", "fontWeight": "700",
+                                        "color": "white", "lineHeight": "1.25",
                                     },
                                 ),
-html.P(
+                                html.Div(
+                                    "Analytics • Métricas • IA",
+                                    style={
+                                        "fontSize": "11px", "fontWeight": "600",
+                                        "color": COLORS["muted"], "marginTop": "3px",
+                                    },
+                                ),
+                                html.Div(
                                     "Transforme os Seus Dados em Oportunidades de Negócio",
                                     style={
-                                        "textAlign": "center",
-                                        "fontSize": "14px",
-                                        "lineHeight": "1.45",
-                                        "fontWeight": "700",
-                                        "color": COLORS["primary"],
-                                        "maxWidth": "380px",
-                                        "margin": "0 auto 12px",
-                                    },
-                                ),
-                                html.H1(
-                                    "PMW Social Media Dashboard AI",
-                                    style={
-                                        "textAlign": "center",
-                                        "fontSize": "clamp(26px, 4vw, 40px)",
-                                        "margin": "5px 0 10px",
-                                        "color": "white",
+                                        "fontSize": "11px", "lineHeight": "1.35",
+                                        "fontWeight": "600", "color": COLORS["primary"],
+                                        "maxWidth": "250px", "marginTop": "4px",
                                     },
                                 ),
                             ],
-                        ),
-                        html.P(
-                            "Social Media Analytics • Artificial Intelligence",
-                            style={
-                                "textAlign": "center",
-                                "color": COLORS["muted"],
-                                "fontSize": "15px",
-                                "marginBottom": "10px",
-                            },
+                            style={"display": "flex", "flexDirection": "column", "minWidth": "0"},
                         ),
                     ],
-                    style={"flex": "1"},
+                    style={
+                        "display": "flex", "alignItems": "center", "gap": "12px",
+                        "flex": "1 1 250px", "minWidth": "220px",
+                    },
+                ),
+                # Título principal à direita da marca.
+                html.H1(
+                    "PMW Dashboard",
+                    style={
+                        "fontSize": "clamp(21px, 2.5vw, 30px)",
+                        "textAlign": "right", "margin": "0",
+                        "color": "white", "flex": "0 1 auto",
+                    },
                 ),
                 html.Div(
                     [
@@ -724,17 +730,17 @@ html.P(
                         ),
                     ],
                     style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "gap": "10px",
+                        "display": "flex", "alignItems": "center",
+                        "justifyContent": "flex-end", "gap": "8px",
+                        "flex": "0 1 auto", "flexWrap": "wrap",
                     },
                 ),
             ],
             style={
-                "display": "flex",
-                "alignItems": "center",
-                "gap": "15px",
-                "marginBottom": "25px",
+                "display": "flex", "alignItems": "center",
+                "justifyContent": "space-between", "gap": "18px",
+                "flexWrap": "wrap", "marginBottom": "25px",
+                "width": "100%",
             },
         ),
 
