@@ -89,7 +89,7 @@ def _facebook_authorize_url(state):
         "client_id": app_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "pages_show_list,pages_read_engagement,read_insights",
+        "scope": "pages_show_list,pages_read_engagement",
         "state": state,
     }
     return "https://www.facebook.com/v25.0/dialog/oauth?" + urlencode(params)
