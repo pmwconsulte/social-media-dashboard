@@ -682,7 +682,7 @@ LOGIN_PAGE = """
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Entrar — PMW Social Media Dashboard AI</title>
+    <title>Entrar — PMW Dashboard AI</title>
     <meta name="robots" content="noindex, nofollow, noarchive">
     <meta name="theme-color" content="#07111f">
     <style>
@@ -690,231 +690,106 @@ LOGIN_PAGE = """
             color-scheme: dark;
             --bg: #07111f;
             --panel: #101d30;
-            --panel-soft: #13243a;
-            --line: #2a3b52;
+            --line: #263b54;
             --text: #f4f8ff;
             --muted: #a6b6ca;
-            --blue: #52d1f5;
-            --blue-strong: #19b8e5;
-            --violet: #9b8cff;
+            --blue: #38bdf8;
             --danger-bg: rgba(248, 113, 113, .12);
             --danger: #fecaca;
         }
         * { box-sizing: border-box; }
         body {
-            margin: 0;
-            min-height: 100vh;
-            color: var(--text);
-            background:
-                radial-gradient(ellipse at 12% 10%, rgba(25,184,229,.16), transparent 38%),
-                radial-gradient(ellipse at 88% 85%, rgba(155,140,255,.14), transparent 35%),
-                var(--bg);
+            margin: 0; min-height: 100vh; color: var(--text);
+            background: radial-gradient(ellipse at 50% 0%, rgba(56,189,248,.12), transparent 42%), var(--bg);
             font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-            line-height: 1.5;
+            line-height: 1.5; display: flex; flex-direction: column;
         }
-        a { color: inherit; }
-        .page {
-            width: min(1180px, calc(100% - 40px));
-            min-height: 100vh;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: minmax(0, 1.08fr) minmax(340px, .92fr);
-            align-items: center;
-            gap: clamp(36px, 7vw, 92px);
-            padding: 42px 0;
+        .topbar {
+            width: 100%; border-bottom: 1px solid rgba(148,163,184,.14);
+            background: rgba(7,17,31,.82);
         }
-        .brand {
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 56px;
-            text-decoration: none;
+        .topbar-inner {
+            width: min(1120px, calc(100% - 40px)); min-height: 92px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between; gap: 24px;
         }
+        .brand { display: flex; align-items: center; gap: 13px; min-width: 0; text-decoration: none; }
         .brand-mark {
-            width: 72px;
-            height: 72px;
-            display: block;
-            object-fit: cover;
-            object-position: center;
-            padding: 0;
-            border-radius: 14px;
-            background: #fff;
-            box-shadow: 0 8px 28px rgba(82,209,245,.2);
+            width: 58px; height: 58px; flex: 0 0 58px; object-fit: cover; object-position: center;
+            border-radius: 10px; background: #fff;
         }
-        .brand-logo-stack { display: flex; flex: 0 0 190px; flex-direction: column; align-items: center; gap: 8px; }
-        .brand-slogan { display: block; max-width: 190px; color: #38bdf8; font-size: 13px; line-height: 1.4; font-weight: 700; text-align: center; }
-        .brand-name { display: block; font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
-        .brand-sub { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
-        .eyebrow {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 7px 11px;
-            border: 1px solid rgba(82,209,245,.25);
-            border-radius: 999px;
-            background: rgba(82,209,245,.07);
-            color: #a6ecff;
-            font-size: 12px;
-            font-weight: 750;
-            letter-spacing: .06em;
-            text-transform: uppercase;
-        }
-        .eyebrow-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
-        h1 {
-            max-width: 650px;
-            margin: 22px 0 18px;
-            font-size: clamp(36px, 4.6vw, 60px);
-            line-height: 1.06;
-            letter-spacing: -.055em;
-        }
-        .gradient-text {
-            color: var(--blue);
-            background: linear-gradient(90deg, var(--blue), #b6aaff);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .lead { max-width: 540px; color: var(--muted); font-size: 17px; }
-        .feature-list { display: grid; gap: 14px; margin: 32px 0 0; padding: 0; list-style: none; }
-        .feature { display: flex; align-items: flex-start; gap: 12px; color: #dbe8f7; font-size: 14px; }
-        .feature-icon {
-            flex: 0 0 34px;
-            width: 34px;
-            height: 34px;
-            display: grid;
-            place-items: center;
-            border: 1px solid var(--line);
-            border-radius: 11px;
-            background: rgba(19,36,58,.8);
-        }
-        .feature strong { display: block; margin-bottom: 2px; font-size: 14px; }
-        .feature span:last-child { color: var(--muted); }
-        .login-wrap { width: 100%; max-width: 440px; justify-self: end; }
+        .brand-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+        .brand-name { font-size: 16px; font-weight: 800; letter-spacing: -.02em; line-height: 1.25; }
+        .brand-sub { color: var(--muted); font-size: 11px; font-weight: 600; }
+        .brand-slogan { color: var(--blue); font-size: 11px; font-weight: 650; line-height: 1.35; }
+        .top-label { color: var(--muted); font-size: 13px; white-space: nowrap; }
+        main { flex: 1; display: grid; place-items: center; padding: 48px 20px 56px; }
+        .login-wrap { width: 100%; max-width: 430px; }
         .login-card {
-            padding: clamp(25px, 4vw, 38px);
-            border: 1px solid rgba(151,174,202,.2);
-            border-radius: 24px;
-            background: linear-gradient(160deg, rgba(19,36,58,.97), rgba(12,25,42,.98));
-            box-shadow: 0 28px 90px rgba(0,0,0,.32);
+            padding: clamp(26px, 5vw, 38px); border: 1px solid rgba(148,163,184,.2);
+            border-radius: 18px; background: linear-gradient(160deg, rgba(19,36,58,.98), rgba(12,25,42,.98));
+            box-shadow: 0 24px 70px rgba(0,0,0,.28);
         }
-        .mobile-brand { display: none; }
-        .form-kicker { margin: 0 0 7px; color: var(--blue); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-        h2 { margin: 0; font-size: 29px; line-height: 1.2; letter-spacing: -.035em; }
+        .form-kicker { margin: 0 0 7px; color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+        h1 { margin: 0; font-size: clamp(26px, 4vw, 31px); line-height: 1.2; letter-spacing: -.035em; }
         .form-intro { margin: 10px 0 26px; color: var(--muted); font-size: 14px; }
         .field { margin-top: 18px; }
         label { display: block; margin-bottom: 8px; color: #e6eef9; font-size: 13px; font-weight: 700; }
         input {
-            display: block;
-            width: 100%;
-            min-height: 49px;
-            padding: 13px 14px;
-            border: 1px solid #354960;
-            border-radius: 11px;
-            outline: none;
-            background: #081423;
-            color: var(--text);
-            font: inherit;
-            font-size: 14px;
-            transition: border-color .15s ease, box-shadow .15s ease;
+            display: block; width: 100%; min-height: 49px; padding: 13px 14px;
+            border: 1px solid #354960; border-radius: 10px; outline: none;
+            background: #081423; color: var(--text); font: inherit; font-size: 14px;
         }
         input::placeholder { color: #71849b; }
-        input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(82,209,245,.13); }
+        input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(56,189,248,.13); }
         .submit {
-            width: 100%;
-            min-height: 50px;
-            display: inline-flex;
-            justify-content: center;
-            align-items: center;
-            gap: 9px;
-            margin-top: 25px;
-            padding: 13px 16px;
-            border: 0;
-            border-radius: 11px;
-            background: linear-gradient(100deg, var(--blue), #8ce7ff);
-            color: #04121e;
-            font: inherit;
-            font-size: 14px;
-            font-weight: 850;
-            cursor: pointer;
-            box-shadow: 0 10px 26px rgba(25,184,229,.15);
+            width: 100%; min-height: 49px; display: inline-flex; justify-content: center; align-items: center; gap: 9px;
+            margin-top: 25px; padding: 13px 16px; border: 0; border-radius: 10px;
+            background: linear-gradient(100deg, #38bdf8, #8ce7ff); color: #04121e;
+            font: inherit; font-size: 14px; font-weight: 800; cursor: pointer;
         }
         .submit:hover { filter: brightness(1.04); }
-        .divider { display: flex; align-items: center; gap: 12px; margin: 23px 0 18px; color: #8294aa; font-size: 11px; }
-        .divider::before, .divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
-        .signup { text-align: center; color: var(--muted); font-size: 13px; }
+        .signup { margin-top: 22px; text-align: center; color: var(--muted); font-size: 13px; }
         .signup a { color: #a7edff; font-weight: 800; text-decoration: none; }
         .signup a:hover { text-decoration: underline; }
         .security-note { display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 22px; color: #93a6bc; font-size: 11px; text-align: center; }
         .error {
-            margin-top: 18px;
-            padding: 12px 13px;
-            border: 1px solid rgba(248,113,113,.25);
-            border-radius: 10px;
-            background: var(--danger-bg);
-            color: var(--danger);
-            font-size: 13px;
-            overflow-wrap: anywhere;
+            margin-top: 18px; padding: 12px 13px; border: 1px solid rgba(248,113,113,.25);
+            border-radius: 10px; background: var(--danger-bg); color: var(--danger); font-size: 13px; overflow-wrap: anywhere;
         }
-        .footer { margin-top: 22px; color: #71849b; font-size: 11px; text-align: center; }
-        @media (max-width: 800px) {
-            .page { width: min(520px, calc(100% - 32px)); grid-template-columns: 1fr; gap: 26px; padding: 24px 0 32px; }
-            .intro-panel { display: none; }
-            .login-wrap { max-width: none; }
-            .mobile-brand { display: flex; margin: 0 0 22px; }
-            .login-card { padding: clamp(24px, 7vw, 34px); border-radius: 20px; }
+        footer { padding: 0 20px 24px; color: #71849b; font-size: 11px; text-align: center; }
+        @media (max-width: 560px) {
+            .topbar-inner { width: calc(100% - 28px); min-height: 82px; gap: 12px; }
+            .brand-mark { width: 48px; height: 48px; flex-basis: 48px; }
+            .brand-name { font-size: 14px; }
+            .brand-sub { font-size: 10px; }
+            .brand-slogan { max-width: 230px; font-size: 10px; }
+            .top-label { display: none; }
+            main { padding: 32px 16px 40px; }
+            .login-card { border-radius: 15px; }
         }
-        @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
-        }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
     </style>
 </head>
 <body>
-    <main class="page">
-        <section class="intro-panel" aria-label="Apresentação da plataforma">
-            <a class="brand" href="/login" aria-label="PMW Social Media Dashboard AI">
-                <span class="brand-logo-stack">
-                    <img class="brand-mark" src="/logo.png" alt="Símbolo PMW Consultoria">
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a class="brand" href="/login" aria-label="PMW Dashboard AI">
+                <img class="brand-mark" src="/logo.png" alt="Logótipo PMW Consultoria">
+                <span class="brand-copy">
+                    <span class="brand-name">PMW Dashboard AI</span>
+                    <span class="brand-sub">Analytics · Métricas · IA</span>
                     <span class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</span>
                 </span>
-                <span>
-                    <span class="brand-name">PMW Dashboard AI</span>
-                    <span class="brand-sub">Social Media Intelligence</span>
-                </span>
             </a>
-            <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> Analytics · Métricas · IA</div>
-            <h1>As suas redes sociais.<br><span class="gradient-text">Uma visão mais inteligente.</span></h1>
-            <p class="lead">Acompanhe o desempenho, compreenda as tendências e transforme os dados disponíveis em decisões mais informadas.</p>
-            <ul class="feature-list">
-                <li class="feature">
-                    <span class="feature-icon" aria-hidden="true">↗</span>
-                    <span><strong>Métricas organizadas</strong><span>Acompanhe seguidores, alcance e envolvimento num só espaço.</span></span>
-                </li>
-                <li class="feature">
-                    <span class="feature-icon" aria-hidden="true">✦</span>
-                    <span><strong>Apoio de inteligência artificial</strong><span>Consulte alertas, recomendações e relatórios com base nos dados disponíveis.</span></span>
-                </li>
-                <li class="feature">
-                    <span class="feature-icon" aria-hidden="true">⌁</span>
-                    <span><strong>Área de trabalho protegida</strong><span>Entre na sua conta para consultar o dashboard e os dados autorizados.</span></span>
-                </li>
-            </ul>
-        </section>
-
+            <span class="top-label">Área segura de acesso</span>
+        </div>
+    </header>
+    <main>
         <section class="login-wrap" aria-labelledby="login-title">
-            <a class="brand mobile-brand" href="/login" aria-label="PMW Social Media Dashboard AI">
-                <span class="brand-logo-stack">
-                    <img class="brand-mark" src="/logo.png" alt="Símbolo PMW Consultoria">
-                    <span class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</span>
-                </span>
-                <span>
-                    <span class="brand-name">PMW Dashboard AI</span>
-                    <span class="brand-sub">Social Media Intelligence</span>
-                </span>
-            </a>
             <div class="login-card">
                 <p class="form-kicker">Bem-vindo de volta</p>
-                <h2 id="login-title">Entrar na plataforma</h2>
-                <p class="form-intro">Introduza as suas credenciais para continuar para o seu dashboard.</p>
+                <h1 id="login-title">Entrar na plataforma</h1>
+                <p class="form-intro">Introduza as suas credenciais para aceder ao seu dashboard.</p>
                 <form method="post" action="/login">
                     <div class="field">
                         <label for="username">Email ou nome de utilizador</label>
@@ -931,13 +806,12 @@ LOGIN_PAGE = """
                 {% if error %}
                 <div class="error" role="alert">{{ error }}</div>
                 {% endif %}
-                <div class="divider">NOVO NA PMW?</div>
-                <div class="signup">Crie a sua conta e conheça o <a href="/signup">trial de 30 dias</a>.</div>
+                <div class="signup">Ainda não tem conta? <a href="/signup">Experimente gratuitamente durante 30 dias</a>.</div>
                 <div class="security-note"><span aria-hidden="true">🔒</span> Acesso reservado a utilizadores autenticados</div>
             </div>
-            <div class="footer">© 2026 PMW Consultoria &amp; Tecnologia</div>
         </section>
     </main>
+    <footer>© 2026 PMW Consultoria &amp; Tecnologia</footer>
 </body>
 </html>
 """
