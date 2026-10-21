@@ -172,7 +172,7 @@ PUBLIC_HOME_PAGE = """<!doctype html>
         <div class="symbol">☎️</div>
         <h3>Telefone / WhatsApp</h3>
         <p><a href="tel:+258849550202">+258 84 955 0202</a></p>
-        <div class="actions"><a class="btn" href="https://wa.me/258823002555" target="_blank" rel="noopener noreferrer">Contactar pelo WhatsApp</a></div>
+        <div class="actions"><a class="btn" href="https://wa.me/258849550202" target="_blank" rel="noopener noreferrer">Contactar pelo WhatsApp</a></div>
       </article>
       <article class="card">
         <div class="symbol">📍</div>
