@@ -670,9 +670,11 @@ input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;
 <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
 <label for="confirm_password">Confirmar password</label><input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" minlength="8" required>
-<button type="submit">Criar conta</button></form>
+<button type="submit">Continuar → Criar conta</button></form>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
-<a class="link" href="/login">Já tenho uma conta — Entrar</a><div class="footer">PMW Consultoria & Tecnologia</div>
+<a class="link" href="/login">Já tenho uma conta — Continuar para entrar</a>
+<a class="link" href="/home" style="margin-top:10px;color:#cbd5e1">← Voltar à página inicial</a>
+<div class="footer">PMW Consultoria & Tecnologia</div>
 </main></body></html>
 """
 
@@ -721,7 +723,11 @@ LOGIN_PAGE = """
         .brand-name { font-size: 16px; font-weight: 800; letter-spacing: -.02em; line-height: 1.25; }
         .brand-sub { color: var(--muted); font-size: 11px; font-weight: 600; }
         .brand-slogan { color: var(--blue); font-size: 11px; font-weight: 650; line-height: 1.35; }
-        .top-label { color: var(--muted); font-size: 13px; white-space: nowrap; }
+        .top-navigation { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+        .nav-link { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:9px 13px; border:1px solid #354960; border-radius:9px; color:var(--text); text-decoration:none; font-size:13px; font-weight:750; }
+        .nav-primary { background:var(--blue); border-color:var(--blue); color:#04121e; }
+        .nav-link:hover { filter:brightness(1.08); }
+        .nav-link:focus-visible { outline:3px solid #7dd3fc; outline-offset:3px; }
         main { flex: 1; display: grid; place-items: center; padding: 48px 20px 56px; }
         .login-wrap { width: 100%; max-width: 430px; }
         .login-card {
@@ -749,6 +755,11 @@ LOGIN_PAGE = """
         }
         .submit:hover { filter: brightness(1.04); }
         .signup { margin-top: 22px; text-align: center; color: var(--muted); font-size: 13px; }
+        @media (max-width: 640px) {
+            .topbar-inner { width: calc(100% - 28px); padding:12px 0; align-items:flex-start; flex-direction:column; gap:12px; }
+            .top-navigation { width:100%; justify-content:stretch; }
+            .top-navigation .nav-link { flex:1 1 auto; text-align:center; }
+        }
         .signup a { color: #a7edff; font-weight: 800; text-decoration: none; }
         .signup a:hover { text-decoration: underline; }
         .security-note { display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 22px; color: #93a6bc; font-size: 11px; text-align: center; }
@@ -796,7 +807,10 @@ LOGIN_PAGE = """
                     <span class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</span>
                 </span>
             </a>
-            <span class="top-label">Área segura de acesso</span>
+            <nav class="top-navigation" aria-label="Navegação de acesso">
+                <a href="/home" class="nav-link">← Voltar à página inicial</a>
+                <a href="/signup" class="nav-link nav-primary">Criar conta / Continuar</a>
+            </nav>
         </div>
     </header>
     <main>
