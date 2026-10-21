@@ -70,6 +70,118 @@ def _instagram_authorize_url(state):
     return "https://www.instagram.com/oauth/authorize?" + urlencode(params)
 
 
+def _facebook_oauth_configured():
+    """Facebook Login usa as credenciais da app Meta e callback próprios."""
+    app_id = os.getenv("FACEBOOK_APP_ID", "").strip() or os.getenv("INSTAGRAM_APP_ID", "").strip()
+    app_secret = os.getenv("FACEBOOK_APP_SECRET", "").strip() or os.getenv("INSTAGRAM_APP_SECRET", "").strip()
+    redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
+    return bool(app_id and app_secret and redirect_uri and os.getenv("OAUTH_TOKEN_ENCRYPTION_KEY", "").strip())
+
+
+def _facebook_authorize_url(state):
+    from urllib.parse import urlencode
+
+    app_id = os.getenv("FACEBOOK_APP_ID", "").strip() or os.getenv("INSTAGRAM_APP_ID", "").strip()
+    redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
+    if not app_id or not redirect_uri:
+        raise RuntimeError("Configure o App ID Meta e FACEBOOK_OAUTH_REDIRECT_URI.")
+    params = {
+        "client_id": app_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "pages_show_list,pages_read_engagement,read_insights",
+        "state": state,
+    }
+    return "https://www.facebook.com/v25.0/dialog/oauth?" + urlencode(params)
+
+
+def _sync_facebook_metrics(social_account_id, page_id, page_token):
+    """Guarda apenas métricas reais devolvidas pela Facebook Pages API."""
+    from datetime import datetime, timezone
+
+    version = os.getenv("FACEBOOK_GRAPH_API_VERSION", "v25.0").strip()
+    values = {"followers": None, "impressions": None, "interactions_count": None}
+    try:
+        response = requests.get(
+            f"https://graph.facebook.com/{version}/{page_id}",
+            params={"fields": "followers_count", "access_token": page_token},
+            timeout=15,
+        )
+        if response.ok:
+            count = response.json().get("followers_count")
+            if isinstance(count, (int, float)):
+                values["followers"] = int(count)
+        else:
+            print(f"[FACEBOOK INSIGHTS] followers_count indisponível HTTP={response.status_code}.")
+    except (requests.RequestException, ValueError) as erro:
+        print(f"[FACEBOOK INSIGHTS] Falha ao obter seguidores: {type(erro).__name__}.")
+
+    # Métricas independentes: uma indisponível não impede as restantes.
+    for metric, column in (
+        ("page_media_view", "impressions"),
+        ("page_post_engagements", "interactions_count"),
+    ):
+        try:
+            response = requests.get(
+                f"https://graph.facebook.com/{version}/{page_id}/insights",
+                params={"metric": metric, "period": "day", "access_token": page_token},
+                timeout=15,
+            )
+            if not response.ok:
+                print(f"[FACEBOOK INSIGHTS] {metric} indisponível HTTP={response.status_code}.")
+                continue
+            items = response.json().get("data", [])
+            for item in items:
+                points = item.get("values") or []
+                if points and isinstance(points[-1].get("value"), (int, float)):
+                    values[column] = int(points[-1]["value"])
+                    break
+        except (requests.RequestException, ValueError, AttributeError) as erro:
+            print(f"[FACEBOOK INSIGHTS] Falha em {metric}: {type(erro).__name__}.")
+
+    if all(value is None for value in values.values()):
+        print(f"[FACEBOOK INSIGHTS] Nenhuma métrica disponível para a página {page_id}.")
+        return False
+
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO daily_metrics
+                       (social_account_id, report_date, followers, impressions, interactions_count,
+                        reach, engagement_rate, profile_views, website_clicks)
+                   VALUES (%s, %s, %s, %s, %s, NULL, NULL, NULL, NULL)
+                   ON CONFLICT (social_account_id, report_date) DO UPDATE SET
+                       followers = COALESCE(EXCLUDED.followers, daily_metrics.followers),
+                       impressions = COALESCE(EXCLUDED.impressions, daily_metrics.impressions),
+                       interactions_count = COALESCE(EXCLUDED.interactions_count, daily_metrics.interactions_count),
+                       created_at = NOW()""",
+                (
+                    social_account_id,
+                    datetime.now(timezone.utc).date(),
+                    values["followers"],
+                    values["impressions"],
+                    values["interactions_count"],
+                ),
+            )
+        conn.commit()
+        print(
+            "[FACEBOOK INSIGHTS] Sincronização concluída: "
+            f"followers={values['followers']!r}, media_views={values['impressions']!r}, "
+            f"post_engagements={values['interactions_count']!r}."
+        )
+        return True
+    except Exception as erro:
+        if conn:
+            conn.rollback()
+        print(f"[FACEBOOK INSIGHTS ERROR] {type(erro).__name__}: {erro}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 
 
 def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None, since=None, until=None):
@@ -879,7 +991,7 @@ def _env_bool(name, default=True):
 ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Minha Conta — PMW Social Media Dashboard AI</title>
 <style>body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}.wrap{max-width:1050px;margin:35px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:24px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}label{display:block;margin:12px 0 7px;font-weight:600}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #334155;background:#020617;color:#fff;box-sizing:border-box}button,.btn{display:inline-block;padding:11px 16px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;text-decoration:none;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#172554;color:#7dd3fc;font-size:12px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #1e293b}</style></head><body><div class="wrap">
-<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
+<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
 <div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
 <div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
 <div class="card" style="border:2px solid #a855f7;background:#111827">
@@ -1445,6 +1557,264 @@ def setup_auth(server: Flask):
         finally:
             if conn: conn.close()
 
+
+    @server.get("/oauth/facebook")
+    def facebook_oauth():
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+        if not _facebook_oauth_configured():
+            return redirect(url_for(
+                "account",
+                error="Facebook OAuth ainda não está configurado. Configure FACEBOOK_OAUTH_REDIRECT_URI no Render."
+            ))
+        try:
+            state = secrets.token_urlsafe(32)
+            session["facebook_oauth_state"] = state
+            session["facebook_oauth_workspace"] = session.get("workspace_slug")
+            session.modified = True
+            return redirect(_facebook_authorize_url(state))
+        except Exception as erro:
+            print(f"[FACEBOOK OAUTH START ERROR] {type(erro).__name__}: {erro}")
+            return redirect(url_for("account", error="Não foi possível iniciar a ligação ao Facebook."))
+
+    @server.get("/oauth/facebook/callback")
+    def facebook_oauth_callback():
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+        if request.args.get("error"):
+            return redirect(url_for("account", error="A autorização do Facebook foi cancelada ou recusada."))
+
+        state = request.args.get("state", "")
+        expected = session.pop("facebook_oauth_state", None)
+        workspace_slug = session.pop("facebook_oauth_workspace", None)
+        if not state or not expected or not secrets.compare_digest(state, expected):
+            return redirect(url_for("account", error="Falha de segurança no estado OAuth do Facebook. Tente novamente."))
+        code = request.args.get("code", "")
+        if not code or workspace_slug != session.get("workspace_slug"):
+            return redirect(url_for("account", error="Código OAuth inválido ou sessão expirada."))
+
+        app_id = os.getenv("FACEBOOK_APP_ID", "").strip() or os.getenv("INSTAGRAM_APP_ID", "").strip()
+        app_secret = os.getenv("FACEBOOK_APP_SECRET", "").strip() or os.getenv("INSTAGRAM_APP_SECRET", "").strip()
+        redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
+        try:
+            token_response = requests.get(
+                "https://graph.facebook.com/v25.0/oauth/access_token",
+                params={
+                    "client_id": app_id,
+                    "client_secret": app_secret,
+                    "redirect_uri": redirect_uri,
+                    "code": code,
+                },
+                timeout=15,
+            )
+            token_response.raise_for_status()
+            user_token = token_response.json().get("access_token")
+            if not user_token:
+                raise RuntimeError("A Meta não devolveu um token de acesso.")
+
+            long_response = requests.get(
+                "https://graph.facebook.com/v25.0/oauth/access_token",
+                params={
+                    "grant_type": "fb_exchange_token",
+                    "client_id": app_id,
+                    "client_secret": app_secret,
+                    "fb_exchange_token": user_token,
+                },
+                timeout=15,
+            )
+            long_response.raise_for_status()
+            user_token = long_response.json().get("access_token", user_token)
+
+            pages_response = requests.get(
+                "https://graph.facebook.com/v25.0/me/accounts",
+                params={
+                    "fields": "id,name,access_token,tasks",
+                    "limit": 100,
+                    "access_token": user_token,
+                },
+                timeout=15,
+            )
+            pages_response.raise_for_status()
+            pages = pages_response.json().get("data", [])
+            if not isinstance(pages, list) or not pages:
+                return redirect(url_for(
+                    "account",
+                    error="A Meta não devolveu Páginas geridas por esta conta. Confirme o acesso às Páginas e as permissões concedidas."
+                ))
+
+            selector = secrets.token_urlsafe(32)
+            conn = get_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS facebook_oauth_pending_pages (
+                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                            selector TEXT NOT NULL,
+                            workspace_slug VARCHAR(255) NOT NULL,
+                            page_id VARCHAR(255) NOT NULL,
+                            page_name VARCHAR(255) NOT NULL,
+                            encrypted_page_token TEXT NOT NULL,
+                            expires_at TIMESTAMP NOT NULL,
+                            created_at TIMESTAMP DEFAULT NOW(),
+                            UNIQUE (selector, workspace_slug, page_id)
+                        );
+                    """)
+                    cur.execute(
+                        "DELETE FROM facebook_oauth_pending_pages WHERE expires_at < NOW() OR workspace_slug=%s",
+                        (workspace_slug,),
+                    )
+                    saved = 0
+                    for page in pages:
+                        page_id = str(page.get("id", "")).strip()
+                        page_name = str(page.get("name", "")).strip()
+                        page_token = page.get("access_token")
+                        if not page_id or not page_name or not page_token:
+                            continue
+                        cur.execute(
+                            """INSERT INTO facebook_oauth_pending_pages
+                               (selector, workspace_slug, page_id, page_name, encrypted_page_token, expires_at)
+                               VALUES (%s, %s, %s, %s, %s, NOW() + INTERVAL '15 minutes')
+                               ON CONFLICT (selector, workspace_slug, page_id) DO UPDATE SET
+                                   page_name=EXCLUDED.page_name,
+                                   encrypted_page_token=EXCLUDED.encrypted_page_token,
+                                   expires_at=EXCLUDED.expires_at""",
+                            (selector, workspace_slug, page_id, page_name, _encrypt_token(page_token)),
+                        )
+                        saved += 1
+                conn.commit()
+            finally:
+                conn.close()
+
+            if saved == 0:
+                return redirect(url_for("account", error="Não foi possível obter tokens válidos para as Páginas selecionáveis."))
+            return redirect(url_for("facebook_select_page", selector=selector))
+        except (requests.RequestException, ValueError, InvalidToken) as erro:
+            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}: {erro}")
+            return redirect(url_for("account", error="Não foi possível concluir a autorização do Facebook. Verifique as permissões da aplicação Meta."))
+        except Exception as erro:
+            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}: {erro}")
+            return redirect(url_for("account", error="Ocorreu um erro ao preparar as Páginas do Facebook."))
+    
+    @server.route("/oauth/facebook/select", methods=["GET", "POST"])
+    def facebook_select_page():
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+        selector = request.values.get("selector", "").strip()
+        workspace_slug = session.get("workspace_slug")
+        if not selector:
+            return redirect(url_for("account", error="Seleção de Página inválida. Inicie a ligação novamente."))
+
+        conn = None
+        try:
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT page_id, page_name, encrypted_page_token
+                       FROM facebook_oauth_pending_pages
+                       WHERE selector=%s AND workspace_slug=%s AND expires_at > NOW()
+                       ORDER BY page_name""",
+                    (selector, workspace_slug),
+                )
+                pages = cur.fetchall()
+                if not pages:
+                    return redirect(url_for("account", error="A seleção expirou ou não existem Páginas disponíveis. Ligue o Facebook novamente."))
+
+                if request.method == "GET":
+                    options = "".join(
+                        '<option value="' + str(page[0]).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;") +
+                        '">' + str(page[1]).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") +
+                        "</option>"
+                        for page in pages
+                    )
+                    html = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+                    <title>Selecionar Página — PMW Dashboard AI</title><style>
+                    body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif;min-height:100vh;display:grid;place-items:center;padding:20px}
+                    main{width:100%;max-width:520px;background:#111827;border:1px solid #334155;border-radius:16px;padding:28px;box-sizing:border-box}
+                    p{color:#94a3b8;line-height:1.6}label{display:block;margin:18px 0 8px;font-weight:bold}
+                    select,button{width:100%;padding:13px;border-radius:9px;font:inherit}
+                    select{background:#020617;color:#fff;border:1px solid #475569}
+                    button{margin-top:18px;background:#38bdf8;color:#020617;border:0;font-weight:bold;cursor:pointer}
+                    a{color:#7dd3fc}</style></head><body><main><h1>Escolher Página do Facebook</h1>
+                    <p>Selecione a Página que pretende ligar ao seu workspace PMW. O token será guardado cifrado no servidor.</p>
+                    <form method="post" action="/oauth/facebook/select">
+                    <input type="hidden" name="selector" value="__SELECTOR__">
+                    <label for="page_id">Página do Facebook</label><select id="page_id" name="page_id" required>__OPTIONS__</select>
+                    <button type="submit">Conectar Página selecionada</button></form>
+                    <p><a href="/account">Cancelar e voltar à conta</a></p></main></body></html>"""
+                    html = html.replace("__SELECTOR__", selector.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;"))
+                    html = html.replace("__OPTIONS__", options)
+                    return html
+
+                page_id = request.form.get("page_id", "").strip()
+                selected = next((page for page in pages if str(page[0]) == page_id), None)
+                if not selected:
+                    return redirect(url_for("account", error="A Página selecionada não é válida."))
+                cur.execute(
+                    "SELECT id, subscription_plan FROM workspaces WHERE slug=%s LIMIT 1",
+                    (workspace_slug,),
+                )
+                workspace = cur.fetchone()
+                if not workspace:
+                    return redirect(url_for("account", error="Workspace não encontrado."))
+                plan_key = workspace[1] or "trial"
+                account_limit = PLANS.get(plan_key, PLANS["trial"])["accounts"]
+                cur.execute(
+                    """SELECT COUNT(*) FROM social_accounts
+                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE""",
+                    (workspace[0],),
+                )
+                active_accounts = cur.fetchone()[0]
+                cur.execute(
+                    """SELECT id FROM social_accounts
+                       WHERE workspace_id=%s AND platform='Facebook' AND username=%s LIMIT 1""",
+                    (workspace[0], page_id),
+                )
+                existing = cur.fetchone()
+                if not existing and isinstance(account_limit, int) and active_accounts >= account_limit:
+                    return redirect(url_for(
+                        "account",
+                        error=f"O plano {PLANS.get(plan_key, PLANS['trial'])['name']} permite no máximo {account_limit} contas sociais ativas."
+                    ))
+
+                encrypted_token = selected[2]
+                if existing:
+                    social_account_id = existing[0]
+                    cur.execute(
+                        """UPDATE social_accounts SET access_token=%s, display_name=%s,
+                               connection_status='connected', is_active=TRUE, last_sync_at=NOW()
+                           WHERE id=%s AND workspace_id=%s""",
+                        (encrypted_token, selected[1], social_account_id, workspace[0]),
+                    )
+                else:
+                    cur.execute(
+                        """INSERT INTO social_accounts
+                           (workspace_id, platform, username, display_name, access_token,
+                            connection_status, is_active, last_sync_at)
+                           VALUES (%s, 'Facebook', %s, %s, %s, 'connected', TRUE, NOW())
+                           RETURNING id""",
+                        (workspace[0], page_id, selected[1], encrypted_token),
+                    )
+                    social_account_id = cur.fetchone()[0]
+                cur.execute(
+                    "DELETE FROM facebook_oauth_pending_pages WHERE selector=%s AND workspace_slug=%s",
+                    (selector, workspace_slug),
+                )
+                page_token = _token_cipher().decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
+            conn.commit()
+            synced = _sync_facebook_metrics(social_account_id, page_id, page_token)
+            if synced:
+                return redirect(url_for("account", message="Página do Facebook conectada e métricas disponíveis sincronizadas."))
+            return redirect(url_for("account", message="Página do Facebook conectada. Algumas métricas podem não estar disponíveis; verifique as permissões e os logs."))
+        except Exception as erro:
+            if conn:
+                conn.rollback()
+            print(f"[FACEBOOK PAGE SELECT ERROR] {type(erro).__name__}: {erro}")
+            return redirect(url_for("account", error="Não foi possível guardar a Página do Facebook. Tente novamente."))
+        finally:
+            if conn:
+                conn.close()
+
+
     @server.route("/account", methods=["GET", "POST"])
     def account():
         if not session.get("authenticated"):
@@ -1582,6 +1952,9 @@ def setup_auth(server: Flask):
 
         if platform == "Instagram":
             return redirect(url_for("instagram_oauth"))
+
+        if platform == "Facebook":
+            return redirect(url_for("facebook_oauth"))
 
         # As integrações que ainda não têm OAuth implementado não devem
         # pedir username/token manualmente. O fluxo comercial deve sempre
