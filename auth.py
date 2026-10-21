@@ -1568,10 +1568,14 @@ def setup_auth(server: Flask):
                 error="Facebook OAuth ainda não está configurado. Configure FACEBOOK_OAUTH_REDIRECT_URI no Render."
             ))
         try:
-            state = secrets.token_urlsafe(32)
-            session["facebook_oauth_state"] = state
-            session["facebook_oauth_workspace"] = session.get("workspace_slug")
-            session.modified = True
+            # Use a signed, time-limited state so validation does not depend on
+            # the session cookie surviving the round trip through Facebook.
+            from itsdangerous import URLSafeTimedSerializer
+            serializer = URLSafeTimedSerializer(server.secret_key, salt="pmw-facebook-oauth-state-v1")
+            state = serializer.dumps({
+                "nonce": secrets.token_urlsafe(32),
+                "workspace_slug": session.get("workspace_slug"),
+            })
             return redirect(_facebook_authorize_url(state))
         except Exception as erro:
             print(f"[FACEBOOK OAUTH START ERROR] {type(erro).__name__}: {erro}")
@@ -1585,12 +1589,19 @@ def setup_auth(server: Flask):
             return redirect(url_for("account", error="A autorização do Facebook foi cancelada ou recusada."))
 
         state = request.args.get("state", "")
-        expected = session.pop("facebook_oauth_state", None)
-        workspace_slug = session.pop("facebook_oauth_workspace", None)
-        if not state or not expected or not secrets.compare_digest(state, expected):
-            return redirect(url_for("account", error="Falha de segurança no estado OAuth do Facebook. Tente novamente."))
+        try:
+            from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+            serializer = URLSafeTimedSerializer(server.secret_key, salt="pmw-facebook-oauth-state-v1")
+            state_data = serializer.loads(state, max_age=600)
+        except Exception as erro:
+            # Do not log the state value; it is a temporary security token.
+            print(f"[FACEBOOK OAUTH STATE INVALID] {type(erro).__name__}")
+            return redirect(url_for("account", error="A sessão de autorização do Facebook expirou ou não pôde ser validada. Inicie a ligação novamente."))
+        workspace_slug = state_data.get("workspace_slug")
+        if not state_data.get("nonce") or workspace_slug != session.get("workspace_slug"):
+            return redirect(url_for("account", error="A sessão de autorização do Facebook não corresponde à conta atual. Inicie a ligação novamente."))
         code = request.args.get("code", "")
-        if not code or workspace_slug != session.get("workspace_slug"):
+        if not code:
             return redirect(url_for("account", error="Código OAuth inválido ou sessão expirada."))
 
         app_id = os.getenv("FACEBOOK_APP_ID", "").strip() or os.getenv("INSTAGRAM_APP_ID", "").strip()
