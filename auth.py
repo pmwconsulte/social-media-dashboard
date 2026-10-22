@@ -96,11 +96,53 @@ def _facebook_authorize_url(state):
 
 
 def _sync_facebook_metrics(social_account_id, page_id, page_token):
-    """Guarda apenas métricas reais devolvidas pela Facebook Pages API."""
+    """Sincroniza métricas reais da Facebook Pages API v25 sem misturar períodos."""
     from datetime import datetime, timezone
 
     version = os.getenv("FACEBOOK_GRAPH_API_VERSION", "v25.0").strip()
-    values = {"followers": None, "impressions": None, "interactions_count": None}
+    values = {
+        "followers": None,
+        "day_views": None,
+        "day_unique_viewers": None,
+        "day_interactions": None,
+        "views_28d": None,
+        "unique_viewers_28d": None,
+        "interactions_28d": None,
+    }
+
+    def metric_value(metric, period):
+        try:
+            response = requests.get(
+                f"https://graph.facebook.com/{version}/{page_id}/insights",
+                params={"metric": metric, "period": period, "access_token": page_token},
+                timeout=15,
+            )
+            if not response.ok:
+                try:
+                    detail = response.json().get("error", {}).get("message", "")
+                except (ValueError, AttributeError):
+                    detail = ""
+                print(
+                    f"[FACEBOOK INSIGHTS] {metric} period={period} indisponível "
+                    f"HTTP={response.status_code}: {str(detail)[:180]}"
+                )
+                return None
+            items = response.json().get("data", [])
+            item = next((x for x in items if x.get("name") == metric), None)
+            points = (item or {}).get("values") or []
+            for point in reversed(points):
+                value = point.get("value")
+                if isinstance(value, (int, float)):
+                    return int(value)
+                if isinstance(value, dict):
+                    total = value.get("total_value")
+                    if isinstance(total, (int, float)):
+                        return int(total)
+            return None
+        except (requests.RequestException, ValueError, AttributeError, TypeError) as erro:
+            print(f"[FACEBOOK INSIGHTS] Falha em {metric} period={period}: {type(erro).__name__}.")
+            return None
+
     try:
         response = requests.get(
             f"https://graph.facebook.com/{version}/{page_id}",
@@ -116,60 +158,98 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     except (requests.RequestException, ValueError) as erro:
         print(f"[FACEBOOK INSIGHTS] Falha ao obter seguidores: {type(erro).__name__}.")
 
-    # Métricas independentes: uma indisponível não impede as restantes.
-    for metric, column in (
-        ("page_media_view", "impressions"),
-        ("page_post_engagements", "interactions_count"),
-    ):
-        try:
-            response = requests.get(
-                f"https://graph.facebook.com/{version}/{page_id}/insights",
-                params={"metric": metric, "period": "day", "access_token": page_token},
-                timeout=15,
-            )
-            if not response.ok:
-                print(f"[FACEBOOK INSIGHTS] {metric} indisponível HTTP={response.status_code}.")
-                continue
-            items = response.json().get("data", [])
-            for item in items:
-                points = item.get("values") or []
-                if points and isinstance(points[-1].get("value"), (int, float)):
-                    values[column] = int(points[-1]["value"])
-                    break
-        except (requests.RequestException, ValueError, AttributeError) as erro:
-            print(f"[FACEBOOK INSIGHTS] Falha em {metric}: {type(erro).__name__}.")
+    # Métricas atuais da API v25: media views e viewers únicos substituem
+    # os antigos nomes de impressões/alcance que a Meta retirou em 2026.
+    day_metrics = {
+        "page_media_view": "day_views",
+        "page_total_media_view_unique": "day_unique_viewers",
+        "page_post_engagements": "day_interactions",
+    }
+    for metric, key in day_metrics.items():
+        values[key] = metric_value(metric, "day")
 
-    if all(value is None for value in values.values()):
+    period_metrics = {
+        "page_media_view": "views_28d",
+        "page_total_media_view_unique": "unique_viewers_28d",
+        "page_post_engagements": "interactions_28d",
+    }
+    for metric, key in period_metrics.items():
+        values[key] = metric_value(metric, "days_28")
+
+    if all(value is None for key, value in values.items() if key != "followers") and values["followers"] is None:
         print(f"[FACEBOOK INSIGHTS] Nenhuma métrica disponível para a página {page_id}.")
         return False
 
     conn = None
     try:
         conn = get_connection()
+        report_date = datetime.now(timezone.utc).date()
+        day_rate = (
+            round(values["day_interactions"] / values["day_unique_viewers"] * 100, 2)
+            if values["day_interactions"] is not None
+            and values["day_unique_viewers"] is not None
+            and values["day_unique_viewers"] > 0
+            else None
+        )
         with conn.cursor() as cur:
+            # Uma linha por conta e dia; não escrever totais de 28 dias no histórico diário.
             cur.execute(
                 """INSERT INTO daily_metrics
                        (social_account_id, report_date, followers, impressions, interactions_count,
                         reach, engagement_rate, profile_views, website_clicks)
-                   VALUES (%s, %s, %s, %s, %s, NULL, NULL, NULL, NULL)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, NULL)
                    ON CONFLICT (social_account_id, report_date) DO UPDATE SET
                        followers = COALESCE(EXCLUDED.followers, daily_metrics.followers),
                        impressions = COALESCE(EXCLUDED.impressions, daily_metrics.impressions),
                        interactions_count = COALESCE(EXCLUDED.interactions_count, daily_metrics.interactions_count),
+                       reach = COALESCE(EXCLUDED.reach, daily_metrics.reach),
+                       engagement_rate = COALESCE(EXCLUDED.engagement_rate, daily_metrics.engagement_rate),
                        created_at = NOW()""",
                 (
-                    social_account_id,
-                    datetime.now(timezone.utc).date(),
-                    values["followers"],
-                    values["impressions"],
-                    values["interactions_count"],
+                    social_account_id, report_date, values["followers"], values["day_views"],
+                    values["day_interactions"], values["day_unique_viewers"], day_rate,
                 ),
+            )
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS facebook_period_snapshots (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    social_account_id UUID NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
+                    period_days INTEGER NOT NULL DEFAULT 28,
+                    snapshot_date DATE NOT NULL,
+                    views BIGINT,
+                    unique_viewers BIGINT,
+                    interactions BIGINT,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    UNIQUE (social_account_id, period_days, snapshot_date)
+                )
+            """)
+            cur.execute(
+                """INSERT INTO facebook_period_snapshots
+                       (social_account_id, period_days, snapshot_date, views, unique_viewers, interactions)
+                   VALUES (%s, 28, %s, %s, %s, %s)
+                   ON CONFLICT (social_account_id, period_days, snapshot_date) DO UPDATE SET
+                       views = COALESCE(EXCLUDED.views, facebook_period_snapshots.views),
+                       unique_viewers = COALESCE(EXCLUDED.unique_viewers, facebook_period_snapshots.unique_viewers),
+                       interactions = COALESCE(EXCLUDED.interactions, facebook_period_snapshots.interactions),
+                       created_at = NOW()""",
+                (
+                    social_account_id, report_date, values["views_28d"],
+                    values["unique_viewers_28d"], values["interactions_28d"],
+                ),
+            )
+            cur.execute(
+                "UPDATE social_accounts SET last_sync_at=NOW() WHERE id=%s",
+                (social_account_id,),
             )
         conn.commit()
         print(
             "[FACEBOOK INSIGHTS] Sincronização concluída: "
-            f"followers={values['followers']!r}, media_views={values['impressions']!r}, "
-            f"post_engagements={values['interactions_count']!r}."
+            f"followers={values['followers']!r}, day_views={values['day_views']!r}, "
+            f"day_unique_viewers={values['day_unique_viewers']!r}, "
+            f"day_interactions={values['day_interactions']!r}, "
+            f"views_28d={values['views_28d']!r}, "
+            f"unique_viewers_28d={values['unique_viewers_28d']!r}, "
+            f"interactions_28d={values['interactions_28d']!r}."
         )
         return True
     except Exception as erro:
@@ -180,8 +260,6 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     finally:
         if conn:
             conn.close()
-
-
 
 
 def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None, since=None, until=None):
