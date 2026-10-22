@@ -85,11 +85,16 @@ def _facebook_authorize_url(state):
     redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
     if not app_id or not redirect_uri:
         raise RuntimeError("Configure o App ID Meta e FACEBOOK_OAUTH_REDIRECT_URI.")
+    scopes = ["pages_show_list", "pages_read_engagement"]
+    # Só pedir read_insights depois de ativar essa permissão no Meta for Developers.
+    # Mantém o fluxo OAuth funcional enquanto a permissão ainda não está disponível.
+    if os.getenv("FACEBOOK_REQUEST_READ_INSIGHTS", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        scopes.append("read_insights")
     params = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "pages_show_list,pages_read_engagement",
+        "scope": ",".join(scopes),
         "state": state,
     }
     return "https://www.facebook.com/v25.0/dialog/oauth?" + urlencode(params)
