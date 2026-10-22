@@ -336,6 +336,72 @@ def carregar_insights_periodo(periodo_dias):
             conn.close()
 
 
+
+def carregar_insights_facebook(periodo_dias=28):
+    """Carrega totais Facebook reais: snapshot agregado de 28 dias ou agregação diária identificada."""
+    conn = None
+    try:
+        conn = get_connection()
+        workspace_slug = (
+            session.get("workspace_slug") if has_request_context() else None
+        ) or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+        with conn.cursor() as cur:
+            if int(periodo_dias or 7) == 28:
+                cur.execute(
+                    """
+                    SELECT SUM(views), SUM(unique_viewers), SUM(interactions), MAX(snapshot_date)
+                    FROM (
+                        SELECT DISTINCT ON (m.social_account_id)
+                            m.social_account_id, m.views, m.unique_viewers, m.interactions, m.snapshot_date
+                        FROM facebook_period_snapshots m
+                        INNER JOIN social_accounts sa ON sa.id=m.social_account_id
+                        INNER JOIN workspaces w ON w.id=sa.workspace_id
+                        WHERE w.slug=%s AND sa.platform='Facebook'
+                          AND COALESCE(sa.is_active, TRUE)=TRUE
+                          AND m.snapshot_date >= CURRENT_DATE - INTERVAL '2 days'
+                          AND m.period_days=28
+                        ORDER BY m.social_account_id, m.snapshot_date DESC, m.created_at DESC
+                    ) latest
+                    """,
+                    (workspace_slug,),
+                )
+                row = cur.fetchone()
+                return {
+                    "views": int(row[0]) if row and row[0] is not None else None,
+                    "reach": int(row[1]) if row and row[1] is not None else None,
+                    "interactions": int(row[2]) if row and row[2] is not None else None,
+                    "snapshot_date": row[3].isoformat() if row and row[3] else None,
+                    "reach_label": "Pessoas únicas (28 dias)",
+                }
+            cur.execute(
+                """
+                SELECT SUM(dm.impressions), SUM(dm.reach), SUM(dm.interactions_count), MAX(dm.report_date)
+                FROM daily_metrics dm
+                INNER JOIN social_accounts sa ON sa.id=dm.social_account_id
+                INNER JOIN workspaces w ON w.id=sa.workspace_id
+                WHERE w.slug=%s AND sa.platform='Facebook'
+                  AND COALESCE(sa.is_active, TRUE)=TRUE
+                  AND dm.report_date >= CURRENT_DATE - (%s * INTERVAL '1 day')
+                """,
+                (workspace_slug, int(periodo_dias or 7)),
+            )
+            row = cur.fetchone()
+        return {
+            "views": int(row[0]) if row and row[0] is not None else None,
+            "reach": int(row[1]) if row and row[1] is not None else None,
+            "interactions": int(row[2]) if row and row[2] is not None else None,
+            "snapshot_date": row[3].isoformat() if row and row[3] else None,
+            "reach_label": "Soma do alcance diário",
+        }
+    except Exception as erro:
+        print(f"[DATABASE] Insights Facebook indisponíveis: {type(erro).__name__}: {erro}")
+        return {"views": None, "reach": None, "interactions": None, "snapshot_date": None,
+                "reach_label": "Alcance"}
+    finally:
+        if conn:
+            conn.close()
+
+
 def carregar_insights_reels(periodo_dias):
     """Carrega o snapshot mais recente de Reels no workspace e janela selecionados."""
     conn = None
@@ -779,11 +845,11 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H3("📆 Instagram — resumo oficial dos últimos 28 dias",
+                html.H3("📆 Instagram — resumo oficial dos últimos 28 dias", id="titulo-28d",
                         style={"color": "white", "margin": "0 0 12px"}),
                 html.P(
                     "Totais agregados devolvidos pela API. O alcance deste bloco é único para o período e não deve ser substituído pela soma do alcance diário.",
-                    style={"color": COLORS["muted"], "margin": "0 0 16px"},
+                    id="descricao-28d", style={"color": COLORS["muted"], "margin": "0 0 16px"},
                 ),
                 html.Div(
                     id="kpis-28d",
@@ -802,10 +868,10 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H3("📊 Instagram — totais oficiais por período", style={"color": "white", "margin": "0 0 12px"}),
+                html.H3("📊 Instagram — totais oficiais por período", id="titulo-periodo", style={"color": "white", "margin": "0 0 12px"}),
                 html.P(
                     "Valores agregados consultados na API oficial para a janela selecionada. Não são somas de snapshots diários; se a API não devolver um total válido, o cartão mostra N/D.",
-                    style={"color": COLORS["muted"], "margin": "0 0 14px"},
+                    id="descricao-periodo", style={"color": COLORS["muted"], "margin": "0 0 14px"},
                 ),
                 html.Label("Período de análise", style={"color": COLORS["text"], "fontWeight": "600", "display": "block", "marginBottom": "8px"}),
                 dcc.Dropdown(
@@ -837,10 +903,10 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H3("🎬 Instagram Reels — métricas específicas", style={"color": "white", "margin": "0 0 12px"}),
+                html.H3("🎬 Instagram Reels — métricas específicas", id="titulo-reels", style={"color": "white", "margin": "0 0 12px"}),
                 html.P(
                     "Este bloco fica separado das métricas gerais da conta e consulta o breakdown oficial da API por tipo de conteúdo (REELS). Se a API ou as permissões não disponibilizarem esse breakdown, os valores permanecem N/D; não são copiados nem inferidos a partir dos totais gerais.",
-                    style={"color": COLORS["muted"], "margin": "0 0 16px"},
+                    id="descricao-reels", style={"color": COLORS["muted"], "margin": "0 0 16px"},
                 ),
                 html.Div(id="kpis-reels", children=[
                     criar_kpi("N/D", "Visualizações de Reels", COLORS["primary"], "reels-views"),
@@ -850,6 +916,7 @@ app.layout = html.Div(
                 html.P(id="nota-reels", children="A aguardar dados oficiais da API.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
                 html.P("Os valores abaixo são totais oficiais de Reels para a janela selecionada; não são a soma dos valores vitalícios de cada vídeo.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
             ],
+            id="secao-reels",
             style={"background": COLORS["card"], "padding": "20px", "borderRadius": "16px", "marginBottom": "20px", "border": "1px solid rgba(148,163,184,0.10)"},
         ),
 
@@ -956,6 +1023,13 @@ app.layout = html.Div(
 @app.callback(
     [
         Output("kpis-28d", "children"),
+        Output("titulo-28d", "children"),
+        Output("descricao-28d", "children"),
+        Output("titulo-periodo", "children"),
+        Output("descricao-periodo", "children"),
+        Output("titulo-reels", "children"),
+        Output("descricao-reels", "children"),
+        Output("secao-reels", "style"),
         Output("kpis-periodo", "children"),
         Output("nota-periodo", "children"),
         Output("kpis-reels", "children"),
