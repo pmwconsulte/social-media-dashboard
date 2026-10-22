@@ -1102,8 +1102,8 @@ def atualizar(plataforma, periodo_insights):
         )
     else:
         nota_historico = (
-            f"A API ainda não devolveu totais agregados válidos para a janela de {dias_periodo} dias. "
-            "Os valores permanecem N/D até à próxima sincronização; não são estimados."
+            f"A API ainda não devolveu totais válidos para a janela de {dias_periodo} dias. "
+            + ("Confirme a permissão read_insights da aplicação Meta e consulte os logs de sincronização." if is_facebook else "Os valores permanecem N/D até à próxima sincronização; não são estimados.")
         )
 
     reels = carregar_insights_reels(dias_periodo) if plataforma_atual == "Instagram" else {
@@ -1178,8 +1178,8 @@ def atualizar(plataforma, periodo_insights):
             criar_kpi(numero(insights_28d["views"]), "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
             criar_kpi(numero(insights_28d["interactions"]), "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
         ]
-        alcance_28d = insights_28d.get("reach") if plataforma_atual.lower().startswith("instagram") else None
-        interacoes_28d = insights_28d.get("interactions") if plataforma_atual.lower().startswith("instagram") else None
+        alcance_28d = insights_28d.get("reach") if (is_instagram or is_facebook) else None
+        interacoes_28d = insights_28d.get("interactions") if (is_instagram or is_facebook) else None
         engajamento_28d = (
             round(interacoes_28d / alcance_28d * 100, 2)
             if alcance_28d is not None and alcance_28d > 0 and interacoes_28d is not None
