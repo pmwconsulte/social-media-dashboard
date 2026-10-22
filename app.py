@@ -312,7 +312,7 @@ def carregar_insights_periodo(periodo_dias):
                     INNER JOIN social_accounts sa ON sa.id = m.social_account_id
                     INNER JOIN workspaces w ON w.id = sa.workspace_id
                     WHERE w.slug = %s
-                      AND LOWER(sa.platform) LIKE '%instagram%'
+                      AND POSITION('instagram' IN LOWER(sa.platform)) > 0
                       AND COALESCE(sa.is_active, TRUE) = TRUE
                       AND m.snapshot_date >= CURRENT_DATE - INTERVAL '2 days'
                       AND m.period_days = %s
