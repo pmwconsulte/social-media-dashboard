@@ -371,7 +371,7 @@ def carregar_insights_facebook(periodo_dias=28):
                     "reach": int(row[1]) if row and row[1] is not None else None,
                     "interactions": int(row[2]) if row and row[2] is not None else None,
                     "snapshot_date": row[3].isoformat() if row and row[3] else None,
-                    "reach_label": "Pessoas únicas (28 dias)",
+                    "reach_label": "Pessoas únicas",
                 }
             cur.execute(
                 """
@@ -1086,7 +1086,14 @@ def atualizar(plataforma, periodo_insights):
     descricao_periodo = "Valores agregados consultados na API oficial; não são somas de snapshots diários." if is_instagram else "Valores reais da API do Facebook. Para janelas diferentes de 28 dias, os valores disponíveis são agregados dos registos diários; o alcance acumulado não representa pessoas únicas no período."
     titulo_reels = "🎬 Instagram Reels — métricas específicas"
     descricao_reels = "Este bloco consulta métricas oficiais de Reels do Instagram. Valores indisponíveis na API permanecem N/D."
-    estilo_reels = {"display": "block"} if is_instagram else {"display": "none"}
+    estilo_reels = {
+        "display": "block" if is_instagram else "none",
+        "background": COLORS["card"],
+        "padding": "20px",
+        "borderRadius": "16px",
+        "marginBottom": "20px",
+        "border": "1px solid rgba(148,163,184,0.10)",
+    }
     def fmt_periodo(value):
         return numero(value) if value is not None else "N/D"
     cards_historico = [
