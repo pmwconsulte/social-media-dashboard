@@ -292,6 +292,30 @@ def create_tables():
 
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS facebook_period_snapshots (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    social_account_id UUID NOT NULL
+                        REFERENCES social_accounts(id) ON DELETE CASCADE,
+                    period_days INTEGER NOT NULL DEFAULT 28 CHECK (period_days = 28),
+                    snapshot_date DATE NOT NULL,
+                    views BIGINT,
+                    unique_viewers BIGINT,
+                    interactions BIGINT,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    UNIQUE (social_account_id, period_days, snapshot_date)
+                );
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_facebook_period_latest
+                ON facebook_period_snapshots(social_account_id, period_days, snapshot_date DESC);
+                """
+            )
+
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS
                 idx_daily_metrics_date
                 ON daily_metrics(report_date);
