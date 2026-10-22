@@ -1353,7 +1353,7 @@ def atualizar(plataforma, periodo_insights):
         fig4 = grafico_sem_dados("🤖 Previsão IA")
 
     cards_28d = [
-        criar_kpi(numero(insights_28d["reach"]), "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
+        criar_kpi(numero(insights_28d["reach"]), "Alcance (28 dias)" if is_instagram else "Pessoas únicas (28 dias)", COLORS["success"], "kpi-alcance-28d"),
         criar_kpi(numero(insights_28d["views"]), "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
         criar_kpi(numero(insights_28d["interactions"]), "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
     ]
