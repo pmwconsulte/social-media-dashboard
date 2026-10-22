@@ -1095,8 +1095,8 @@ def atualizar(plataforma, periodo_insights):
             criar_kpi(numero(insights_28d["views"]), "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
             criar_kpi(numero(insights_28d["interactions"]), "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
         ]
-        alcance_28d = insights_28d.get("reach")
-        interacoes_28d = insights_28d.get("interactions")
+        alcance_28d = insights_28d.get("reach") if plataforma_atual.lower().startswith("instagram") else None
+        interacoes_28d = insights_28d.get("interactions") if plataforma_atual.lower().startswith("instagram") else None
         engajamento_28d = (
             round(interacoes_28d / alcance_28d * 100, 2)
             if alcance_28d is not None and alcance_28d > 0 and interacoes_28d is not None
@@ -1129,8 +1129,8 @@ def atualizar(plataforma, periodo_insights):
     # Os cards principais de alcance e taxa de interação usam o snapshot da
     # API dos últimos 28 dias. A taxa é interações/alcance agregados, não a
     # média aritmética das percentagens diárias.
-    alcance_28d = insights_28d.get("reach")
-    interacoes_28d = insights_28d.get("interactions")
+    alcance_28d = insights_28d.get("reach") if plataforma_atual.lower().startswith("instagram") else None
+    interacoes_28d = insights_28d.get("interactions") if plataforma_atual.lower().startswith("instagram") else None
     engajamento_28d = (
         round(interacoes_28d / alcance_28d * 100, 2)
         if alcance_28d is not None and alcance_28d > 0 and interacoes_28d is not None
