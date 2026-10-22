@@ -1073,23 +1073,32 @@ def atualizar(plataforma, periodo_insights):
 
     # Totais oficiais agregados por janela, separados dos registos diários.
     dias_periodo = int(periodo_insights or 7)
+    is_instagram = plataforma_atual.lower().startswith("instagram")
+    is_facebook = plataforma_atual.lower().startswith("facebook")
     snapshot_periodo = (
-        carregar_insights_periodo(dias_periodo)
-        if plataforma_atual.lower().startswith("instagram")
-        else {"reach": None, "views": None, "interactions": None, "snapshot_date": None}
+        carregar_insights_periodo(dias_periodo) if is_instagram
+        else carregar_insights_facebook(dias_periodo) if is_facebook
+        else {"reach": None, "views": None, "interactions": None, "snapshot_date": None, "reach_label": "Alcance"}
     )
+    titulo_28d = "📆 Instagram — resumo oficial dos últimos 28 dias" if is_instagram else "📆 Facebook — resumo oficial dos últimos 28 dias"
+    descricao_28d = "Totais agregados oficiais do Instagram. O alcance é único para o período." if is_instagram else "Totais agregados consultados na API oficial da Página do Facebook. Métricas não disponibilizadas pela API permanecem N/D."
+    titulo_periodo = "📊 Instagram — totais oficiais por período" if is_instagram else "📊 Facebook — métricas por período"
+    descricao_periodo = "Valores agregados consultados na API oficial; não são somas de snapshots diários." if is_instagram else "Valores reais da API do Facebook. Para janelas diferentes de 28 dias, os valores disponíveis são agregados dos registos diários; o alcance acumulado não representa pessoas únicas no período."
+    titulo_reels = "🎬 Instagram Reels — métricas específicas"
+    descricao_reels = "Este bloco consulta métricas oficiais de Reels do Instagram. Valores indisponíveis na API permanecem N/D."
+    estilo_reels = {"display": "block"} if is_instagram else {"display": "none"}
     def fmt_periodo(value):
         return numero(value) if value is not None else "N/D"
     cards_historico = [
         criar_kpi(fmt_periodo(snapshot_periodo["views"]), f"Visualizações oficiais ({dias_periodo} dias)", COLORS["primary"], "periodo-views"),
-        criar_kpi(fmt_periodo(snapshot_periodo["reach"]), f"Alcance único oficial ({dias_periodo} dias)", COLORS["success"], "periodo-reach"),
+        criar_kpi(fmt_periodo(snapshot_periodo["reach"]), f"{snapshot_periodo.get('reach_label', 'Alcance único oficial')} ({dias_periodo} dias)", COLORS["success"], "periodo-reach"),
         criar_kpi(fmt_periodo(snapshot_periodo["interactions"]), f"Interações oficiais ({dias_periodo} dias)", COLORS["warning"], "periodo-interacoes"),
     ]
     if snapshot_periodo["snapshot_date"]:
         nota_historico = (
             f"Totais agregados da API oficial para a janela de {dias_periodo} dias. "
             f"Última sincronização: {snapshot_periodo['snapshot_date']}. "
-            "Os valores não são somados a partir dos registos diários."
+            + ("Os valores são totais agregados oficiais do Instagram." if is_instagram else "No Facebook, o alcance acumulado de dias não equivale a pessoas únicas no período.")
         )
     else:
         nota_historico = (
@@ -1163,9 +1172,9 @@ def atualizar(plataforma, periodo_insights):
 
     if dados.empty:
         vazio = grafico_sem_dados("Sem dados")
-        insights_28d = carregar_insights_28d()
+        insights_28d = carregar_insights_28d() if is_instagram else carregar_insights_facebook(28) if is_facebook else {"reach": None, "views": None, "interactions": None}
         cards_28d = [
-            criar_kpi(numero(insights_28d["reach"]), "Alcance (28 dias)", COLORS["success"], "kpi-alcance-28d"),
+            criar_kpi(numero(insights_28d["reach"]), "Alcance (28 dias)" if is_instagram else "Pessoas únicas (28 dias)", COLORS["success"], "kpi-alcance-28d"),
             criar_kpi(numero(insights_28d["views"]), "Visualizações (28 dias)", COLORS["primary"], "kpi-views-28d"),
             criar_kpi(numero(insights_28d["interactions"]), "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
         ]
@@ -1180,6 +1189,13 @@ def atualizar(plataforma, periodo_insights):
         # têm correspondência directa. Crescimento continua N/D sem histórico.
         return (
             cards_28d,
+            titulo_28d,
+            descricao_28d,
+            titulo_periodo,
+            descricao_periodo,
+            titulo_reels,
+            descricao_reels,
+            estilo_reels,
             cards_historico,
             nota_historico,
             reels_cards,
@@ -1198,13 +1214,13 @@ def atualizar(plataforma, periodo_insights):
         )
 
     kpis = calcular_kpis(dados)
-    insights_28d = carregar_insights_28d()
+    insights_28d = carregar_insights_28d() if is_instagram else carregar_insights_facebook(28) if is_facebook else {"reach": None, "views": None, "interactions": None}
 
     # Os cards principais de alcance e taxa de interação usam o snapshot da
     # API dos últimos 28 dias. A taxa é interações/alcance agregados, não a
     # média aritmética das percentagens diárias.
-    alcance_28d = insights_28d.get("reach") if plataforma_atual.lower().startswith("instagram") else None
-    interacoes_28d = insights_28d.get("interactions") if plataforma_atual.lower().startswith("instagram") else None
+    alcance_28d = insights_28d.get("reach") if (is_instagram or is_facebook) else None
+    interacoes_28d = insights_28d.get("interactions") if (is_instagram or is_facebook) else None
     engajamento_28d = (
         round(interacoes_28d / alcance_28d * 100, 2)
         if alcance_28d is not None and alcance_28d > 0 and interacoes_28d is not None
@@ -1344,6 +1360,13 @@ def atualizar(plataforma, periodo_insights):
 
     return (
         cards_28d,
+        titulo_28d,
+        descricao_28d,
+        titulo_periodo,
+        descricao_periodo,
+        titulo_reels,
+        descricao_reels,
+        estilo_reels,
         cards_historico,
         nota_historico,
         reels_cards,
