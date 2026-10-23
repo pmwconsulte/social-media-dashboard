@@ -918,6 +918,8 @@ LOGIN_PAGE = """
         .brand-name { font-size: 16px; font-weight: 800; letter-spacing: -.02em; line-height: 1.25; }
         .brand-sub { color: var(--muted); font-size: 11px; font-weight: 600; }
         .brand-slogan { color: var(--blue); font-size: 11px; font-weight: 650; line-height: 1.35; }
+        .language-control { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; font-weight:700; }
+        .language-control select { min-height:40px; padding:8px 10px; border:1px solid #354960; border-radius:9px; background:#081423; color:var(--text); font:inherit; cursor:pointer; }
         .top-navigation { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
         .nav-link { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:9px 13px; border:1px solid #354960; border-radius:9px; color:var(--text); text-decoration:none; font-size:13px; font-weight:750; }
         .nav-primary { background:var(--blue); border-color:var(--blue); color:#04121e; }
@@ -999,12 +1001,15 @@ LOGIN_PAGE = """
                 <span class="brand-copy">
                     <span class="brand-name">PMW Dashboard AI</span>
                     <span class="brand-sub">Analytics · Métricas · IA</span>
-                    <span class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</span>
+                    <span class="brand-slogan" data-i18n="slogan">Transforme os Seus Dados em Oportunidades de Negócio</span>
                 </span>
             </a>
             <nav class="top-navigation" aria-label="Navegação de acesso">
-                <a href="/home" class="nav-link">← Voltar à página inicial</a>
-                <a href="/signup" class="nav-link nav-primary">Criar conta / Continuar</a>
+                <label class="language-control" for="login-language"><span data-i18n="languageLabel">Idioma / Language</span>
+                    <select id="login-language" aria-label="Idioma / Language"><option value="pt">Português</option><option value="en">English</option></select>
+                </label>
+                <a href="/home" class="nav-link" data-i18n="backHome">← Voltar à página inicial</a>
+                <a href="/signup" class="nav-link nav-primary" data-i18n="createAccount">Criar conta / Continuar</a>
             </nav>
         </div>
     </header>
@@ -1012,53 +1017,85 @@ LOGIN_PAGE = """
         <div class="login-content">
         <section class="login-wrap" aria-labelledby="login-title">
             <div class="login-card">
-                <p class="form-kicker">Bem-vindo de volta</p>
-                <h1 id="login-title">Entrar na plataforma</h1>
-                <p class="form-intro">Introduza as suas credenciais para aceder ao seu dashboard.</p>
+                <p class="form-kicker" data-i18n="welcome">Bem-vindo de volta</p>
+                <h1 id="login-title" data-i18n="title">Entrar na plataforma</h1>
+                <p class="form-intro" data-i18n="intro">Introduza as suas credenciais para aceder ao seu dashboard.</p>
                 <form method="post" action="/login">
                     <div class="field">
-                        <label for="username">Email ou nome de utilizador</label>
+                        <label for="username" data-i18n="usernameLabel">Email ou nome de utilizador</label>
                         <input id="username" name="username" type="text" autocomplete="username"
-                               placeholder="O seu email ou utilizador" required autofocus>
+                               placeholder="O seu email ou utilizador" data-i18n-placeholder="usernamePlaceholder" required autofocus>
                     </div>
                     <div class="field">
-                        <label for="password">Palavra-passe</label>
+                        <label for="password" data-i18n="passwordLabel">Palavra-passe</label>
                         <input id="password" name="password" type="password" autocomplete="current-password"
-                               placeholder="Introduza a sua palavra-passe" required>
+                               placeholder="Introduza a sua palavra-passe" data-i18n-placeholder="passwordPlaceholder" required>
                     </div>
-                    <button class="submit" type="submit">Entrar com segurança <span aria-hidden="true">→</span></button>
+                    <button class="submit" type="submit"><span data-i18n="submit">Entrar com segurança</span> <span aria-hidden="true">→</span></button>
                 </form>
                 {% if error %}
                 <div class="error" role="alert">{{ error }}</div>
                 {% endif %}
-                <div class="signup">Ainda não tem conta? <a href="/signup">Experimente gratuitamente durante 30 dias</a>.</div>
-                <div class="security-note"><span aria-hidden="true">🔒</span> Acesso reservado a utilizadores autenticados</div>
+                <div class="signup"><span data-i18n="signupPrompt">Ainda não tem conta?</span> <a href="/signup" data-i18n="signupLink">Experimente gratuitamente durante 30 dias</a>.</div>
+                <div class="security-note"><span aria-hidden="true">🔒</span> <span data-i18n="security">Acesso reservado a utilizadores autenticados</span></div>
             </div>
         </section>
         <section class="value-section" aria-label="Vantagens do PMW Dashboard AI">
-            <h2 class="value-heading">Acompanhe as suas redes sociais. Decida com inteligência.</h2>
-            <p class="value-lead">Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio.</p>
+            <h2 class="value-heading" data-i18n="valueHeading">Acompanhe as suas redes sociais. Decida com inteligência.</h2>
+            <p class="value-lead" data-i18n="valueLead">Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio.</p>
             <div class="feature-grid">
                 <article class="feature-card">
                     <span class="feature-icon" aria-hidden="true">↗</span>
-                    <h3 class="feature-title">Métricas organizadas</h3>
-                    <p class="feature-copy">Acompanhe seguidores, alcance e envolvimento num só espaço.</p>
+                    <h3 class="feature-title" data-i18n="feature1Title">Métricas organizadas</h3>
+                    <p class="feature-copy" data-i18n="feature1Copy">Acompanhe seguidores, alcance e envolvimento num só espaço.</p>
                 </article>
                 <article class="feature-card">
                     <span class="feature-icon" aria-hidden="true">✦</span>
-                    <h3 class="feature-title">Inteligência artificial</h3>
-                    <p class="feature-copy">Consulte alertas, recomendações e relatórios com base nos dados disponíveis.</p>
+                    <h3 class="feature-title" data-i18n="feature2Title">Inteligência artificial</h3>
+                    <p class="feature-copy" data-i18n="feature2Copy">Consulte alertas, recomendações e relatórios com base nos dados disponíveis.</p>
                 </article>
                 <article class="feature-card">
                     <span class="feature-icon" aria-hidden="true">⌁</span>
-                    <h3 class="feature-title">Área de trabalho protegida</h3>
-                    <p class="feature-copy">Aceda ao dashboard e aos dados autorizados através da sua conta.</p>
+                    <h3 class="feature-title" data-i18n="feature3Title">Área de trabalho protegida</h3>
+                    <p class="feature-copy" data-i18n="feature3Copy">Aceda ao dashboard e aos dados autorizados através da sua conta.</p>
                 </article>
             </div>
         </section>
         </div>
     </main>
     <footer>© 2026 PMW Consultoria &amp; Tecnologia</footer>
+    <script>
+    (function () {
+        const translations = {
+            pt: { languageLabel:"Idioma / Language", backHome:"← Voltar à página inicial", createAccount:"Criar conta / Continuar", slogan:"Transforme os Seus Dados em Oportunidades de Negócio", welcome:"Bem-vindo de volta", title:"Entrar na plataforma", intro:"Introduza as suas credenciais para aceder ao seu dashboard.", usernameLabel:"Email ou nome de utilizador", usernamePlaceholder:"O seu email ou utilizador", passwordLabel:"Palavra-passe", passwordPlaceholder:"Introduza a sua palavra-passe", submit:"Entrar com segurança", signupPrompt:"Ainda não tem conta?", signupLink:"Experimente gratuitamente durante 30 dias", security:"Acesso reservado a utilizadores autenticados", valueHeading:"Acompanhe as suas redes sociais. Decida com inteligência.", valueLead:"Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio.", feature1Title:"Métricas organizadas", feature1Copy:"Acompanhe seguidores, alcance e envolvimento num só espaço.", feature2Title:"Inteligência artificial", feature2Copy:"Consulte alertas, recomendações e relatórios com base nos dados disponíveis.", feature3Title:"Área de trabalho protegida", feature3Copy:"Aceda ao dashboard e aos dados autorizados através da sua conta." },
+            en: { languageLabel:"Language / Idioma", backHome:"← Back to home page", createAccount:"Create account / Continue", slogan:"Turn Your Data into Business Opportunities", welcome:"Welcome back", title:"Sign in to the platform", intro:"Enter your credentials to access your dashboard.", usernameLabel:"Email or username", usernamePlaceholder:"Your email or username", passwordLabel:"Password", passwordPlaceholder:"Enter your password", submit:"Sign in securely", signupPrompt:"Don’t have an account yet?", signupLink:"Try it free for 30 days", security:"Access reserved for authenticated users", valueHeading:"Track your social media. Make smarter decisions.", valueLead:"Turn metrics into strategic decisions. Analyse performance, follow trends, and discover opportunities to improve your business results.", feature1Title:"Organised metrics", feature1Copy:"Track followers, reach, and engagement in one place.", feature2Title:"Artificial intelligence", feature2Copy:"Review alerts, recommendations, and reports based on available data.", feature3Title:"Protected workspace", feature3Copy:"Access your dashboard and authorised data through your account." }
+        };
+        const selector = document.getElementById("login-language");
+        function setLanguage(language) {
+            const lang = translations[language] ? language : "pt";
+            document.documentElement.lang = lang;
+            document.querySelectorAll("[data-i18n]").forEach(function (element) {
+                const key = element.getAttribute("data-i18n");
+                if (translations[lang][key]) element.textContent = translations[lang][key];
+            });
+            document.querySelectorAll("[data-i18n-placeholder]").forEach(function (element) {
+                const key = element.getAttribute("data-i18n-placeholder");
+                if (translations[lang][key]) element.placeholder = translations[lang][key];
+            });
+            const error = document.querySelector(".error");
+            if (error && lang === "en") {
+                const messages = { "Email/username ou password inválido.":"Incorrect email/username or password." };
+                if (messages[error.textContent.trim()]) error.textContent = messages[error.textContent.trim()];
+            }
+            try { localStorage.setItem("pmw-login-language", lang); } catch (e) {}
+        }
+        let saved = "pt";
+        try { saved = localStorage.getItem("pmw-login-language") || "pt"; } catch (e) {}
+        selector.value = saved;
+        selector.addEventListener("change", function () { setLanguage(selector.value); });
+        setLanguage(selector.value);
+    })();
+    </script>
 </body>
 </html>
 """
