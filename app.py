@@ -621,6 +621,92 @@ def calcular_kpis(dados):
         "score": score,
     }
 
+
+EN_TRANSLATIONS = {
+    "Analytics • Métricas • IA": "Analytics • Metrics • AI",
+    "Transforme os Seus Dados em Oportunidades de Negócio": "Turn Your Data into Business Opportunities",
+    "🔗 Conectar Redes": "🔗 Connect Social Accounts", "💳 Plano": "💳 Plan", "🚪 Logout": "🚪 Log out",
+    "Seguidores": "Followers", "Alcance": "Reach", "Taxa de interação": "Engagement rate",
+    "Crescimento": "Growth", "Score IA": "AI Score",
+    "📆 Instagram — resumo oficial dos últimos 28 dias": "📆 Instagram — official summary for the last 28 days",
+    "📆 Facebook — resumo oficial dos últimos 28 dias": "📆 Facebook — official summary for the last 28 days",
+    "Totais agregados oficiais do Instagram. O alcance é único para o período.": "Official aggregated Instagram totals. Reach is unique for the period.",
+    "Totais agregados consultados na API oficial da Página do Facebook. Métricas não disponibilizadas pela API permanecem N/D.": "Aggregated totals retrieved from the official Facebook Page API. Metrics unavailable from the API remain N/A.",
+    "📊 Instagram — totais oficiais por período": "📊 Instagram — official totals by period",
+    "📊 Facebook — métricas por período": "📊 Facebook — metrics by period",
+    "Período de análise": "Analysis period", "Últimos 7 dias": "Last 7 days", "Últimos 14 dias": "Last 14 days",
+    "Últimos 30 dias": "Last 30 days", "Últimos 60 dias": "Last 60 days",
+    "🔎 Selecionar plataforma": "🔎 Select platform", "🤖 Assistente IA": "🤖 AI Assistant",
+    "📋 Relatório Executivo IA": "📋 AI Executive Report",
+    "Visualizações (28 dias)": "Views (28 days)", "Interações (28 dias)": "Interactions (28 days)",
+    "Alcance único (28 dias)": "Unique reach (28 days)", "Views registadas": "Recorded views",
+    "Alcance diário acumulado": "Cumulative daily reach", "Interações registadas": "Recorded interactions",
+    "Visualizações de Reels": "Reels views", "Alcance de Reels": "Reels reach", "Interações de Reels": "Reels interactions",
+    "Sem dados disponíveis": "No data available", "Sem dados": "No data",
+    "Visualizações oficiais": "Official views", "Alcance único oficial": "Official unique reach",
+    "Interações oficiais": "Official interactions", "Última sincronização:": "Last synced:",
+    "Os valores são totais agregados oficiais do Instagram.": "These are official aggregated Instagram totals.",
+    "No Facebook, o alcance acumulado de dias não equivale a pessoas únicas no período.": "For Facebook, cumulative daily reach is not the same as unique people for the period.",
+    "Selecione Instagram para consultar métricas de Reels.": "Select Instagram to view Reels metrics.",
+    "A API pode ter atraso de até 48 horas.": "The API may be delayed by up to 48 hours.",
+    "Ainda não existem snapshots oficiais de Reels para este período.": "There are no official Reels snapshots for this period yet.",
+    "Aguarde a próxima sincronização automática; os valores não são estimados.": "Wait for the next automatic sync; values are not estimated.",
+    "A aguardar dados oficiais da API.": "Waiting for official API data.",
+    "Evolução de Seguidores": "Follower Growth", "Data": "Date", "Engajamento": "Engagement",
+    "Engajamento (%)": "Engagement (%)", "Previsão de Seguidores": "Follower Forecast",
+    "Seguidores previstos": "Predicted followers", "Previsão IA": "AI Forecast",
+    "Relatório executivo indisponível.": "Executive report unavailable.",
+    "⚠️ Não foi possível gerar o alerta.": "⚠️ Unable to generate the alert.",
+    "💡 Não foi possível gerar a recomendação.": "💡 Unable to generate a recommendation.",
+    "QUALIDADE E CONFIANÇA": "DATA QUALITY AND CONFIDENCE",
+    "A taxa de interação apresentada é agregada para os últimos 28 dias.": "The displayed engagement rate is aggregated for the last 28 days.",
+    "Histórico insuficiente: existe apenas um dia de dados.": "Insufficient history: data is available for only one day.",
+    "O crescimento histórico não pode ser determinado e a previsão repete o valor mais recente; não deve ser interpretada como tendência.": "Historical growth cannot be determined and the forecast repeats the latest value; it should not be interpreted as a trend.",
+    "Amostra reduzida (alcance inferior a 30): interpretar os indicadores como preliminares.": "Small sample (reach below 30): treat the indicators as preliminary.",
+    "© 2026 PMW Consultoria & Tecnologia": "© 2026 PMW Consultoria & Tecnologia"
+}
+def traduzir_texto(valor):
+    if not isinstance(valor, str):
+        return valor
+    for origem, destino in sorted(EN_TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True):
+        valor = valor.replace(origem, destino)
+    return valor
+
+def traduzir_saida(valor, idioma):
+    if idioma != "en":
+        return valor
+    if isinstance(valor, str):
+        return traduzir_texto(valor)
+    if isinstance(valor, (list, tuple)):
+        convertido = [traduzir_saida(item, idioma) for item in valor]
+        return tuple(convertido) if isinstance(valor, tuple) else convertido
+    if isinstance(valor, dict):
+        return {chave: traduzir_saida(item, idioma) for chave, item in valor.items()}
+    if hasattr(valor, "children"):
+        try:
+            valor.children = traduzir_saida(valor.children, idioma)
+            if hasattr(valor, "options") and valor.options:
+                valor.options = traduzir_saida(valor.options, idioma)
+        except Exception:
+            pass
+        return valor
+    if hasattr(valor, "update_layout") and hasattr(valor, "layout"):
+        try:
+            if getattr(valor.layout.title, "text", None):
+                valor.update_layout(title=traduzir_texto(valor.layout.title.text))
+            for eixo in ("xaxis", "yaxis"):
+                eixo_titulo = getattr(getattr(valor.layout, eixo), "title", None)
+                if eixo_titulo and getattr(eixo_titulo, "text", None):
+                    valor.update_layout(**{f"{eixo}.title.text": traduzir_texto(eixo_titulo.text)})
+            for anotacao in getattr(valor.layout, "annotations", []) or []:
+                if getattr(anotacao, "text", None):
+                    anotacao.text = traduzir_texto(anotacao.text)
+        except Exception:
+            pass
+        return valor
+    return valor
+
+
 def numero(valor):
     if valor is None or pd.isna(valor):
         return "N/D"
@@ -768,6 +854,19 @@ app.layout = html.Div(
                 ),
                 html.Div(
                     [
+                        html.Div([
+                            html.Label("Idioma / Language", htmlFor="idioma", style={"color": COLORS["muted"], "fontSize": "11px", "display": "block", "marginBottom": "3px"}),
+                            dcc.Dropdown(
+                                id="idioma",
+                                options=[{"label": "Português", "value": "pt"}, {"label": "English", "value": "en"}],
+                                value="pt",
+                                clearable=False,
+                                searchable=False,
+                                persistence=True,
+                                persistence_type="session",
+                                style={"color": "#111827", "minWidth": "125px"},
+                            ),
+                        ], style={"minWidth": "125px"}),
                         html.A(
                             "🔗 Conectar Redes",
                             href="/account#social-connections",
@@ -1049,9 +1148,9 @@ app.layout = html.Div(
         Output("grafico_engajamento", "figure"),
         Output("grafico_previsao", "figure"),
     ],
-    [Input("plataforma", "value"), Input("periodo-insights", "value")],
+    [Input("plataforma", "value"), Input("periodo-insights", "value"), Input("idioma", "value")],
 )
-def atualizar(plataforma, periodo_insights):
+def atualizar(plataforma, periodo_insights, idioma="pt"):
     workspace_dados = preparar_dados(carregar_dados())
 
     if workspace_dados.empty and os.getenv("ALLOW_DEMO_DATA", "false").strip().lower() in {
@@ -1194,7 +1293,7 @@ def atualizar(plataforma, periodo_insights):
         )
         # Sem registos diários, usar o snapshot de 28 dias para os KPIs que
         # têm correspondência directa. Crescimento continua N/D sem histórico.
-        return (
+        return traduzir_saida((
             cards_28d,
             titulo_28d,
             descricao_28d,
@@ -1218,7 +1317,7 @@ def atualizar(plataforma, periodo_insights):
             "💡 Continue a sincronizar diariamente para calcular crescimento e um Score IA fiável.",
             "Relatório indisponível: existem métricas agregadas dos últimos 28 dias, mas não há histórico diário suficiente para análise temporal.",
             vazio, vazio, vazio, vazio,
-        )
+        ), idioma)
 
     kpis = calcular_kpis(dados)
     insights_28d = carregar_insights_28d() if is_instagram else carregar_insights_facebook(28) if is_facebook else {"reach": None, "views": None, "interactions": None}
@@ -1365,7 +1464,7 @@ def atualizar(plataforma, periodo_insights):
         criar_kpi(numero(insights_28d["interactions"]), "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
     ]
 
-    return (
+    return traduzir_saida((
         cards_28d,
         titulo_28d,
         descricao_28d,
@@ -1389,7 +1488,7 @@ def atualizar(plataforma, periodo_insights):
         str(recomendacao),
         str(relatorio),
         fig1, fig2, fig3, fig4,
-    )
+    ), idioma)
 
 
 if __name__ == "__main__":
