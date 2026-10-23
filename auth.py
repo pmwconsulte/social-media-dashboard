@@ -11,6 +11,7 @@ import requests
 from cryptography.fernet import Fernet, InvalidToken
 from flask import (
     Flask,
+    g,
     jsonify,
     redirect,
     render_template_string,
@@ -1064,7 +1065,7 @@ LOGIN_PAGE = """
         </div>
     </main>
     <footer>© 2026 PMW Consultoria &amp; Tecnologia</footer>
-    <script>
+    <script nonce="{{ csp_nonce }}">
     (function () {
         const translations = {
             pt: { languageLabel:"Idioma / Language", backHome:"← Voltar à página inicial", createAccount:"Criar conta / Continuar", slogan:"Transforme os Seus Dados em Oportunidades de Negócio", welcome:"Bem-vindo de volta", title:"Entrar na plataforma", intro:"Introduza as suas credenciais para aceder ao seu dashboard.", usernameLabel:"Email ou nome de utilizador", usernamePlaceholder:"O seu email ou utilizador", passwordLabel:"Palavra-passe", passwordPlaceholder:"Introduza a sua palavra-passe", submit:"Entrar com segurança", signupPrompt:"Ainda não tem conta?", signupLink:"Experimente gratuitamente durante 30 dias", security:"Acesso reservado a utilizadores autenticados", valueHeading:"Acompanhe as suas redes sociais. Decida com inteligência.", valueLead:"Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio.", feature1Title:"Métricas organizadas", feature1Copy:"Acompanhe seguidores, alcance e envolvimento num só espaço.", feature2Title:"Inteligência artificial", feature2Copy:"Consulte alertas, recomendações e relatórios com base nos dados disponíveis.", feature3Title:"Área de trabalho protegida", feature3Copy:"Aceda ao dashboard e aos dados autorizados através da sua conta." },
@@ -1261,7 +1262,10 @@ def setup_auth(server: Flask):
                 "form-action 'self'; "
                 "frame-ancestors 'none'; "
                 "object-src 'none'; "
-                "script-src 'none'; "
+                ("script-src 'nonce-" + getattr(g, "csp_nonce", "") + "'; ")
+                if request.path == "/login"
+                else "script-src 'none'; "
+            ) + (
                 "style-src 'self' 'unsafe-inline'; "
                 "img-src 'self' data:; "
                 "font-src 'self' data:"
@@ -1369,6 +1373,8 @@ def setup_auth(server: Flask):
 
     @server.route("/login", methods=["GET", "POST"])
     def login():
+        # Permite apenas o script de tradução desta resposta, usando nonce CSP.
+        g.csp_nonce = secrets.token_urlsafe(18)
         if session.get("authenticated"):
             try:
                 conn = get_connection()
@@ -1445,7 +1451,7 @@ def setup_auth(server: Flask):
 
             error = "Email/username ou password inválido."
 
-        return render_template_string(LOGIN_PAGE, error=error)
+        return render_template_string(LOGIN_PAGE, error=error, csp_nonce=g.csp_nonce)
 
     @server.route("/signup", methods=["GET", "POST"])
     def signup():
