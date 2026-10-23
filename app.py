@@ -1321,6 +1321,27 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
         # Sem registos diários, usar o snapshot de 28 dias para os KPIs que
         # têm correspondência directa. Crescimento continua N/D sem histórico.
         return traduzir_saida((
+            "Analytics • Métricas • IA",
+            "Transforme os Seus Dados em Oportunidades de Negócio",
+            "PMW Dashboard",
+            "🔗 Conectar Redes",
+            "💳 Plano",
+            "🚪 Logout",
+            "Seguidores",
+            "Alcance",
+            "Taxa de interação (28 dias)",
+            "Crescimento",
+            "Score IA*",
+            "Período de análise",
+            "🔎 Selecionar plataforma",
+            "🤖 Assistente IA",
+            "📋 Relatório Executivo IA",
+            "Os valores abaixo são totais oficiais de Reels para a janela selecionada; não são a soma dos valores vitalícios de cada vídeo.",
+            "© 2026 PMW Consultoria & Tecnologia",
+            [{"label": traduzir_texto(item["label"]) if idioma == "en" else item["label"], "value": item["value"]} for item in [
+                {"label": "Últimos 7 dias", "value": 7}, {"label": "Últimos 14 dias", "value": 14},
+                {"label": "Últimos 30 dias", "value": 30}, {"label": "Últimos 60 dias", "value": 60}
+            ]],
             cards_28d,
             titulo_28d,
             descricao_28d,
