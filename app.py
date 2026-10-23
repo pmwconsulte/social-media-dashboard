@@ -725,7 +725,7 @@ def percentual(valor):
         return "N/D"
 
 
-def criar_kpi(valor, titulo, cor, identificador):
+def criar_kpi(valor, titulo, cor, identificador, label_id=None):
     return html.Div(
         [
             html.H2(
@@ -741,6 +741,7 @@ def criar_kpi(valor, titulo, cor, identificador):
             ),
             html.P(
                 titulo,
+                id=label_id,
                 style={
                     "color": COLORS["text"],
                     "fontSize": "14px",
@@ -821,6 +822,7 @@ app.layout = html.Div(
                                 ),
                                 html.Div(
                                     "Analytics • Métricas • IA",
+                                    id="marca-subtitulo",
                                     style={
                                         "fontSize": "11px", "fontWeight": "600",
                                         "color": COLORS["muted"], "marginTop": "3px",
@@ -828,6 +830,7 @@ app.layout = html.Div(
                                 ),
                                 html.Div(
                                     "Transforme os Seus Dados em Oportunidades de Negócio",
+                                    id="marca-slogan",
                                     style={
                                         "fontSize": "11px", "lineHeight": "1.35",
                                         "fontWeight": "600", "color": COLORS["primary"],
@@ -846,6 +849,7 @@ app.layout = html.Div(
                 # Título principal à direita da marca.
                 html.H1(
                     "PMW Dashboard",
+                    id="titulo-dashboard",
                     style={
                         "fontSize": "clamp(21px, 2.5vw, 30px)",
                         "textAlign": "right", "margin": "0",
@@ -869,6 +873,7 @@ app.layout = html.Div(
                         ], style={"minWidth": "125px"}),
                         html.A(
                             "🔗 Conectar Redes",
+                            id="botao-conectar",
                             href="/account#social-connections",
                             style={
                                 "display": "inline-block",
@@ -883,6 +888,7 @@ app.layout = html.Div(
                         ),
                         html.A(
                             "💳 Plano",
+                            id="botao-plano",
                             href="/billing",
                             style={
                                 "display": "inline-block",
@@ -897,6 +903,7 @@ app.layout = html.Div(
                         ),
                         html.A(
                             "🚪 Logout",
+                            id="botao-logout",
                             href="/logout",
                             style={
                                 "display": "inline-block",
@@ -927,11 +934,11 @@ app.layout = html.Div(
 
         html.Div(
             [
-                criar_kpi(numero(kpis_iniciais["seguidores"]), "Seguidores", COLORS["primary"], "kpi-seguidores"),
-                criar_kpi(numero(kpis_iniciais["alcance"]), "Alcance", COLORS["success"], "kpi-alcance"),
-                criar_kpi(percentual(kpis_iniciais["engajamento"]), "Taxa de interação (28 dias)", COLORS["warning"], "kpi-engajamento"),
-                criar_kpi(percentual(kpis_iniciais["crescimento"]), "Crescimento", COLORS["purple"], "kpi-crescimento"),
-                criar_kpi(f'{kpis_iniciais["score"]}/100' if kpis_iniciais["score"] is not None else "N/D", "Score IA*", COLORS["danger"], "kpi-score"),
+                criar_kpi(numero(kpis_iniciais["seguidores"]), "Seguidores", COLORS["primary"], "kpi-seguidores", "label-seguidores"),
+                criar_kpi(numero(kpis_iniciais["alcance"]), "Alcance", COLORS["success"], "kpi-alcance", "label-alcance"),
+                criar_kpi(percentual(kpis_iniciais["engajamento"]), "Taxa de interação (28 dias)", COLORS["warning"], "kpi-engajamento", "label-engajamento"),
+                criar_kpi(percentual(kpis_iniciais["crescimento"]), "Crescimento", COLORS["purple"], "kpi-crescimento", "label-crescimento"),
+                criar_kpi(f'{kpis_iniciais["score"]}/100' if kpis_iniciais["score"] is not None else "N/D", "Score IA*", COLORS["danger"], "kpi-score", "label-score"),
             ],
             style={
                 "display": "grid",
@@ -972,7 +979,7 @@ app.layout = html.Div(
                     "Valores agregados consultados na API oficial para a janela selecionada. Não são somas de snapshots diários; se a API não devolver um total válido, o cartão mostra N/D.",
                     id="descricao-periodo", style={"color": COLORS["muted"], "margin": "0 0 14px"},
                 ),
-                html.Label("Período de análise", style={"color": COLORS["text"], "fontWeight": "600", "display": "block", "marginBottom": "8px"}),
+                html.Label("Período de análise", id="label-periodo", style={"color": COLORS["text"], "fontWeight": "600", "display": "block", "marginBottom": "8px"}),
                 dcc.Dropdown(
                     id="periodo-insights",
                     options=[
@@ -1023,6 +1030,7 @@ app.layout = html.Div(
             [
                 html.Label(
                     "🔎 Selecionar plataforma",
+                    id="label-plataforma",
                     style={
                         "color": COLORS["text"],
                         "fontWeight": "600",
@@ -1049,7 +1057,7 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H2("🤖 Assistente IA", style={"color": COLORS["primary"], "marginTop": "0"}),
+                html.H2("🤖 Assistente IA", id="titulo-assistente", style={"color": COLORS["primary"], "marginTop": "0"}),
                 html.Div(id="alerta-ia", style={"color": "#facc15", "whiteSpace": "pre-wrap", "lineHeight": "1.7"}),
                 html.Div(id="recomendacao-ia", style={"color": COLORS["success"], "whiteSpace": "pre-wrap", "lineHeight": "1.7", "marginTop": "10px"}),
             ],
@@ -1064,7 +1072,7 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H2("📋 Relatório Executivo IA", style={"marginTop": "0", "color": "white"}),
+                html.H2("📋 Relatório Executivo IA", id="titulo-relatorio", style={"marginTop": "0", "color": "white"}),
                 html.Pre(
                     id="relatorio-ia",
                     style={
@@ -1121,6 +1129,21 @@ app.layout = html.Div(
 
 @app.callback(
     [
+        Output("marca-subtitulo", "children"),
+        Output("marca-slogan", "children"),
+        Output("titulo-dashboard", "children"),
+        Output("botao-conectar", "children"),
+        Output("botao-plano", "children"),
+        Output("botao-logout", "children"),
+        Output("label-seguidores", "children"),
+        Output("label-alcance", "children"),
+        Output("label-engajamento", "children"),
+        Output("label-crescimento", "children"),
+        Output("label-score", "children"),
+        Output("label-periodo", "children"),
+        Output("label-plataforma", "children"),
+        Output("titulo-assistente", "children"),
+        Output("titulo-relatorio", "children"),
         Output("kpis-28d", "children"),
         Output("titulo-28d", "children"),
         Output("descricao-28d", "children"),
@@ -1465,6 +1488,21 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
     ]
 
     return traduzir_saida((
+        "Analytics • Métricas • IA",
+        "Transforme os Seus Dados em Oportunidades de Negócio",
+        "PMW Dashboard",
+        "🔗 Conectar Redes",
+        "💳 Plano",
+        "🚪 Logout",
+        "Seguidores",
+        "Alcance",
+        "Taxa de interação (28 dias)",
+        "Crescimento",
+        "Score IA*",
+        "Período de análise",
+        "🔎 Selecionar plataforma",
+        "🤖 Assistente IA",
+        "📋 Relatório Executivo IA",
         cards_28d,
         titulo_28d,
         descricao_28d,
