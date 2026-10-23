@@ -741,7 +741,7 @@ def criar_kpi(valor, titulo, cor, identificador, label_id=None):
             ),
             html.P(
                 titulo,
-                id=label_id,
+                **({"id": label_id} if label_id is not None else {}),
                 style={
                     "color": COLORS["text"],
                     "fontSize": "14px",
