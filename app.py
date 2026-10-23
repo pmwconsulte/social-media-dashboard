@@ -621,6 +621,92 @@ def calcular_kpis(dados):
         "score": score,
     }
 
+
+EN_TRANSLATIONS = {
+    "Analytics • Métricas • IA": "Analytics • Metrics • AI",
+    "Transforme os Seus Dados em Oportunidades de Negócio": "Turn Your Data into Business Opportunities",
+    "🔗 Conectar Redes": "🔗 Connect Social Accounts", "💳 Plano": "💳 Plan", "🚪 Logout": "🚪 Log out",
+    "Seguidores": "Followers", "Alcance": "Reach", "Taxa de interação": "Engagement rate",
+    "Crescimento": "Growth", "Score IA": "AI Score",
+    "📆 Instagram — resumo oficial dos últimos 28 dias": "📆 Instagram — official summary for the last 28 days",
+    "📆 Facebook — resumo oficial dos últimos 28 dias": "📆 Facebook — official summary for the last 28 days",
+    "Totais agregados oficiais do Instagram. O alcance é único para o período.": "Official aggregated Instagram totals. Reach is unique for the period.",
+    "Totais agregados consultados na API oficial da Página do Facebook. Métricas não disponibilizadas pela API permanecem N/D.": "Aggregated totals retrieved from the official Facebook Page API. Metrics unavailable from the API remain N/A.",
+    "📊 Instagram — totais oficiais por período": "📊 Instagram — official totals by period",
+    "📊 Facebook — métricas por período": "📊 Facebook — metrics by period",
+    "Período de análise": "Analysis period", "Últimos 7 dias": "Last 7 days", "Últimos 14 dias": "Last 14 days",
+    "Últimos 30 dias": "Last 30 days", "Últimos 60 dias": "Last 60 days",
+    "🔎 Selecionar plataforma": "🔎 Select platform", "🤖 Assistente IA": "🤖 AI Assistant",
+    "📋 Relatório Executivo IA": "📋 AI Executive Report",
+    "Visualizações (28 dias)": "Views (28 days)", "Interações (28 dias)": "Interactions (28 days)",
+    "Alcance único (28 dias)": "Unique reach (28 days)", "Views registadas": "Recorded views",
+    "Alcance diário acumulado": "Cumulative daily reach", "Interações registadas": "Recorded interactions",
+    "Visualizações de Reels": "Reels views", "Alcance de Reels": "Reels reach", "Interações de Reels": "Reels interactions",
+    "Sem dados disponíveis": "No data available", "Sem dados": "No data",
+    "Visualizações oficiais": "Official views", "Alcance único oficial": "Official unique reach",
+    "Interações oficiais": "Official interactions", "Última sincronização:": "Last synced:",
+    "Os valores são totais agregados oficiais do Instagram.": "These are official aggregated Instagram totals.",
+    "No Facebook, o alcance acumulado de dias não equivale a pessoas únicas no período.": "For Facebook, cumulative daily reach is not the same as unique people for the period.",
+    "Selecione Instagram para consultar métricas de Reels.": "Select Instagram to view Reels metrics.",
+    "A API pode ter atraso de até 48 horas.": "The API may be delayed by up to 48 hours.",
+    "Ainda não existem snapshots oficiais de Reels para este período.": "There are no official Reels snapshots for this period yet.",
+    "Aguarde a próxima sincronização automática; os valores não são estimados.": "Wait for the next automatic sync; values are not estimated.",
+    "A aguardar dados oficiais da API.": "Waiting for official API data.",
+    "Evolução de Seguidores": "Follower Growth", "Data": "Date", "Engajamento": "Engagement",
+    "Engajamento (%)": "Engagement (%)", "Previsão de Seguidores": "Follower Forecast",
+    "Seguidores previstos": "Predicted followers", "Previsão IA": "AI Forecast",
+    "Relatório executivo indisponível.": "Executive report unavailable.",
+    "⚠️ Não foi possível gerar o alerta.": "⚠️ Unable to generate the alert.",
+    "💡 Não foi possível gerar a recomendação.": "💡 Unable to generate a recommendation.",
+    "QUALIDADE E CONFIANÇA": "DATA QUALITY AND CONFIDENCE",
+    "A taxa de interação apresentada é agregada para os últimos 28 dias.": "The displayed engagement rate is aggregated for the last 28 days.",
+    "Histórico insuficiente: existe apenas um dia de dados.": "Insufficient history: data is available for only one day.",
+    "O crescimento histórico não pode ser determinado e a previsão repete o valor mais recente; não deve ser interpretada como tendência.": "Historical growth cannot be determined and the forecast repeats the latest value; it should not be interpreted as a trend.",
+    "Amostra reduzida (alcance inferior a 30): interpretar os indicadores como preliminares.": "Small sample (reach below 30): treat the indicators as preliminary.",
+    "© 2026 PMW Consultoria & Tecnologia": "© 2026 PMW Consultoria & Tecnologia"
+}
+def traduzir_texto(valor):
+    if not isinstance(valor, str):
+        return valor
+    for origem, destino in sorted(EN_TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True):
+        valor = valor.replace(origem, destino)
+    return valor
+
+def traduzir_saida(valor, idioma):
+    if idioma != "en":
+        return valor
+    if isinstance(valor, str):
+        return traduzir_texto(valor)
+    if isinstance(valor, (list, tuple)):
+        convertido = [traduzir_saida(item, idioma) for item in valor]
+        return tuple(convertido) if isinstance(valor, tuple) else convertido
+    if isinstance(valor, dict):
+        return {chave: traduzir_saida(item, idioma) for chave, item in valor.items()}
+    if hasattr(valor, "children"):
+        try:
+            valor.children = traduzir_saida(valor.children, idioma)
+            if hasattr(valor, "options") and valor.options:
+                valor.options = traduzir_saida(valor.options, idioma)
+        except Exception:
+            pass
+        return valor
+    if hasattr(valor, "update_layout") and hasattr(valor, "layout"):
+        try:
+            if getattr(valor.layout.title, "text", None):
+                valor.update_layout(title=traduzir_texto(valor.layout.title.text))
+            for eixo in ("xaxis", "yaxis"):
+                eixo_titulo = getattr(getattr(valor.layout, eixo), "title", None)
+                if eixo_titulo and getattr(eixo_titulo, "text", None):
+                    valor.update_layout(**{f"{eixo}.title.text": traduzir_texto(eixo_titulo.text)})
+            for anotacao in getattr(valor.layout, "annotations", []) or []:
+                if getattr(anotacao, "text", None):
+                    anotacao.text = traduzir_texto(anotacao.text)
+        except Exception:
+            pass
+        return valor
+    return valor
+
+
 def numero(valor):
     if valor is None or pd.isna(valor):
         return "N/D"
@@ -639,7 +725,7 @@ def percentual(valor):
         return "N/D"
 
 
-def criar_kpi(valor, titulo, cor, identificador):
+def criar_kpi(valor, titulo, cor, identificador, label_id=None):
     return html.Div(
         [
             html.H2(
@@ -655,6 +741,7 @@ def criar_kpi(valor, titulo, cor, identificador):
             ),
             html.P(
                 titulo,
+                id=label_id,
                 style={
                     "color": COLORS["text"],
                     "fontSize": "14px",
@@ -735,6 +822,7 @@ app.layout = html.Div(
                                 ),
                                 html.Div(
                                     "Analytics • Métricas • IA",
+                                    id="marca-subtitulo",
                                     style={
                                         "fontSize": "11px", "fontWeight": "600",
                                         "color": COLORS["muted"], "marginTop": "3px",
@@ -742,6 +830,7 @@ app.layout = html.Div(
                                 ),
                                 html.Div(
                                     "Transforme os Seus Dados em Oportunidades de Negócio",
+                                    id="marca-slogan",
                                     style={
                                         "fontSize": "11px", "lineHeight": "1.35",
                                         "fontWeight": "600", "color": COLORS["primary"],
@@ -760,6 +849,7 @@ app.layout = html.Div(
                 # Título principal à direita da marca.
                 html.H1(
                     "PMW Dashboard",
+                    id="titulo-dashboard",
                     style={
                         "fontSize": "clamp(21px, 2.5vw, 30px)",
                         "textAlign": "right", "margin": "0",
@@ -768,8 +858,22 @@ app.layout = html.Div(
                 ),
                 html.Div(
                     [
+                        html.Div([
+                            html.Label("Idioma / Language", htmlFor="idioma", style={"color": COLORS["muted"], "fontSize": "11px", "display": "block", "marginBottom": "3px"}),
+                            dcc.Dropdown(
+                                id="idioma",
+                                options=[{"label": "Português", "value": "pt"}, {"label": "English", "value": "en"}],
+                                value="pt",
+                                clearable=False,
+                                searchable=False,
+                                persistence=True,
+                                persistence_type="session",
+                                style={"color": "#111827", "minWidth": "125px"},
+                            ),
+                        ], style={"minWidth": "125px"}),
                         html.A(
                             "🔗 Conectar Redes",
+                            id="botao-conectar",
                             href="/account#social-connections",
                             style={
                                 "display": "inline-block",
@@ -784,6 +888,7 @@ app.layout = html.Div(
                         ),
                         html.A(
                             "💳 Plano",
+                            id="botao-plano",
                             href="/billing",
                             style={
                                 "display": "inline-block",
@@ -798,6 +903,7 @@ app.layout = html.Div(
                         ),
                         html.A(
                             "🚪 Logout",
+                            id="botao-logout",
                             href="/logout",
                             style={
                                 "display": "inline-block",
@@ -828,11 +934,11 @@ app.layout = html.Div(
 
         html.Div(
             [
-                criar_kpi(numero(kpis_iniciais["seguidores"]), "Seguidores", COLORS["primary"], "kpi-seguidores"),
-                criar_kpi(numero(kpis_iniciais["alcance"]), "Alcance", COLORS["success"], "kpi-alcance"),
-                criar_kpi(percentual(kpis_iniciais["engajamento"]), "Taxa de interação (28 dias)", COLORS["warning"], "kpi-engajamento"),
-                criar_kpi(percentual(kpis_iniciais["crescimento"]), "Crescimento", COLORS["purple"], "kpi-crescimento"),
-                criar_kpi(f'{kpis_iniciais["score"]}/100' if kpis_iniciais["score"] is not None else "N/D", "Score IA*", COLORS["danger"], "kpi-score"),
+                criar_kpi(numero(kpis_iniciais["seguidores"]), "Seguidores", COLORS["primary"], "kpi-seguidores", "label-seguidores"),
+                criar_kpi(numero(kpis_iniciais["alcance"]), "Alcance", COLORS["success"], "kpi-alcance", "label-alcance"),
+                criar_kpi(percentual(kpis_iniciais["engajamento"]), "Taxa de interação (28 dias)", COLORS["warning"], "kpi-engajamento", "label-engajamento"),
+                criar_kpi(percentual(kpis_iniciais["crescimento"]), "Crescimento", COLORS["purple"], "kpi-crescimento", "label-crescimento"),
+                criar_kpi(f'{kpis_iniciais["score"]}/100' if kpis_iniciais["score"] is not None else "N/D", "Score IA*", COLORS["danger"], "kpi-score", "label-score"),
             ],
             style={
                 "display": "grid",
@@ -873,7 +979,7 @@ app.layout = html.Div(
                     "Valores agregados consultados na API oficial para a janela selecionada. Não são somas de snapshots diários; se a API não devolver um total válido, o cartão mostra N/D.",
                     id="descricao-periodo", style={"color": COLORS["muted"], "margin": "0 0 14px"},
                 ),
-                html.Label("Período de análise", style={"color": COLORS["text"], "fontWeight": "600", "display": "block", "marginBottom": "8px"}),
+                html.Label("Período de análise", id="label-periodo", style={"color": COLORS["text"], "fontWeight": "600", "display": "block", "marginBottom": "8px"}),
                 dcc.Dropdown(
                     id="periodo-insights",
                     options=[
@@ -914,7 +1020,7 @@ app.layout = html.Div(
                     criar_kpi("N/D", "Interações de Reels", COLORS["warning"], "reels-interactions"),
                 ], style={"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))", "gap": "15px", "width": "100%"}),
                 html.P(id="nota-reels", children="A aguardar dados oficiais da API.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
-                html.P("Os valores abaixo são totais oficiais de Reels para a janela selecionada; não são a soma dos valores vitalícios de cada vídeo.", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
+                html.P("Os valores abaixo são totais oficiais de Reels para a janela selecionada; não são a soma dos valores vitalícios de cada vídeo.", id="nota-explicativa-reels", style={"color": COLORS["muted"], "margin": "12px 0 0"}),
             ],
             id="secao-reels",
             style={"background": COLORS["card"], "padding": "20px", "borderRadius": "16px", "marginBottom": "20px", "border": "1px solid rgba(148,163,184,0.10)"},
@@ -924,6 +1030,7 @@ app.layout = html.Div(
             [
                 html.Label(
                     "🔎 Selecionar plataforma",
+                    id="label-plataforma",
                     style={
                         "color": COLORS["text"],
                         "fontWeight": "600",
@@ -950,7 +1057,7 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H2("🤖 Assistente IA", style={"color": COLORS["primary"], "marginTop": "0"}),
+                html.H2("🤖 Assistente IA", id="titulo-assistente", style={"color": COLORS["primary"], "marginTop": "0"}),
                 html.Div(id="alerta-ia", style={"color": "#facc15", "whiteSpace": "pre-wrap", "lineHeight": "1.7"}),
                 html.Div(id="recomendacao-ia", style={"color": COLORS["success"], "whiteSpace": "pre-wrap", "lineHeight": "1.7", "marginTop": "10px"}),
             ],
@@ -965,7 +1072,7 @@ app.layout = html.Div(
 
         html.Div(
             [
-                html.H2("📋 Relatório Executivo IA", style={"marginTop": "0", "color": "white"}),
+                html.H2("📋 Relatório Executivo IA", id="titulo-relatorio", style={"marginTop": "0", "color": "white"}),
                 html.Pre(
                     id="relatorio-ia",
                     style={
@@ -1005,6 +1112,7 @@ app.layout = html.Div(
         html.Hr(style={"borderColor": COLORS["border"], "marginTop": "35px"}),
         html.P(
             "© 2026 PMW Consultoria & Tecnologia",
+            id="rodape-dashboard",
             style={"textAlign": "center", "color": COLORS["muted"], "fontSize": "13px", "padding": "15px"},
         ),
     ],
@@ -1022,6 +1130,24 @@ app.layout = html.Div(
 
 @app.callback(
     [
+        Output("marca-subtitulo", "children"),
+        Output("marca-slogan", "children"),
+        Output("titulo-dashboard", "children"),
+        Output("botao-conectar", "children"),
+        Output("botao-plano", "children"),
+        Output("botao-logout", "children"),
+        Output("label-seguidores", "children"),
+        Output("label-alcance", "children"),
+        Output("label-engajamento", "children"),
+        Output("label-crescimento", "children"),
+        Output("label-score", "children"),
+        Output("label-periodo", "children"),
+        Output("label-plataforma", "children"),
+        Output("titulo-assistente", "children"),
+        Output("titulo-relatorio", "children"),
+        Output("nota-explicativa-reels", "children"),
+        Output("rodape-dashboard", "children"),
+        Output("periodo-insights", "options"),
         Output("kpis-28d", "children"),
         Output("titulo-28d", "children"),
         Output("descricao-28d", "children"),
@@ -1049,9 +1175,9 @@ app.layout = html.Div(
         Output("grafico_engajamento", "figure"),
         Output("grafico_previsao", "figure"),
     ],
-    [Input("plataforma", "value"), Input("periodo-insights", "value")],
+    [Input("plataforma", "value"), Input("periodo-insights", "value"), Input("idioma", "value")],
 )
-def atualizar(plataforma, periodo_insights):
+def atualizar(plataforma, periodo_insights, idioma="pt"):
     workspace_dados = preparar_dados(carregar_dados())
 
     if workspace_dados.empty and os.getenv("ALLOW_DEMO_DATA", "false").strip().lower() in {
@@ -1194,7 +1320,28 @@ def atualizar(plataforma, periodo_insights):
         )
         # Sem registos diários, usar o snapshot de 28 dias para os KPIs que
         # têm correspondência directa. Crescimento continua N/D sem histórico.
-        return (
+        return traduzir_saida((
+            "Analytics • Métricas • IA",
+            "Transforme os Seus Dados em Oportunidades de Negócio",
+            "PMW Dashboard",
+            "🔗 Conectar Redes",
+            "💳 Plano",
+            "🚪 Logout",
+            "Seguidores",
+            "Alcance",
+            "Taxa de interação (28 dias)",
+            "Crescimento",
+            "Score IA*",
+            "Período de análise",
+            "🔎 Selecionar plataforma",
+            "🤖 Assistente IA",
+            "📋 Relatório Executivo IA",
+            "Os valores abaixo são totais oficiais de Reels para a janela selecionada; não são a soma dos valores vitalícios de cada vídeo.",
+            "© 2026 PMW Consultoria & Tecnologia",
+            [{"label": traduzir_texto(item["label"]) if idioma == "en" else item["label"], "value": item["value"]} for item in [
+                {"label": "Últimos 7 dias", "value": 7}, {"label": "Últimos 14 dias", "value": 14},
+                {"label": "Últimos 30 dias", "value": 30}, {"label": "Últimos 60 dias", "value": 60}
+            ]],
             cards_28d,
             titulo_28d,
             descricao_28d,
@@ -1218,7 +1365,7 @@ def atualizar(plataforma, periodo_insights):
             "💡 Continue a sincronizar diariamente para calcular crescimento e um Score IA fiável.",
             "Relatório indisponível: existem métricas agregadas dos últimos 28 dias, mas não há histórico diário suficiente para análise temporal.",
             vazio, vazio, vazio, vazio,
-        )
+        ), idioma)
 
     kpis = calcular_kpis(dados)
     insights_28d = carregar_insights_28d() if is_instagram else carregar_insights_facebook(28) if is_facebook else {"reach": None, "views": None, "interactions": None}
@@ -1365,7 +1512,28 @@ def atualizar(plataforma, periodo_insights):
         criar_kpi(numero(insights_28d["interactions"]), "Interações (28 dias)", COLORS["warning"], "kpi-interacoes-28d"),
     ]
 
-    return (
+    return traduzir_saida((
+        "Analytics • Métricas • IA",
+        "Transforme os Seus Dados em Oportunidades de Negócio",
+        "PMW Dashboard",
+        "🔗 Conectar Redes",
+        "💳 Plano",
+        "🚪 Logout",
+        "Seguidores",
+        "Alcance",
+        "Taxa de interação (28 dias)",
+        "Crescimento",
+        "Score IA*",
+        "Período de análise",
+        "🔎 Selecionar plataforma",
+        "🤖 Assistente IA",
+        "📋 Relatório Executivo IA",
+        "Os valores abaixo são totais oficiais de Reels para a janela selecionada; não são a soma dos valores vitalícios de cada vídeo.",
+        "© 2026 PMW Consultoria & Tecnologia",
+        [{"label": traduzir_texto(item["label"]) if idioma == "en" else item["label"], "value": item["value"]} for item in [
+            {"label": "Últimos 7 dias", "value": 7}, {"label": "Últimos 14 dias", "value": 14},
+            {"label": "Últimos 30 dias", "value": 30}, {"label": "Últimos 60 dias", "value": 60}
+        ]],
         cards_28d,
         titulo_28d,
         descricao_28d,
@@ -1389,7 +1557,7 @@ def atualizar(plataforma, periodo_insights):
         str(recomendacao),
         str(relatorio),
         fig1, fig2, fig3, fig4,
-    )
+    ), idioma)
 
 
 if __name__ == "__main__":
