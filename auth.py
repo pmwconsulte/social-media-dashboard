@@ -1262,13 +1262,14 @@ def setup_auth(server: Flask):
                 "form-action 'self'; "
                 "frame-ancestors 'none'; "
                 "object-src 'none'; "
-                ("script-src 'nonce-" + getattr(g, "csp_nonce", "") + "'; ")
-                if request.path == "/login"
-                else "script-src 'none'; "
-            ) + (
-                "style-src 'self' 'unsafe-inline'; "
-                "img-src 'self' data:; "
-                "font-src 'self' data:"
+                + (
+                    "script-src 'nonce-" + getattr(g, "csp_nonce", "") + "'; "
+                    if request.path == "/login"
+                    else "script-src 'none'; "
+                )
+                + "style-src 'self' 'unsafe-inline'; "
+                + "img-src 'self' data:; "
+                + "font-src 'self' data:"
             )
 
         return response
