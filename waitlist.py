@@ -12,7 +12,6 @@ _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 def _page(message="", success=False, email=""):
     safe_message = html.escape(message)
-    safe_email = html.escape(email, quote=True)
     alert = ""
     if message:
         alert = (
@@ -52,7 +51,7 @@ a{color:var(--blue)}button:focus-visible,input:focus-visible,a:focus-visible{out
 """ + alert + """
 <form method="post" action="/waitlist">
 <label for="email">Email</label>
-<input id="email" name="email" type="email" autocomplete="email" maxlength="254" required value=""" + safe_email + """">
+<input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
 <div class="hp" aria-hidden="true"><label for="website">Não preencher</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
 <label class="consent"><input type="checkbox" name="consent" value="yes" required>
 <span>Autorizo a PMW Consultoria a usar o meu email para confirmar esta inscrição e enviar informações sobre o acesso antecipado e novidades do PMW Social Media Dashboard AI. Posso retirar o consentimento a qualquer momento contactando <a href="mailto:info@pmwconsultoria.com?subject=Retirar%20consentimento%20da%20lista%20de%20espera">info@pmwconsultoria.com</a>.</span></label>
