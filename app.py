@@ -15,6 +15,7 @@ load_dotenv()
 
 from database import get_connection, initialize_database
 from auth import setup_auth
+from waitlist import register_waitlist
 
 from ai_engine import (
     prever_crescimento,
@@ -110,6 +111,7 @@ PUBLIC_HOME_PAGE = """<!doctype html>
   <nav class="navlinks" aria-label="Navegação principal">
     <a class="btn secondary" href="/login">Entrar</a>
     <a class="btn" href="/signup">Criar conta</a>
+    <a class="btn secondary" href="/waitlist">Acesso antecipado</a>
     <a class="btn secondary" href="#contacto">Contacto</a>
   </nav>
 </header>
@@ -120,6 +122,7 @@ PUBLIC_HOME_PAGE = """<!doctype html>
     <p>Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio — com indicadores claros e apoio de inteligência artificial.</p>
     <div class="actions">
       <a class="btn" href="/signup">Começar o trial de 30 dias</a>
+      <a class="btn secondary" href="/waitlist">Entrar na lista de espera</a>
       <a class="btn secondary" href="/login">Já tenho uma conta</a>
     </div>
     <p class="microcopy">Comece com uma visão mais clara do desempenho das suas redes sociais. Crie a sua conta e explore as funcionalidades disponíveis durante o período de experiência de 30 dias.</p>
@@ -206,6 +209,7 @@ def sitemap_xml():
     return Response(body, mimetype="application/xml")
 
 setup_auth(server)
+register_waitlist(server)
 
 
 @server.before_request
