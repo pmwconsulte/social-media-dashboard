@@ -1,5 +1,7 @@
 import os
 import traceback
+import io
+from xml.sax.saxutils import escape
 
 import pandas as pd
 import plotly.express as px
@@ -7,7 +9,7 @@ import dash
 
 from dash import html, dcc
 from flask import Response, has_request_context, request, session, send_from_directory
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from dotenv import load_dotenv
 
 # Carregar o .env antes de importar database.py, cuja inicialização é automática.
@@ -1221,6 +1223,22 @@ app.layout = html.Div(
                         "margin": "0",
                     },
                 ),
+                html.Div(
+                    [
+                        html.Button(
+                            "⬇️ Descarregar relatório PDF / Download PDF",
+                            id="botao-download-relatorio",
+                            n_clicks=0,
+                            style={
+                                "background": COLORS["primary"], "color": "#06111f",
+                                "border": "0", "borderRadius": "9px", "padding": "11px 16px",
+                                "fontWeight": "700", "cursor": "pointer", "marginTop": "18px",
+                            },
+                        ),
+                        dcc.Download(id="download-relatorio"),
+                    ],
+                    style={"display": "flex", "justifyContent": "flex-start"},
+                ),
             ],
             style={
                 "background": COLORS["card"],
@@ -1262,6 +1280,76 @@ app.layout = html.Div(
         "overflowX": "hidden",
     },
 )
+
+
+@app.callback(
+    Output("download-relatorio", "data"),
+    Input("botao-download-relatorio", "n_clicks"),
+    State("relatorio-ia", "children"),
+    State("idioma", "value"),
+    State("plataforma", "value"),
+    prevent_initial_call=True,
+)
+def descarregar_relatorio_pdf(n_clicks, relatorio, idioma="pt", plataforma="Instagram"):
+    if not n_clicks or not relatorio:
+        return None
+
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+
+    memoria = io.BytesIO()
+    documento = SimpleDocTemplate(
+        memoria, pagesize=A4, rightMargin=20 * mm, leftMargin=20 * mm,
+        topMargin=18 * mm, bottomMargin=18 * mm,
+        title="PMW Social Media Dashboard AI - Executive Report",
+        author="PMW Consultoria & Tecnologia",
+    )
+    estilos = getSampleStyleSheet()
+    titulo = ParagraphStyle(
+        "PMWTitle", parent=estilos["Title"], fontName="Helvetica-Bold",
+        fontSize=16, leading=20, textColor=colors.HexColor("#0f3b63"),
+        alignment=TA_LEFT, spaceAfter=8,
+    )
+    corpo = ParagraphStyle(
+        "PMWBody", parent=estilos["BodyText"], fontName="Helvetica",
+        fontSize=9, leading=13, textColor=colors.HexColor("#172033"),
+        spaceAfter=4, wordWrap="LTR",
+    )
+    idioma_nome = "English" if idioma == "en" else "Português"
+    elementos = [
+        Paragraph("PMW Social Media Dashboard AI", titulo),
+        Paragraph(
+            ("AI Executive Report" if idioma == "en" else "Relatório Executivo IA")
+            + " — " + escape(str(plataforma or "")),
+            estilos["Heading2"],
+        ),
+        Paragraph(
+            ("Language: " if idioma == "en" else "Idioma: ") + idioma_nome,
+            estilos["Italic"],
+        ),
+        Spacer(1, 8),
+    ]
+    for linha in str(relatorio).splitlines():
+        if linha.strip():
+            elementos.append(Paragraph(escape(linha), corpo))
+        else:
+            elementos.append(Spacer(1, 5))
+    elementos.append(Spacer(1, 12))
+    elementos.append(Paragraph("PMW Consultoria &amp; Tecnologia", estilos["Italic"]))
+    documento.build(elementos)
+    memoria.seek(0)
+    nome_plataforma = "".join(
+        ch.lower() if ch.isalnum() else "-" for ch in str(plataforma or "redes-sociais")
+    ).strip("-") or "redes-sociais"
+    return dcc.send_bytes(
+        memoria.getvalue(),
+        filename=f"pmw-relatorio-ia-{nome_plataforma}.pdf",
+        type="application/pdf",
+    )
 
 
 @app.callback(
