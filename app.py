@@ -109,6 +109,10 @@ PUBLIC_HOME_PAGE = """<!doctype html>
 <header class="wrap nav">
   <div class="brand"><img src="/logo.png" alt="Símbolo PMW Consultoria"><span class="brand-copy"><span>PMW Dashboard AI</span><span class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</span></span></div>
   <nav class="navlinks" aria-label="Navegação principal">
+    <label for="home-language" style="color:var(--muted);font-size:13px">Idioma / Language</label>
+    <select id="home-language" aria-label="Language / Idioma" style="padding:10px;border-radius:9px;background:#111827;color:#f8fafc;border:1px solid #456078">
+      <option value="pt">Português</option><option value="en">English</option>
+    </select>
     <a class="btn secondary" href="/login">Entrar</a>
     <a class="btn" href="/signup">Criar conta</a>
     <a class="btn secondary" href="/waitlist">Acesso antecipado</a>
@@ -190,6 +194,80 @@ PUBLIC_HOME_PAGE = """<!doctype html>
   </section>
 </main>
 <footer><div class="wrap">© 2026 PMW Consultoria &amp; Tecnologia · PMW Social Media Dashboard AI · <a href="#contacto">Contacto</a> · <a href="mailto:info@pmwconsultoria.com">info@pmwconsultoria.com</a> · <a href="tel:+258849550202">+258 84 955 0202</a> · Avenida Patrice Lumumba, n.º 1125, R/C</div></footer>
+
+<script>
+(function () {
+  const translations = {
+    "PMW Social Media Dashboard AI | Análise de Redes Sociais": "PMW Social Media Dashboard AI | Social Media Analytics",
+    "Acompanhe métricas de redes sociais, crescimento, alcance e envolvimento num dashboard com indicadores e apoio de inteligência artificial.": "Track social media metrics, growth, reach and engagement in a dashboard with indicators and AI-powered insights.",
+    "Símbolo PMW Consultoria": "PMW Consultoria logo",
+    "Transforme os Seus Dados em Oportunidades de Negócio": "Turn Your Data into Business Opportunities",
+    "Entrar": "Log in", "Criar conta": "Create account", "Acesso antecipado": "Early access", "Contacto": "Contact",
+    "Analytics • Métricas • Inteligência Artificial": "Analytics • Metrics • Artificial Intelligence",
+    "Acompanhe as suas redes sociais. Decida com inteligência.": "Track your social media. Make smarter decisions.",
+    "Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio — com indicadores claros e apoio de inteligência artificial.": "Turn metrics into strategic decisions. Analyse performance, track trends and discover opportunities to grow your business—with clear indicators and AI-powered insights.",
+    "Começar o trial de 30 dias": "Start your 30-day trial", "Entrar na lista de espera": "Join the waitlist", "Já tenho uma conta": "I already have an account",
+    "Comece com uma visão mais clara do desempenho das suas redes sociais. Crie a sua conta e explore as funcionalidades disponíveis durante o período de experiência de 30 dias.": "Get a clearer view of your social media performance. Create an account and explore the available features during your 30-day trial.",
+    "Benefícios e confiança": "Benefits and trust",
+    "Visão clara": "Clear insights", "Métricas organizadas para compreender o desempenho.": "Organised metrics to understand performance.",
+    "Acesso protegido": "Protected access", "As áreas privadas exigem autenticação.": "Private areas require authentication.",
+    "Ligação autorizada": "Authorised connection", "Conecte contas através do fluxo oficial de autorização disponível.": "Connect accounts through the available official authorisation flow.",
+    "Indicadores disponíveis": "Available metrics", "Seguidores": "Followers", "Evolução da audiência": "Audience growth",
+    "Alcance": "Reach", "Distribuição do conteúdo": "Content distribution", "Engajamento": "Engagement", "Interação com o público": "Audience interaction", "Score IA": "AI Score", "Indicador de apoio à análise": "An indicator to support analysis",
+    "O que pode acompanhar": "What you can track",
+    "Uma visão organizada para ajudar a compreender o desempenho, identificar alterações e orientar os próximos passos.": "An organised view to help understand performance, identify changes and guide next steps.",
+    "Métricas num só lugar": "Metrics in one place",
+    "Visualize seguidores, alcance, impressões, visualizações do perfil, cliques e taxa de envolvimento quando esses dados estiverem disponíveis.": "View followers, reach, impressions, profile views, clicks and engagement rate when this data is available.",
+    "Apoio de inteligência artificial": "AI-powered assistance",
+    "Consulte alertas, recomendações e um relatório executivo gerados a partir dos dados disponíveis no dashboard.": "Review alerts, recommendations and an executive report generated from the data available in the dashboard.",
+    "Privacidade e controlo": "Privacy and control",
+    "O acesso ao dashboard exige autenticação. A ligação ao Instagram é feita através do processo oficial de autorização; a PMW não precisa de receber a palavra-passe do Instagram. Os indicadores apresentados dependem das permissões concedidas e da disponibilidade da API.": "Dashboard access requires authentication. Instagram is connected through the official authorisation process; PMW does not need your Instagram password. Displayed metrics depend on granted permissions and API availability.",
+    "Experimente uma forma mais inteligente de acompanhar as suas redes sociais.": "Try a smarter way to track your social media.",
+    "Comece com o período de experiência de 30 dias e descubra como os indicadores, alertas e recomendações podem apoiar a sua análise. A disponibilidade de cada métrica depende da rede social, das permissões e dos dados recebidos.": "Start your 30-day trial and discover how metrics, alerts and recommendations can support your analysis. Metric availability depends on the social network, permissions and data received.",
+    "Experimentar gratuitamente por 30 dias": "Try it free for 30 days",
+    "Sem promessas de resultados automáticos: a plataforma ajuda a interpretar dados para apoiar decisões mais informadas. Consulte os detalhes do plano antes de subscrever.": "No promises of automatic results: the platform helps interpret data to support better-informed decisions. Review plan details before subscribing.",
+    "Como começar": "How to get started", "São três passos simples para começar a explorar a plataforma.": "Three simple steps to start exploring the platform.",
+    "Crie a sua conta": "Create your account", "Registe-se para iniciar o período de experiência de 30 dias.": "Sign up to start your 30-day trial.",
+    "Ligue uma rede social": "Connect a social network", "Autorize a ligação através do fluxo oficial e conceda apenas as permissões solicitadas.": "Authorise the connection through the official flow and grant only the requested permissions.",
+    "Explore os indicadores": "Explore the metrics", "Consulte os dados disponíveis, acompanhe tendências e reveja as recomendações.": "Review available data, track trends and revisit recommendations.",
+    "Contacte a PMW Consultoria": "Contact PMW Consultoria",
+    "Tem dúvidas ou precisa de apoio? Entre em contacto connosco através do email ou telefone.": "Have questions or need support? Contact us by email or phone.",
+    "Telefone / WhatsApp": "Phone / WhatsApp", "Contactar pelo WhatsApp": "Contact us on WhatsApp",
+    "Morada": "Address", "Enviar email": "Send email", "Ligar para +258 84 955 0202": "Call +258 84 955 0202"
+  };
+  const select = document.getElementById("home-language");
+  if (!select) return;
+  function applyLanguage(language) {
+    const english = language === "en";
+    document.documentElement.lang = english ? "en" : "pt";
+    document.title = english ? translations["PMW Social Media Dashboard AI | Análise de Redes Sociais"] : "PMW Social Media Dashboard AI | Análise de Redes Sociais";
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const original = node.nodeValue;
+      const trimmed = original.trim();
+      if (!trimmed) continue;
+      const translated = translations[trimmed];
+      if (translated) {
+        const leading = original.match(/^\s*/)[0];
+        const trailing = original.match(/\s*$/)[0];
+        node.nodeValue = leading + (english ? translated : Object.keys(translations).find(key => translations[key] === trimmed) || trimmed) + trailing;
+      }
+    }
+    const desc = document.querySelector('meta[name="description"]');
+    if (desc) desc.content = english
+      ? "Track social media metrics, growth, reach and engagement in a dashboard with indicators and AI-powered insights."
+      : "Acompanhe métricas de redes sociais, crescimento, alcance e envolvimento num dashboard com indicadores e apoio de inteligência artificial.";
+  }
+  const stored = localStorage.getItem("pmw-home-language") || "pt";
+  select.value = stored;
+  applyLanguage(stored);
+  select.addEventListener("change", function () {
+    localStorage.setItem("pmw-home-language", select.value);
+    applyLanguage(select.value);
+  });
+})();
+</script>
 </body>
 </html>"""
 
