@@ -117,7 +117,6 @@ PUBLIC_HOME_PAGE = """<!doctype html>
     </select>
     <a class="btn secondary" href="/login">Entrar</a>
     <a class="btn" href="/signup">Criar conta</a>
-    <a class="btn secondary" href="/waitlist">Acesso antecipado</a>
     <a class="btn secondary" href="#contacto">Contacto</a>
   </nav>
 </header>
@@ -152,6 +151,11 @@ PUBLIC_HOME_PAGE = """<!doctype html>
       <article class="card"><div class="symbol">🤖</div><h3>Apoio de inteligência artificial</h3><p>Consulte alertas, recomendações e um relatório executivo gerados a partir dos dados disponíveis no dashboard.</p></article>
       <article class="card"><div class="symbol">🔐</div><h3>Privacidade e controlo</h3><p>O acesso ao dashboard exige autenticação. A ligação ao Instagram é feita através do processo oficial de autorização; a PMW não precisa de receber a palavra-passe do Instagram. Os indicadores apresentados dependem das permissões concedidas e da disponibilidade da API.</p></article>
     </div>
+  </section>
+  <section class="cta" id="acesso-antecipado">
+    <h2>Entrar na lista de espera / Acesso antecipado</h2>
+    <p class="intro">Ainda não está pronto para criar uma conta? Deixe o seu contacto na lista de espera para receber novidades sobre o PMW Social Media Dashboard AI.</p>
+    <div class="actions"><a class="btn secondary" href="/waitlist">Acesso antecipado</a></div>
   </section>
   <section class="cta">
     <h2>Experimente uma forma mais inteligente de acompanhar as suas redes sociais.</h2>
