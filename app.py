@@ -102,9 +102,9 @@ PUBLIC_HOME_PAGE = """<!doctype html>
     :root{color-scheme:dark;--bg:#020617;--panel:#111827;--line:#263449;--text:#f8fafc;--muted:#a7b4c7;--blue:#38bdf8;--green:#22c55e}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#0c2344 0,var(--bg) 55%);color:var(--text);font-family:Inter,Arial,sans-serif;line-height:1.6}
     a{color:inherit}.wrap{width:min(1120px,92%);margin:auto}.nav{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:22px 0}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:18px}.brand img{width:64px;height:64px;object-fit:cover;object-position:center;border-radius:12px;background:#fff;padding:0;flex:0 0 64px}.brand-copy{display:flex;flex-direction:column;gap:3px}.brand-slogan{display:block;max-width:270px;color:var(--muted);font-size:13px;line-height:1.35;font-weight:700}.navlinks{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.btn{display:inline-block;text-decoration:none;font-weight:700;padding:11px 17px;border-radius:10px;background:var(--blue);color:#06111f}.btn.secondary{background:transparent;border:1px solid #456078;color:var(--text)}.btn:hover{filter:brightness(1.08);transform:translateY(-1px)}.btn:focus-visible,a:focus-visible{outline:3px solid #7dd3fc;outline-offset:3px}.trust-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:8px 0 24px}.trust-item{display:flex;gap:10px;align-items:flex-start;padding:15px;border:1px solid var(--line);border-radius:12px;background:rgba(15,23,42,.72)}.trust-item strong{display:block;font-size:14px}.trust-item span{display:block;color:var(--muted);font-size:13px;line-height:1.45}.microcopy{color:var(--muted);font-size:13px;max-width:680px;margin-top:14px}.step-number{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#0b2b45;color:var(--blue);font-weight:800}
-    .hero{padding:72px 0 64px;max-width:850px}.eyebrow{color:var(--blue);font-weight:800;letter-spacing:.12em;font-size:12px;text-transform:uppercase}.hero h1{font-size:clamp(36px,6vw,64px);line-height:1.08;letter-spacing:-.04em;margin:18px 0}.hero p{font-size:19px;color:var(--muted);max-width:720px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+    .hero{padding:64px 0 48px;max-width:none}.hero-layout{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(300px,.88fr);gap:44px;align-items:center}.hero-copy{min-width:0}.hero-visual{position:relative;overflow:hidden;padding:26px;border:1px solid #244565;border-radius:24px;background:linear-gradient(145deg,rgba(14,42,72,.96),rgba(9,17,34,.96));box-shadow:0 24px 70px rgba(0,0,0,.24)}.hero-visual:before{content:"";position:absolute;width:220px;height:220px;border-radius:50%;background:rgba(56,189,248,.12);filter:blur(8px);right:-75px;top:-90px}.visual-kicker{position:relative;color:var(--blue);font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.visual-title{position:relative;font-size:23px;line-height:1.25;font-weight:800;margin:10px 0 20px}.visual-row{position:relative;display:flex;align-items:center;gap:12px;padding:14px;margin-top:10px;border:1px solid rgba(148,163,184,.2);border-radius:13px;background:rgba(2,6,23,.42)}.visual-icon{display:grid;place-items:center;width:40px;height:40px;flex:0 0 40px;border-radius:11px;background:#0b2b45;color:var(--blue);font-size:19px}.visual-row strong{display:block;font-size:14px}.visual-row small{display:block;color:var(--muted);font-size:12px;line-height:1.4}.hero h1{font-size:clamp(36px,4.6vw,58px);line-height:1.08;letter-spacing:-.045em;margin:18px 0}.hero p{font-size:18px;color:var(--muted);max-width:680px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
     .section{padding:42px 0}.section h2{font-size:clamp(26px,4vw,36px);margin:0 0 12px}.intro{color:var(--muted);max-width:760px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:24px}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:16px;padding:22px}.card h3{margin:8px 0}.card p{color:var(--muted);margin-bottom:0}.symbol{font-size:25px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:30px}.metric{padding:18px;border-radius:14px;background:#0b1730;border:1px solid #1d3554}.metric strong{display:block;color:var(--blue);font-size:21px}.metric span{color:var(--muted);font-size:13px}.cta{margin:45px 0;padding:30px;border-radius:18px;border:1px solid #1d4562;background:linear-gradient(120deg,#0c2440,#111827)}footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-size:13px}
-    @media(max-width:600px){.nav{align-items:flex-start;flex-direction:column}.hero{padding:46px 0 35px}.hero p{font-size:17px}}
+    @media(max-width:820px){.hero-layout{grid-template-columns:1fr;gap:28px}.hero-visual{max-width:640px}.hero{padding-top:44px}}@media(max-width:600px){.nav{align-items:flex-start;flex-direction:column}.hero{padding:38px 0 30px}.hero p{font-size:16px}.hero-visual{padding:20px}.navlinks{gap:8px}.btn{padding:10px 13px}.cta{padding:22px}}
   </style>
 </head>
 <body>
@@ -122,15 +122,25 @@ PUBLIC_HOME_PAGE = """<!doctype html>
 </header>
 <main class="wrap">
   <section class="hero">
-    <div class="eyebrow">Analytics • Métricas • Inteligência Artificial</div>
-    <h1>Acompanhe as suas redes sociais. Decida com inteligência.</h1>
-    <p>Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio — com indicadores claros e apoio de inteligência artificial.</p>
-    <div class="actions">
-      <a class="btn" href="/signup">Começar o trial de 30 dias</a>
-      <a class="btn secondary" href="/waitlist">Entrar na lista de espera</a>
-      <a class="btn secondary" href="/login">Já tenho uma conta</a>
+    <div class="hero-layout">
+      <div class="hero-copy">
+        <div class="eyebrow">Analytics • Métricas • Inteligência Artificial</div>
+        <h1>Acompanhe as suas redes sociais. Decida com inteligência.</h1>
+        <p>Transforme métricas em decisões estratégicas. Analise o desempenho, acompanhe tendências e descubra oportunidades para impulsionar os resultados do seu negócio — com indicadores claros e apoio de inteligência artificial.</p>
+        <div class="actions">
+          <a class="btn" href="/signup">Começar o trial de 30 dias</a>
+          <a class="btn secondary" href="/login">Já tenho uma conta</a>
+        </div>
+        <p class="microcopy">Crie a sua conta e explore as funcionalidades disponíveis durante o período de experiência de 30 dias.</p>
+      </div>
+      <aside class="hero-visual" aria-label="Funcionalidades da plataforma">
+        <div class="visual-kicker">PMW Social Media Intelligence</div>
+        <div class="visual-title">Dados organizados. Decisões mais informadas.</div>
+        <div class="visual-row"><span class="visual-icon">↗</span><div><strong>Métricas oficiais</strong><small>Acompanhe alcance, seguidores e envolvimento com base nos dados disponíveis.</small></div></div>
+        <div class="visual-row"><span class="visual-icon">✦</span><div><strong>Análise com IA</strong><small>Alertas e recomendações para apoiar a leitura do desempenho.</small></div></div>
+        <div class="visual-row"><span class="visual-icon">▤</span><div><strong>Relatórios executivos</strong><small>Consulte o relatório no dashboard e exporte-o em PDF.</small></div></div>
+      </aside>
     </div>
-    <p class="microcopy">Comece com uma visão mais clara do desempenho das suas redes sociais. Crie a sua conta e explore as funcionalidades disponíveis durante o período de experiência de 30 dias.</p>
     <div class="trust-strip" aria-label="Benefícios e confiança">
       <div class="trust-item"><span aria-hidden="true">🔎</span><div><strong>Visão clara</strong><span>Métricas organizadas para compreender o desempenho.</span></div></div>
       <div class="trust-item"><span aria-hidden="true">🔐</span><div><strong>Acesso protegido</strong><span>As áreas privadas exigem autenticação.</span></div></div>
@@ -151,11 +161,6 @@ PUBLIC_HOME_PAGE = """<!doctype html>
       <article class="card"><div class="symbol">🤖</div><h3>Apoio de inteligência artificial</h3><p>Consulte alertas, recomendações e um relatório executivo gerados a partir dos dados disponíveis no dashboard.</p></article>
       <article class="card"><div class="symbol">🔐</div><h3>Privacidade e controlo</h3><p>O acesso ao dashboard exige autenticação. A ligação ao Instagram é feita através do processo oficial de autorização; a PMW não precisa de receber a palavra-passe do Instagram. Os indicadores apresentados dependem das permissões concedidas e da disponibilidade da API.</p></article>
     </div>
-  </section>
-  <section class="cta" id="acesso-antecipado">
-    <h2>Entrar na lista de espera / Acesso antecipado</h2>
-    <p class="intro">Ainda não está pronto para criar uma conta? Deixe o seu contacto na lista de espera para receber novidades sobre o PMW Social Media Dashboard AI.</p>
-    <div class="actions"><a class="btn secondary" href="/waitlist">Acesso antecipado</a></div>
   </section>
   <section class="cta">
     <h2>Experimente uma forma mais inteligente de acompanhar as suas redes sociais.</h2>
@@ -206,6 +211,13 @@ PUBLIC_HOME_PAGE = """<!doctype html>
   const translations = {
     "PMW Social Media Dashboard AI | Análise de Redes Sociais": "PMW Social Media Dashboard AI | Social Media Analytics",
     "Acompanhe métricas de redes sociais, crescimento, alcance e envolvimento num dashboard com indicadores e apoio de inteligência artificial.": "Track social media metrics, growth, reach and engagement in a dashboard with indicators and AI-powered insights.",
+    "Dados organizados. Decisões mais informadas.": "Organised data. Better-informed decisions.",
+    "Métricas oficiais": "Official metrics",
+    "Acompanhe alcance, seguidores e envolvimento com base nos dados disponíveis.": "Track reach, followers and engagement based on available data.",
+    "Análise com IA": "AI-powered analysis",
+    "Alertas e recomendações para apoiar a leitura do desempenho.": "Alerts and recommendations to help interpret performance.",
+    "Relatórios executivos": "Executive reports",
+    "Consulte o relatório no dashboard e exporte-o em PDF.": "View the report in the dashboard and export it as a PDF.",
     "Símbolo PMW Consultoria": "PMW Consultoria logo",
     "Transforme os Seus Dados em Oportunidades de Negócio": "Turn Your Data into Business Opportunities",
     "Entrar": "Log in", "Criar conta": "Create account", "Acesso antecipado": "Early access", "Contacto": "Contact",
