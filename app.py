@@ -237,6 +237,7 @@ PUBLIC_HOME_PAGE = """<!doctype html>
   };
   const select = document.getElementById("home-language");
   if (!select) return;
+  const originalText = new WeakMap();
   function applyLanguage(language) {
     const english = language === "en";
     document.documentElement.lang = english ? "en" : "pt";
@@ -244,14 +245,15 @@ PUBLIC_HOME_PAGE = """<!doctype html>
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      const original = node.nodeValue;
+      if (!originalText.has(node)) originalText.set(node, node.nodeValue);
+      const original = originalText.get(node);
       const trimmed = original.trim();
       if (!trimmed) continue;
       const translated = translations[trimmed];
       if (translated) {
-        const leading = original.match(/^\s*/)[0];
-        const trailing = original.match(/\s*$/)[0];
-        node.nodeValue = leading + (english ? translated : Object.keys(translations).find(key => translations[key] === trimmed) || trimmed) + trailing;
+        const leading = original.match(/^\\s*/)[0];
+        const trailing = original.match(/\\s*$/)[0];
+        node.nodeValue = leading + (english ? translated : trimmed) + trailing;
       }
     }
     const desc = document.querySelector('meta[name="description"]');
