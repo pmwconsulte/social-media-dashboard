@@ -133,7 +133,8 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
                     f"HTTP={response.status_code}: {str(detail)[:180]}"
                 )
                 return None
-            items = response.json().get("data", [])
+            payload = response.json()
+            items = payload.get("data", [])
             item = next((x for x in items if x.get("name") == metric), None)
             points = (item or {}).get("values") or []
             for point in reversed(points):
@@ -144,6 +145,17 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
                     total = value.get("total_value")
                     if isinstance(total, (int, float)):
                         return int(total)
+            # HTTP 200 does not guarantee that Meta returned usable metric values.
+            # Log the response shape (never the access token) to distinguish an
+            # empty result from an unsupported metric/period or changed API schema.
+            names = [str(x.get("name", "?")) for x in items[:8] if isinstance(x, dict)]
+            print(
+                f"[FACEBOOK INSIGHTS DEBUG] metric={metric} period={period} "
+                f"HTTP=200 data_items={len(items)} returned_names={names!r} "
+                f"matched_metric={item is not None} values_count={len(points)} "
+                f"item_keys={sorted(item.keys()) if isinstance(item, dict) else []} "
+                f"error_payload={bool(payload.get('error'))}."
+            )
             return None
         except (requests.RequestException, ValueError, AttributeError, TypeError) as erro:
             print(f"[FACEBOOK INSIGHTS] Falha em {metric} period={period}: {type(erro).__name__}.")
