@@ -51,6 +51,10 @@ app = dash.Dash(
 
 server = app.server
 
+# WhatsApp Cloud API webhook verification and event acknowledgement.
+from whatsapp_webhook import register_whatsapp_webhooks
+register_whatsapp_webhooks(server)
+
 # Serve the existing PMW brand asset from the repository root.
 @server.get("/logo.png")
 def pmw_logo():
