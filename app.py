@@ -55,6 +55,100 @@ server = app.server
 from whatsapp_webhook import register_whatsapp_webhooks
 register_whatsapp_webhooks(server)
 
+
+@server.get("/whatsapp/inbox")
+def whatsapp_inbox():
+    """Caixa de entrada WhatsApp isolada por workspace autenticado."""
+    if not session.get("authenticated"):
+        return Response("", status=302, headers={"Location": "/login"})
+
+    workspace_slug = (session.get("workspace_slug") or "").strip()
+    term = (request.args.get("q") or "").strip()[:120]
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name FROM workspaces WHERE slug=%s LIMIT 1", (workspace_slug,))
+            workspace = cur.fetchone()
+            if not workspace:
+                return Response("Workspace não encontrado.", status=404, mimetype="text/plain")
+
+            cur.execute(
+                """
+                SELECT sender_name, sender_phone, message_type, message_text,
+                       message_timestamp, created_at
+                FROM whatsapp_messages
+                WHERE workspace_id=%s
+                  AND (%s = '' OR sender_phone ILIKE %s OR COALESCE(sender_name, '') ILIKE %s
+                       OR COALESCE(message_text, '') ILIKE %s)
+                ORDER BY COALESCE(message_timestamp, created_at) DESC
+                LIMIT 100
+                """,
+                (workspace[0], term, f"%{term}%", f"%{term}%", f"%{term}%"),
+            )
+            rows = cur.fetchall()
+
+        def safe(value):
+            return escape("" if value is None else str(value))
+
+        message_rows = []
+        for sender_name, sender_phone, message_type, message_text, message_timestamp, created_at in rows:
+            sender = safe(sender_name or sender_phone or "Contacto desconhecido")
+            phone = safe(sender_phone or "")
+            kind = safe((message_type or "unknown").replace("_", " ").title())
+            body = safe(message_text or ("Mensagem do tipo: " + (message_type or "não textual")))
+            stamp = message_timestamp or created_at
+            date_label = safe(stamp.strftime("%d/%m/%Y %H:%M") if stamp else "Data indisponível")
+            message_rows.append(
+                "<article class='message'><div class='message-top'>"
+                f"<strong>{sender}</strong><span>{date_label}</span></div>"
+                f"<div class='phone'>{phone}</div><div class='message-body'>{body}</div>"
+                f"<span class='type'>{kind}</span></article>"
+            )
+        listing = "".join(message_rows) or (
+            "<div class='empty'><strong>Ainda não existem mensagens.</strong>"
+            "<p>Quando o WhatsApp receber uma mensagem, ela aparecerá aqui.</p></div>"
+        )
+        page = f"""<!doctype html>
+<html lang="pt"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhatsApp | PMW Dashboard</title>
+<style>
+*{{box-sizing:border-box}} body{{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}}
+main{{max-width:1050px;margin:0 auto;padding:28px 18px}}
+header{{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px}}
+h1{{font-size:26px;margin:0}} .muted{{color:#94a3b8;margin-top:7px}}
+a{{color:#38bdf8;text-decoration:none;font-weight:700}}
+.panel{{background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px}}
+form{{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}}
+input{{flex:1;min-width:190px;padding:12px;border-radius:9px;border:1px solid #334155;background:#0f172a;color:#fff}}
+button{{padding:12px 18px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;cursor:pointer}}
+.message{{padding:16px 2px;border-bottom:1px solid #263449;overflow-wrap:anywhere}}
+.message:last-child{{border-bottom:0}} .message-top{{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}}
+.message-top span,.phone{{font-size:12px;color:#94a3b8}} .phone{{margin-top:5px}}
+.message-body{{white-space:pre-wrap;line-height:1.55;margin:10px 0;color:#e2e8f0}}
+.type{{display:inline-block;font-size:11px;color:#7dd3fc;background:#082f49;padding:4px 8px;border-radius:20px}}
+.empty{{text-align:center;padding:42px 12px;color:#cbd5e1}} .empty p{{color:#94a3b8}}
+</style></head><body><main>
+<header><div><h1>💬 WhatsApp — Caixa de Entrada</h1>
+<div class="muted">{safe(workspace[1] or workspace_slug)} · Últimas 100 mensagens</div></div>
+<a href="/">← Voltar ao Dashboard</a></header>
+<section class="panel"><form method="get">
+<input name="q" value="{safe(term)}" placeholder="Pesquisar por contacto, número ou mensagem">
+<button type="submit">Pesquisar</button></form>{listing}</section>
+</main></body></html>"""
+        return Response(page, status=200, mimetype="text/html")
+    except Exception as erro:
+        print(f"[WHATSAPP INBOX] Falha ao carregar mensagens: {type(erro).__name__}.")
+        return Response(
+            "Não foi possível carregar a caixa de entrada. Confirme se já foi recebida uma mensagem WhatsApp.",
+            status=503, mimetype="text/plain",
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
 # Serve the existing PMW brand asset from the repository root.
 @server.get("/logo.png")
 def pmw_logo():
@@ -1029,6 +1123,21 @@ app.layout = html.Div(
                                 style={"color": "#111827", "minWidth": "125px"},
                             ),
                         ], style={"minWidth": "125px"}),
+                        html.A(
+                            "💬 WhatsApp",
+                            id="botao-whatsapp-inbox",
+                            href="/whatsapp/inbox",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": "#16a34a",
+                                "color": "white",
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
+                            },
+                        ),
                         html.A(
                             "🔗 Conectar Redes",
                             id="botao-conectar",
