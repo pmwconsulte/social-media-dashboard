@@ -55,6 +55,9 @@ server = app.server
 from whatsapp_webhook import register_whatsapp_webhooks
 register_whatsapp_webhooks(server)
 
+from whatsapp_sender import register_whatsapp_sender
+register_whatsapp_sender(server)
+
 
 @server.get("/whatsapp/inbox")
 def whatsapp_inbox():
@@ -76,7 +79,8 @@ def whatsapp_inbox():
             cur.execute(
                 """
                 SELECT sender_name, sender_phone, message_type, message_text,
-                       message_timestamp, created_at
+                       message_timestamp, created_at,
+                       COALESCE(direction, 'inbound'), COALESCE(status, 'received')
                 FROM whatsapp_messages
                 WHERE workspace_id=%s
                   AND (%s = '' OR sender_phone ILIKE %s OR COALESCE(sender_name, '') ILIKE %s
@@ -92,8 +96,10 @@ def whatsapp_inbox():
             return escape("" if value is None else str(value))
 
         message_rows = []
-        for sender_name, sender_phone, message_type, message_text, message_timestamp, created_at in rows:
+        for sender_name, sender_phone, message_type, message_text, message_timestamp, created_at, direction, status in rows:
             sender = safe(sender_name or sender_phone or "Contacto desconhecido")
+            direction_label = "Enviada" if direction == "outbound" else "Recebida"
+            status_label = safe(status)
             phone = safe(sender_phone or "")
             kind = safe((message_type or "unknown").replace("_", " ").title())
             body = safe(message_text or ("Mensagem do tipo: " + (message_type or "não textual")))
@@ -103,7 +109,7 @@ def whatsapp_inbox():
                 "<article class='message'><div class='message-top'>"
                 f"<strong>{sender}</strong><span>{date_label}</span></div>"
                 f"<div class='phone'>{phone}</div><div class='message-body'>{body}</div>"
-                f"<span class='type'>{kind}</span></article>"
+                f"<span class='type'>{direction_label} · {kind} · {status_label}</span></article>"
             )
         listing = "".join(message_rows) or (
             "<div class='empty'><strong>Ainda não existem mensagens.</strong>"
@@ -120,7 +126,7 @@ header{{display:flex;justify-content:space-between;align-items:center;gap:16px;f
 h1{{font-size:26px;margin:0}} .muted{{color:#94a3b8;margin-top:7px}}
 a{{color:#38bdf8;text-decoration:none;font-weight:700}}
 .panel{{background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px}}
-form{{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}}
+form{{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}} .compose{{padding:14px;border:1px solid #263449;border-radius:12px;background:#0b1730}}
 input{{flex:1;min-width:190px;padding:12px;border-radius:9px;border:1px solid #334155;background:#0f172a;color:#fff}}
 button{{padding:12px 18px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;cursor:pointer}}
 .message{{padding:16px 2px;border-bottom:1px solid #263449;overflow-wrap:anywhere}}
@@ -133,7 +139,14 @@ button{{padding:12px 18px;border:0;border-radius:9px;background:#38bdf8;color:#0
 <header><div><h1>💬 WhatsApp — Caixa de Entrada</h1>
 <div class="muted">{safe(workspace[1] or workspace_slug)} · Últimas 100 mensagens</div></div>
 <a href="/">← Voltar ao Dashboard</a></header>
-<section class="panel"><form method="get">
+<section class="panel">
+<form method="post" action="/whatsapp/send" class="compose">
+<input type="tel" name="to" placeholder="Número do destinatário (ex.: 25884...)" required>
+<input type="text" name="message" placeholder="Escreva uma mensagem..." maxlength="4096" required>
+<button type="submit">Enviar mensagem</button>
+</form>
+<p class="muted">Mensagens livres só podem ser enviadas durante a janela de atendimento de 24 horas após a última mensagem do cliente.</p>
+<form method="get">
 <input name="q" value="{safe(term)}" placeholder="Pesquisar por contacto, número ou mensagem">
 <button type="submit">Pesquisar</button></form>{listing}</section>
 </main></body></html>"""
