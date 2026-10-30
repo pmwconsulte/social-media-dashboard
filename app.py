@@ -66,6 +66,11 @@ def whatsapp_inbox():
         return Response("", status=302, headers={"Location": "/login"})
 
     workspace_slug = (session.get("workspace_slug") or "").strip()
+    import secrets
+    csrf_token = session.get("whatsapp_send_csrf")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        session["whatsapp_send_csrf"] = csrf_token
     term = (request.args.get("q") or "").strip()[:120]
     conn = None
     try:
@@ -141,6 +146,7 @@ button{{padding:12px 18px;border:0;border-radius:9px;background:#38bdf8;color:#0
 <a href="/">← Voltar ao Dashboard</a></header>
 <section class="panel">
 <form method="post" action="/whatsapp/send" class="compose">
+<input type="hidden" name="csrf_token" value="{safe(csrf_token)}">
 <input type="tel" name="to" placeholder="Número do destinatário (ex.: 25884...)" required>
 <input type="text" name="message" placeholder="Escreva uma mensagem..." maxlength="4096" required>
 <button type="submit">Enviar mensagem</button>
