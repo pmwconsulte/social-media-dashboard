@@ -55,9 +55,6 @@ server = app.server
 from whatsapp_webhook import register_whatsapp_webhooks
 register_whatsapp_webhooks(server)
 
-from whatsapp_sender import register_whatsapp_sender
-register_whatsapp_sender(server)
-
 
 @server.get("/whatsapp/inbox")
 def whatsapp_inbox():
@@ -66,11 +63,6 @@ def whatsapp_inbox():
         return Response("", status=302, headers={"Location": "/login"})
 
     workspace_slug = (session.get("workspace_slug") or "").strip()
-    import secrets
-    csrf_token = session.get("whatsapp_send_csrf")
-    if not csrf_token:
-        csrf_token = secrets.token_urlsafe(32)
-        session["whatsapp_send_csrf"] = csrf_token
     term = (request.args.get("q") or "").strip()[:120]
     conn = None
     try:
@@ -131,9 +123,6 @@ header{{display:flex;justify-content:space-between;align-items:center;gap:16px;f
 h1{{font-size:26px;margin:0}} .muted{{color:#94a3b8;margin-top:7px}}
 a{{color:#38bdf8;text-decoration:none;font-weight:700}}
 .panel{{background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px}}
-form{{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}} .compose{{padding:14px;border:1px solid #263449;border-radius:12px;background:#0b1730}}
-input{{flex:1;min-width:190px;padding:12px;border-radius:9px;border:1px solid #334155;background:#0f172a;color:#fff}}
-button{{padding:12px 18px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;cursor:pointer}}
 .message{{padding:16px 2px;border-bottom:1px solid #263449;overflow-wrap:anywhere}}
 .message:last-child{{border-bottom:0}} .message-top{{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}}
 .message-top span,.phone{{font-size:12px;color:#94a3b8}} .phone{{margin-top:5px}}
@@ -145,13 +134,6 @@ button{{padding:12px 18px;border:0;border-radius:9px;background:#38bdf8;color:#0
 <div class="muted">{safe(workspace[1] or workspace_slug)} · Últimas 100 mensagens</div></div>
 <a href="/">← Voltar ao Dashboard</a></header>
 <section class="panel">
-<form method="post" action="/whatsapp/send" class="compose">
-<input type="hidden" name="csrf_token" value="{safe(csrf_token)}">
-<input type="tel" name="to" placeholder="Número do destinatário (ex.: 25884...)" required>
-<input type="text" name="message" placeholder="Escreva uma mensagem..." maxlength="4096" required>
-<button type="submit">Enviar mensagem</button>
-</form>
-<p class="muted">Mensagens livres só podem ser enviadas durante a janela de atendimento de 24 horas após a última mensagem do cliente.</p>
 <form method="get">
 <input name="q" value="{safe(term)}" placeholder="Pesquisar por contacto, número ou mensagem">
 <button type="submit">Pesquisar</button></form>{listing}</section>
@@ -1142,19 +1124,22 @@ app.layout = html.Div(
                                 style={"color": "#111827", "minWidth": "125px"},
                             ),
                         ], style={"minWidth": "125px"}),
-                        html.A(
-                            "💬 WhatsApp",
+                        html.Div(
+                            [
+                                html.Div("💬 WhatsApp", style={"fontWeight": "700"}),
+                                html.Div("WhatsApp Business Platform · Em breve", style={"fontSize": "11px", "opacity": "0.8", "marginTop": "3px"}),
+                            ],
                             id="botao-whatsapp-inbox",
-                            href="/whatsapp/inbox",
+                            title="Funcionalidade em breve",
                             style={
                                 "display": "inline-block",
                                 "padding": "9px 14px",
                                 "borderRadius": "9px",
-                                "background": "#16a34a",
+                                "background": "#334155",
                                 "color": "white",
-                                "textDecoration": "none",
                                 "fontWeight": "700",
                                 "fontSize": "13px",
+                                "cursor": "default",
                             },
                         ),
                         html.A(
