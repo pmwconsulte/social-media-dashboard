@@ -584,19 +584,20 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token, graph_host="
         metric_type="total_value", period="day", graph_host=graph_host
     )
 
-    # Totais oficiais da janela móvel de 28 dias. A API usa total_over_range
-    # com since/until; não somar reach diário, pois isso duplicaria pessoas.
+    # Totais oficiais da janela móvel de 28 dias. A API rejeitou
+    # total_over_range para estas métricas; consultar period=day com since/until.
+    # Não somar reach diário, pois isso duplicaria pessoas.
     reach_28d = _read_instagram_insight(
-        ig_id, access_token, "reach", metric_type="total_value", period="total_over_range",
+        ig_id, access_token, "reach", metric_type="total_value", period="day",
         since=since_28d, until=until_28d, graph_host=graph_host,
     )
     views_28d = _read_instagram_insight(
-        ig_id, access_token, "views", metric_type="total_value", period="total_over_range",
+        ig_id, access_token, "views", metric_type="total_value", period="day",
         since=since_28d, until=until_28d, graph_host=graph_host,
     )
     interactions_28d = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
-        metric_type="total_value", period="total_over_range",
+        metric_type="total_value", period="day",
         since=since_28d, until=until_28d, graph_host=graph_host,
     )
     if interactions_value is None:
