@@ -1958,8 +1958,14 @@ def setup_auth(server: Flask):
                         page_id VARCHAR(255) NOT NULL,
                         instagram_account_id VARCHAR(255) NOT NULL,
                         instagram_username VARCHAR(255),
+                        instagram_social_account_id UUID REFERENCES social_accounts(id) ON DELETE SET NULL,
                         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
                     )
+                """)
+                cur.execute("""
+                    ALTER TABLE facebook_instagram_links
+                    ADD COLUMN IF NOT EXISTS instagram_social_account_id UUID
+                    REFERENCES social_accounts(id) ON DELETE SET NULL
                 """)
                 instagram_link_response = requests.get(
                     f"https://graph.facebook.com/v25.0/{page_id}",
@@ -1988,20 +1994,48 @@ def setup_auth(server: Flask):
                             f"[FACEBOOK INSTAGRAM LINK] HTTP={instagram_link_response.status_code}; "
                             "não foi possível interpretar a resposta."
                         )
+                instagram_social_account_id = None
                 if linked_instagram and linked_instagram.get("id"):
+                    ig_username = (linked_instagram.get("username") or
+                                   "instagram_" + str(linked_instagram["id"]))
+                    cur.execute(
+                        """SELECT id FROM social_accounts
+                           WHERE workspace_id=%s AND platform='Instagram'
+                             AND LOWER(username)=LOWER(%s)
+                           LIMIT 1""",
+                        (workspace[0], ig_username),
+                    )
+                    existing_ig = cur.fetchone()
+                    if existing_ig:
+                        # Preserve the existing Instagram Login token and its identity.
+                        instagram_social_account_id = existing_ig[0]
+                    else:
+                        # A Facebook-linked Instagram profile gets its own account row
+                        # and metrics identity; it never shares the Facebook Page ID.
+                        cur.execute(
+                            """INSERT INTO social_accounts
+                               (workspace_id, platform, username, display_name, access_token,
+                                connection_status, is_active, last_sync_at)
+                               VALUES (%s, 'Instagram', %s, %s, %s, 'connected', TRUE, NOW())
+                               RETURNING id""",
+                            (workspace[0], ig_username, ig_username, encrypted_token),
+                        )
+                        instagram_social_account_id = cur.fetchone()[0]
                     cur.execute(
                         """INSERT INTO facebook_instagram_links
-                           (social_account_id, page_id, instagram_account_id, instagram_username, updated_at)
-                           VALUES (%s, %s, %s, %s, NOW())
+                           (social_account_id, page_id, instagram_account_id,
+                            instagram_username, instagram_social_account_id, updated_at)
+                           VALUES (%s, %s, %s, %s, %s, NOW())
                            ON CONFLICT (social_account_id) DO UPDATE SET
                                page_id=EXCLUDED.page_id,
                                instagram_account_id=EXCLUDED.instagram_account_id,
                                instagram_username=EXCLUDED.instagram_username,
+                               instagram_social_account_id=EXCLUDED.instagram_social_account_id,
                                updated_at=NOW()""",
                         (
                             str(social_account_id), page_id,
                             str(linked_instagram["id"]),
-                            linked_instagram.get("username"),
+                            ig_username, instagram_social_account_id,
                         ),
                     )
                 else:
@@ -2014,7 +2048,7 @@ def setup_auth(server: Flask):
             instagram_synced = False
             if linked_instagram and linked_instagram.get("id"):
                 instagram_synced = _sync_instagram_metrics(
-                    social_account_id,
+                    instagram_social_account_id,
                     str(linked_instagram["id"]),
                     page_token,
                     graph_host="graph.facebook.com",
