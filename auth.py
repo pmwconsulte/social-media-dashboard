@@ -2054,7 +2054,7 @@ def setup_auth(server: Flask):
             conn.commit()
             synced = _sync_facebook_metrics(social_account_id, page_id, page_token)
             instagram_synced = False
-            if linked_instagram and linked_instagram.get("id"):
+            if linked_instagram and linked_instagram.get("id") and instagram_social_account_id:
                 instagram_synced = _sync_instagram_metrics(
                     instagram_social_account_id,
                     str(linked_instagram["id"]),
