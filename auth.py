@@ -2230,7 +2230,19 @@ def setup_auth(server: Flask):
                 print(f"[SOCIAL SYNC] Falha na conta={account_id}: {type(erro).__name__}.")
                 failed_count += 1
             except Exception as erro:
-                print(f"[SOCIAL SYNC] Erro na conta={account_id}: {type(erro).__name__}.")
+                # Diagnóstico PostgreSQL seguro: identifica a tabela/coluna em falta
+                # sem registar SQL, parâmetros, tokens ou outros dados sensíveis.
+                diag = getattr(erro, "diag", None)
+                sqlstate = getattr(erro, "pgcode", None)
+                missing_table = getattr(diag, "table_name", None) if diag else None
+                missing_schema = getattr(diag, "schema_name", None) if diag else None
+                missing_column = getattr(diag, "column_name", None) if diag else None
+                print(
+                    f"[SOCIAL SYNC DB DIAGNOSTIC] conta={account_id} "
+                    f"erro={type(erro).__name__} sqlstate={sqlstate!r} "
+                    f"schema={missing_schema!r} tabela={missing_table!r} "
+                    f"coluna={missing_column!r}."
+                )
                 failed_count += 1
 
         print(f"[SOCIAL SYNC] Resultado workspace={workspace_slug!r}: sucesso={success_count}, falhas={failed_count}.")
