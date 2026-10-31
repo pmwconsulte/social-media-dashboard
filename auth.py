@@ -86,11 +86,10 @@ def _facebook_authorize_url(state):
     redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
     if not app_id or not redirect_uri:
         raise RuntimeError("Configure o App ID Meta e FACEBOOK_OAUTH_REDIRECT_URI.")
-    scopes = ["pages_show_list", "pages_read_engagement"]
-    # Só pedir read_insights depois de ativar essa permissão no Meta for Developers.
-    # Mantém o fluxo OAuth funcional enquanto a permissão ainda não está disponível.
-    if os.getenv("FACEBOOK_REQUEST_READ_INSIGHTS", "false").strip().lower() in {"1", "true", "yes", "on"}:
-        scopes.append("read_insights")
+    # Facebook Login: permissões necessárias para descobrir a conta
+    # Instagram profissional ligada à Página. Insights avançados serão
+    # solicitados apenas quando a permissão correspondente estiver validada.
+    scopes = ["pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_manage_insights"]
     params = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
@@ -280,9 +279,9 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
             conn.close()
 
 
-def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None, since=None, until=None):
-    """Consulta uma métrica da Instagram Login API, com intervalo opcional explícito."""
-    api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None, since=None, until=None, graph_host="graph.instagram.com"):
+    """Consulta Insights Instagram; permite Instagram Login ou Facebook Login."""
+    api_version = os.getenv("FACEBOOK_GRAPH_API_VERSION" if graph_host == "graph.facebook.com" else "INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
     params = {
         "metric": metric,
         "metric_type": metric_type,
@@ -298,7 +297,7 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         params["until"] = int(until)
     try:
         response = requests.get(
-            f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
+            f"https://{graph_host}/{api_version}/{ig_id}/insights",
             params=params,
             timeout=15,
         )
@@ -549,8 +548,8 @@ def _sync_instagram_reels_periods(social_account_id, ig_id, access_token):
             conn.close()
 
 
-def _sync_instagram_metrics(social_account_id, ig_id, access_token):
-    """Guarda métricas válidas da conta, sem inventar valores indisponíveis."""
+def _sync_instagram_metrics(social_account_id, ig_id, access_token, graph_host="graph.instagram.com"):
+    """Guarda métricas Instagram via Instagram Login ou Facebook Login."""
     from datetime import datetime, timedelta, timezone
 
     # Janela explícita de 28 dias, em timestamps Unix UTC. O fim é o momento
@@ -565,30 +564,30 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     # impressions; fica na coluna legada impressions até uma migração de esquema.
     # Métricas diárias: reach é série temporal; views/interações usam total_value diário.
     reach_value = _read_instagram_insight(
-        ig_id, access_token, "reach", metric_type="time_series", period="day"
+        ig_id, access_token, "reach", metric_type="time_series", period="day", graph_host=graph_host
     )
     views_value = _read_instagram_insight(
-        ig_id, access_token, "views", metric_type="time_series", period="day"
+        ig_id, access_token, "views", metric_type="time_series", period="day", graph_host=graph_host
     )
     interactions_value = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
-        metric_type="time_series", period="day"
+        metric_type="time_series", period="day", graph_host=graph_host
     )
 
     # Totais oficiais de 28 dias. Não somar reach diário: a mesma pessoa pode
     # ser alcançada em dias diferentes.
     reach_28d = _read_instagram_insight(
         ig_id, access_token, "reach", metric_type="total_value", period="days_28",
-        since=since_28d, until=until_28d,
+        since=since_28d, until=until_28d, graph_host=graph_host,
     )
     views_28d = _read_instagram_insight(
         ig_id, access_token, "views", metric_type="total_value", period="days_28",
-        since=since_28d, until=until_28d,
+        since=since_28d, until=until_28d, graph_host=graph_host,
     )
     interactions_28d = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
         metric_type="total_value", period="days_28",
-        since=since_28d, until=until_28d,
+        since=since_28d, until=until_28d, graph_host=graph_host,
     )
     if interactions_value is None:
         # Compatibilidade: tenta compor interações a partir das métricas
@@ -596,7 +595,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
         # nunca trata uma métrica em falta como zero.
         interaction_parts = {
             metric: _read_instagram_insight(
-                ig_id, access_token, metric, metric_type="total_value"
+                ig_id, access_token, metric, metric_type="total_value", graph_host=graph_host
             )
             for metric in ("likes", "comments", "shares", "saves")
         }
@@ -617,10 +616,10 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
             )
 
     followers = None
-    api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+    api_version = os.getenv("FACEBOOK_GRAPH_API_VERSION" if graph_host == "graph.facebook.com" else "INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
     try:
         profile_response = requests.get(
-            f"https://graph.instagram.com/{api_version}/me",
+            f"https://{graph_host}/{api_version}/{ig_id}",
             params={"fields": "followers_count", "access_token": access_token},
             timeout=15,
         )
@@ -650,10 +649,9 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     )
 
     # Guardar os totais oficiais de cada janela, sem somar amostras diárias.
-    _sync_instagram_period_snapshots(social_account_id, ig_id, access_token)
-
-    # Consultar métricas de Reels separadamente dos totais gerais da conta.
-    _sync_instagram_reels_periods(social_account_id, ig_id, access_token)
+    if graph_host == "graph.instagram.com":
+        _sync_instagram_period_snapshots(social_account_id, ig_id, access_token)
+        _sync_instagram_reels_periods(social_account_id, ig_id, access_token)
 
     available_values = (
         reach_value,
@@ -1639,7 +1637,8 @@ def setup_auth(server: Flask):
                 account_limit = PLANS.get(plan_key, PLANS["trial"])["accounts"]
                 cur.execute(
                     """SELECT COUNT(*) FROM social_accounts
-                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE""",
+                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE
+                         AND LOWER(COALESCE(connection_status, '')) <> 'linked'""",
                     (workspace[0],),
                 )
                 active_accounts = cur.fetchone()[0]
@@ -1950,10 +1949,132 @@ def setup_auth(server: Flask):
                     (selector, workspace_slug),
                 )
                 page_token = _token_cipher().decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
+
+                # Descobrir a conta Instagram profissional associada à Página.
+                # Guardar a relação separadamente evita alterar ou sobrescrever
+                # uma ligação Instagram Login que já esteja em produção.
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS facebook_instagram_links (
+                        social_account_id TEXT PRIMARY KEY,
+                        page_id VARCHAR(255) NOT NULL,
+                        instagram_account_id VARCHAR(255) NOT NULL,
+                        instagram_username VARCHAR(255),
+                        instagram_social_account_id UUID REFERENCES social_accounts(id) ON DELETE SET NULL,
+                        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                    )
+                """)
+                cur.execute("""
+                    ALTER TABLE facebook_instagram_links
+                    ADD COLUMN IF NOT EXISTS instagram_social_account_id UUID
+                    REFERENCES social_accounts(id) ON DELETE SET NULL
+                """)
+                instagram_link_response = requests.get(
+                    f"https://graph.facebook.com/v25.0/{page_id}",
+                    params={
+                        "fields": "instagram_business_account{id,username}",
+                        "access_token": page_token,
+                    },
+                    timeout=15,
+                )
+                linked_instagram = None
+                if instagram_link_response.ok:
+                    linked_instagram = (
+                        instagram_link_response.json().get("instagram_business_account") or {}
+                    )
+                else:
+                    try:
+                        api_error = instagram_link_response.json().get("error", {})
+                        print(
+                            "[FACEBOOK INSTAGRAM LINK] "
+                            f"HTTP={instagram_link_response.status_code} "
+                            f"code={api_error.get('code')} "
+                            f"motivo={str(api_error.get('message', ''))[:160]}"
+                        )
+                    except (ValueError, AttributeError):
+                        print(
+                            f"[FACEBOOK INSTAGRAM LINK] HTTP={instagram_link_response.status_code}; "
+                            "não foi possível interpretar a resposta."
+                        )
+                instagram_social_account_id = None
+                if linked_instagram and linked_instagram.get("id"):
+                    ig_username = (linked_instagram.get("username") or
+                                   "instagram_" + str(linked_instagram["id"]))
+                    # Reutilizar apenas a identidade já criada para esta mesma Página
+                    # e este mesmo Instagram ligado pelo Facebook Login. Nunca reutilizar
+                    # uma conta Instagram Login, mesmo que o username coincida.
+                    cur.execute(
+                        """SELECT fil.instagram_social_account_id
+                           FROM facebook_instagram_links fil
+                           JOIN social_accounts ig ON ig.id=fil.instagram_social_account_id
+                           WHERE fil.social_account_id=%s AND fil.page_id=%s
+                             AND fil.instagram_account_id=%s
+                             AND ig.workspace_id=%s AND ig.platform='Instagram'
+                             AND LOWER(COALESCE(ig.connection_status, ''))='linked'
+                           LIMIT 1""",
+                        (str(social_account_id), page_id, str(linked_instagram["id"]), workspace[0]),
+                    )
+                    linked_row = cur.fetchone()
+                    if linked_row and linked_row[0]:
+                        instagram_social_account_id = linked_row[0]
+                    else:
+                        # Identidade complementar da Página: não consome uma vaga
+                        # adicional do plano, pois é parte da mesma ligação social.
+                        cur.execute(
+                            """INSERT INTO social_accounts
+                               (workspace_id, platform, username, display_name, access_token,
+                                connection_status, is_active, last_sync_at)
+                               VALUES (%s, 'Instagram', %s, %s, NULL, 'linked', TRUE, NOW())
+                               RETURNING id""",
+                            (workspace[0], ig_username, ig_username),
+                        )
+                        instagram_social_account_id = cur.fetchone()[0]
+                    cur.execute(
+                        """INSERT INTO facebook_instagram_links
+                           (social_account_id, page_id, instagram_account_id,
+                            instagram_username, instagram_social_account_id, updated_at)
+                           VALUES (%s, %s, %s, %s, %s, NOW())
+                           ON CONFLICT (social_account_id) DO UPDATE SET
+                               page_id=EXCLUDED.page_id,
+                               instagram_account_id=EXCLUDED.instagram_account_id,
+                               instagram_username=EXCLUDED.instagram_username,
+                               instagram_social_account_id=EXCLUDED.instagram_social_account_id,
+                               updated_at=NOW()""",
+                        (
+                            str(social_account_id), page_id,
+                            str(linked_instagram["id"]),
+                            ig_username, instagram_social_account_id,
+                        ),
+                    )
+                else:
+                    cur.execute(
+                        "DELETE FROM facebook_instagram_links WHERE social_account_id=%s",
+                        (str(social_account_id),),
+                    )
             conn.commit()
             synced = _sync_facebook_metrics(social_account_id, page_id, page_token)
+            instagram_synced = False
+            if linked_instagram and linked_instagram.get("id") and instagram_social_account_id:
+                instagram_synced = _sync_instagram_metrics(
+                    instagram_social_account_id,
+                    str(linked_instagram["id"]),
+                    page_token,
+                    graph_host="graph.facebook.com",
+                )
+            if synced and instagram_synced:
+                return redirect(url_for(
+                    "account",
+                    message="Facebook e conta Instagram profissional associada conectados; métricas disponíveis sincronizadas."
+                ))
+            if synced and linked_instagram and linked_instagram.get("id"):
+                return redirect(url_for(
+                    "account",
+                    message="Facebook conectado e conta Instagram profissional identificada. A API não disponibilizou métricas Instagram nesta sincronização; consulte os logs e permissões."
+                ))
             if synced:
-                return redirect(url_for("account", message="Página do Facebook conectada e métricas disponíveis sincronizadas."))
+                return redirect(url_for(
+                    "account",
+                    message="Página do Facebook conectada e métricas disponíveis sincronizadas. Não foi encontrada uma conta Instagram profissional associada."
+                ))
             return redirect(url_for("account", message="Página do Facebook conectada. Algumas métricas podem não estar disponíveis; verifique as permissões e os logs."))
         except Exception as erro:
             if conn:
@@ -2028,6 +2149,29 @@ def setup_auth(server: Flask):
                 elif normalized_platform == "facebook":
                     # O callback guarda o ID da Página no campo username.
                     synced = _sync_facebook_metrics(account_id, str(username), access_token)
+                    # Sincronizar também a conta Instagram profissional associada,
+                    # mas sempre no seu próprio social_account_id.
+                    link_conn = None
+                    try:
+                        link_conn = get_connection()
+                        with link_conn.cursor() as link_cur:
+                            link_cur.execute(
+                                """SELECT instagram_social_account_id, instagram_account_id
+                                   FROM facebook_instagram_links
+                                   WHERE social_account_id=%s
+                                   LIMIT 1""",
+                                (str(account_id),),
+                            )
+                            ig_link = link_cur.fetchone()
+                        if ig_link and ig_link[0] and ig_link[1]:
+                            ig_synced = _sync_instagram_metrics(
+                                ig_link[0], str(ig_link[1]), access_token,
+                                graph_host="graph.facebook.com",
+                            )
+                            synced = bool(synced or ig_synced)
+                    finally:
+                        if link_conn:
+                            link_conn.close()
                 else:
                     print(f"[SOCIAL SYNC] Plataforma não suportada para sincronização: {platform!r}.")
                     failed_count += 1
@@ -2234,7 +2378,8 @@ def setup_auth(server: Flask):
 
                 cur.execute(
                     """SELECT COUNT(*) FROM social_accounts
-                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)""",
+                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)
+                         AND LOWER(COALESCE(connection_status, '')) <> 'linked'""",
                     (workspace[0],),
                 )
                 count = cur.fetchone()[0]
