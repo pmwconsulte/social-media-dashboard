@@ -1998,28 +1998,23 @@ def setup_auth(server: Flask):
                 if linked_instagram and linked_instagram.get("id"):
                     ig_username = (linked_instagram.get("username") or
                                    "instagram_" + str(linked_instagram["id"]))
+                    # Reutilizar apenas a identidade já criada para esta mesma Página
+                    # e este mesmo Instagram ligado pelo Facebook Login. Nunca reutilizar
+                    # uma conta Instagram Login, mesmo que o username coincida.
                     cur.execute(
-                        """SELECT id FROM social_accounts
-                           WHERE workspace_id=%s AND platform='Instagram'
-                             AND LOWER(username)=LOWER(%s)
+                        """SELECT instagram_social_account_id
+                           FROM facebook_instagram_links
+                           WHERE social_account_id=%s AND page_id=%s
+                             AND instagram_account_id=%s
                            LIMIT 1""",
-                        (workspace[0], ig_username),
+                        (str(social_account_id), page_id, str(linked_instagram["id"])),
                     )
-                    existing_ig = cur.fetchone()
-                    if existing_ig:
-                        # Preserve the existing Instagram Login token and its identity.
-                        instagram_social_account_id = existing_ig[0]
-                    elif isinstance(account_limit, int) and active_accounts + 1 > account_limit:
-                        # Não ultrapassar o limite contratado ao criar a identidade
-                        # Instagram adicional. A associação à Página fica registada;
-                        # a conta pode ser ativada quando houver capacidade no plano.
-                        print(
-                            "[FACEBOOK INSTAGRAM LINK] Conta Instagram associada identificada, "
-                            "mas não foi criada: limite de contas do plano atingido."
-                        )
+                    linked_row = cur.fetchone()
+                    if linked_row and linked_row[0]:
+                        instagram_social_account_id = linked_row[0]
                     else:
-                        # A conta ligada tem identidade própria, sem token autónomo:
-                        # usa o token da Página apenas no fluxo de sincronização Facebook.
+                        # Identidade complementar da Página: não consome uma vaga
+                        # adicional do plano, pois é parte da mesma ligação social.
                         cur.execute(
                             """INSERT INTO social_accounts
                                (workspace_id, platform, username, display_name, access_token,
