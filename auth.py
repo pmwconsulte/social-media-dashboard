@@ -115,11 +115,22 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
         "interactions_28d": None,
     }
 
+    # Envia uma janela explícita para permitir comparar respostas com e sem
+    # delimitação temporal. Datas em UTC, sem alterar os valores guardados.
+    until_date = datetime.now(timezone.utc).date()
+    since_date = until_date - timedelta(days=27)
+
     def metric_value(metric, period):
         try:
             response = requests.get(
                 f"https://graph.facebook.com/{version}/{page_id}/insights",
-                params={"metric": metric, "period": period, "access_token": page_token},
+                params={
+                    "metric": metric,
+                    "period": period,
+                    "since": since_date.isoformat(),
+                    "until": until_date.isoformat(),
+                    "access_token": page_token,
+                },
                 timeout=15,
             )
             if not response.ok:
@@ -219,6 +230,11 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     }
     for metric, key in period_metrics.items():
         values[key] = metric_value(metric, "days_28")
+
+    # Métricas adicionais apenas para diagnóstico; não alimentam os cartões.
+    # A resposta permite perceber se a Página devolve alguma métrica Page Insights.
+    for probe_metric in ("page_views_total", "page_follows"):
+        metric_value(probe_metric, "day")
 
     insights_available = any(
         values[key] is not None
