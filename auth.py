@@ -86,11 +86,10 @@ def _facebook_authorize_url(state):
     redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
     if not app_id or not redirect_uri:
         raise RuntimeError("Configure o App ID Meta e FACEBOOK_OAUTH_REDIRECT_URI.")
-    scopes = ["pages_show_list", "pages_read_engagement"]
-    # Só pedir read_insights depois de ativar essa permissão no Meta for Developers.
-    # Mantém o fluxo OAuth funcional enquanto a permissão ainda não está disponível.
-    if os.getenv("FACEBOOK_REQUEST_READ_INSIGHTS", "false").strip().lower() in {"1", "true", "yes", "on"}:
-        scopes.append("read_insights")
+    # Facebook Login: permissões necessárias para descobrir a conta
+    # Instagram profissional ligada à Página. Insights avançados serão
+    # solicitados apenas quando a permissão correspondente estiver validada.
+    scopes = ["pages_show_list", "pages_read_engagement", "instagram_basic"]
     params = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
@@ -1950,10 +1949,79 @@ def setup_auth(server: Flask):
                     (selector, workspace_slug),
                 )
                 page_token = _token_cipher().decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
+
+                # Descobrir a conta Instagram profissional associada à Página.
+                # Guardar a relação separadamente evita alterar ou sobrescrever
+                # uma ligação Instagram Login que já esteja em produção.
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS facebook_instagram_links (
+                        social_account_id TEXT PRIMARY KEY,
+                        page_id VARCHAR(255) NOT NULL,
+                        instagram_account_id VARCHAR(255) NOT NULL,
+                        instagram_username VARCHAR(255),
+                        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                    )
+                """)
+                instagram_link_response = requests.get(
+                    f"https://graph.facebook.com/v25.0/{page_id}",
+                    params={
+                        "fields": "instagram_business_account{id,username}",
+                        "access_token": page_token,
+                    },
+                    timeout=15,
+                )
+                linked_instagram = None
+                if instagram_link_response.ok:
+                    linked_instagram = (
+                        instagram_link_response.json().get("instagram_business_account") or {}
+                    )
+                else:
+                    try:
+                        api_error = instagram_link_response.json().get("error", {})
+                        print(
+                            "[FACEBOOK INSTAGRAM LINK] "
+                            f"HTTP={instagram_link_response.status_code} "
+                            f"code={api_error.get('code')} "
+                            f"motivo={str(api_error.get('message', ''))[:160]}"
+                        )
+                    except (ValueError, AttributeError):
+                        print(
+                            f"[FACEBOOK INSTAGRAM LINK] HTTP={instagram_link_response.status_code}; "
+                            "não foi possível interpretar a resposta."
+                        )
+                if linked_instagram and linked_instagram.get("id"):
+                    cur.execute(
+                        """INSERT INTO facebook_instagram_links
+                           (social_account_id, page_id, instagram_account_id, instagram_username, updated_at)
+                           VALUES (%s, %s, %s, %s, NOW())
+                           ON CONFLICT (social_account_id) DO UPDATE SET
+                               page_id=EXCLUDED.page_id,
+                               instagram_account_id=EXCLUDED.instagram_account_id,
+                               instagram_username=EXCLUDED.instagram_username,
+                               updated_at=NOW()""",
+                        (
+                            str(social_account_id), page_id,
+                            str(linked_instagram["id"]),
+                            linked_instagram.get("username"),
+                        ),
+                    )
+                else:
+                    cur.execute(
+                        "DELETE FROM facebook_instagram_links WHERE social_account_id=%s",
+                        (str(social_account_id),),
+                    )
             conn.commit()
             synced = _sync_facebook_metrics(social_account_id, page_id, page_token)
+            if synced and linked_instagram and linked_instagram.get("id"):
+                return redirect(url_for(
+                    "account",
+                    message="Página do Facebook conectada. Conta Instagram profissional associada identificada; a sincronização Instagram será ativada após validação das permissões."
+                ))
             if synced:
-                return redirect(url_for("account", message="Página do Facebook conectada e métricas disponíveis sincronizadas."))
+                return redirect(url_for(
+                    "account",
+                    message="Página do Facebook conectada e métricas disponíveis sincronizadas. Não foi encontrada uma conta Instagram profissional associada."
+                ))
             return redirect(url_for("account", message="Página do Facebook conectada. Algumas métricas podem não estar disponíveis; verifique as permissões e os logs."))
         except Exception as erro:
             if conn:
