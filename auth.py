@@ -161,19 +161,46 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
             return None
 
     try:
+        # Confirma que o token guardado ainda consegue consultar a Página e
+        # recolhe metadados oficiais (likes/fãs e seguidores) sem expor o token.
         response = requests.get(
             f"https://graph.facebook.com/{version}/{page_id}",
-            params={"fields": "followers_count", "access_token": page_token},
+            params={
+                "fields": "id,name,followers_count,fan_count",
+                "access_token": page_token,
+            },
             timeout=15,
         )
+        try:
+            page_payload = response.json()
+        except ValueError:
+            page_payload = {}
         if response.ok:
-            count = response.json().get("followers_count")
+            count = page_payload.get("followers_count")
             if isinstance(count, (int, float)):
                 values["followers"] = int(count)
+            fan_count = page_payload.get("fan_count")
+            print(
+                "[FACEBOOK TOKEN DIAGNOSTIC] "
+                f"page_id_match={str(page_payload.get('id', '')) == str(page_id)} "
+                f"name_present={bool(page_payload.get('name'))} "
+                f"followers_count={count!r} fan_count={fan_count!r} "
+                f"HTTP={response.status_code} token_valid_for_page=True."
+            )
         else:
-            print(f"[FACEBOOK INSIGHTS] followers_count indisponível HTTP={response.status_code}.")
-    except (requests.RequestException, ValueError) as erro:
-        print(f"[FACEBOOK INSIGHTS] Falha ao obter seguidores: {type(erro).__name__}.")
+            error = page_payload.get("error", {}) if isinstance(page_payload, dict) else {}
+            print(
+                "[FACEBOOK TOKEN DIAGNOSTIC] "
+                f"HTTP={response.status_code} token_valid_for_page=False "
+                f"error_code={error.get('code')!r} "
+                f"error_subcode={error.get('error_subcode')!r} "
+                f"error_type={error.get('type')!r}."
+            )
+    except (requests.RequestException, ValueError, TypeError) as erro:
+        print(
+            "[FACEBOOK TOKEN DIAGNOSTIC] "
+            f"Falha ao consultar metadados da Página: {type(erro).__name__}."
+        )
 
     # Métricas atuais da API v25: media views e viewers únicos substituem
     # os antigos nomes de impressões/alcance que a Meta retirou em 2026.
