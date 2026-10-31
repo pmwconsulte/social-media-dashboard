@@ -102,7 +102,7 @@ def _facebook_authorize_url(state):
 
 def _sync_facebook_metrics(social_account_id, page_id, page_token):
     """Sincroniza métricas reais da Facebook Pages API v25 sem misturar períodos."""
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     version = os.getenv("FACEBOOK_GRAPH_API_VERSION", "v25.0").strip()
     values = {
