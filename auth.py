@@ -2016,9 +2016,9 @@ def setup_auth(server: Flask):
                             """INSERT INTO social_accounts
                                (workspace_id, platform, username, display_name, access_token,
                                 connection_status, is_active, last_sync_at)
-                               VALUES (%s, 'Instagram', %s, %s, %s, 'connected', TRUE, NOW())
+                               VALUES (%s, 'Instagram', %s, %s, NULL, 'linked', TRUE, NOW())
                                RETURNING id""",
-                            (workspace[0], ig_username, ig_username, encrypted_token),
+                            (workspace[0], ig_username, ig_username),
                         )
                         instagram_social_account_id = cur.fetchone()[0]
                     cur.execute(
@@ -2142,6 +2142,29 @@ def setup_auth(server: Flask):
                 elif normalized_platform == "facebook":
                     # O callback guarda o ID da Página no campo username.
                     synced = _sync_facebook_metrics(account_id, str(username), access_token)
+                    # Sincronizar também a conta Instagram profissional associada,
+                    # mas sempre no seu próprio social_account_id.
+                    link_conn = None
+                    try:
+                        link_conn = get_connection()
+                        with link_conn.cursor() as link_cur:
+                            link_cur.execute(
+                                """SELECT instagram_social_account_id, instagram_account_id
+                                   FROM facebook_instagram_links
+                                   WHERE social_account_id=%s
+                                   LIMIT 1""",
+                                (str(account_id),),
+                            )
+                            ig_link = link_cur.fetchone()
+                        if ig_link and ig_link[0] and ig_link[1]:
+                            ig_synced = _sync_instagram_metrics(
+                                ig_link[0], str(ig_link[1]), access_token,
+                                graph_host="graph.facebook.com",
+                            )
+                            synced = bool(synced or ig_synced)
+                    finally:
+                        if link_conn:
+                            link_conn.close()
                 else:
                     print(f"[SOCIAL SYNC] Plataforma não suportada para sincronização: {platform!r}.")
                     failed_count += 1
