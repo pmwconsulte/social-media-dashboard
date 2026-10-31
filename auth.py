@@ -193,9 +193,18 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     for metric, key in period_metrics.items():
         values[key] = metric_value(metric, "days_28")
 
-    if all(value is None for key, value in values.items() if key != "followers") and values["followers"] is None:
-        print(f"[FACEBOOK INSIGHTS] Nenhuma métrica disponível para a página {page_id}.")
-        return False
+    insights_available = any(
+        values[key] is not None
+        for key in (
+            "day_views", "day_unique_viewers", "day_interactions",
+            "views_28d", "unique_viewers_28d", "interactions_28d",
+        )
+    )
+    if not insights_available:
+        print(
+            f"[FACEBOOK INSIGHTS] Insights indisponíveis para a página {page_id}; "
+            f"followers_count={values['followers']!r} será preservado sem declarar métricas sincronizadas."
+        )
 
     conn = None
     try:
@@ -268,7 +277,7 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
             f"unique_viewers_28d={values['unique_viewers_28d']!r}, "
             f"interactions_28d={values['interactions_28d']!r}."
         )
-        return True
+        return insights_available
     except Exception as erro:
         if conn:
             conn.rollback()
@@ -1774,6 +1783,33 @@ def setup_auth(server: Flask):
             long_response.raise_for_status()
             user_token = long_response.json().get("access_token", user_token)
 
+            # Diagnóstico seguro: registar apenas nomes/estados das permissões,
+            # nunca tokens, códigos OAuth ou conteúdo sensível da resposta.
+            try:
+                permissions_response = requests.get(
+                    "https://graph.facebook.com/v25.0/me/permissions",
+                    params={"access_token": user_token},
+                    timeout=15,
+                )
+                if permissions_response.ok:
+                    permission_items = permissions_response.json().get("data", [])
+                    permission_statuses = {
+                        str(item.get("permission", "")): str(item.get("status", ""))
+                        for item in permission_items
+                        if isinstance(item, dict) and item.get("permission")
+                    }
+                    print(f"[FACEBOOK OAUTH DIAGNOSTIC] granted_permissions={permission_statuses!r}.")
+                else:
+                    print(
+                        f"[FACEBOOK OAUTH DIAGNOSTIC] /me/permissions HTTP={permissions_response.status_code}; "
+                        "não foi possível confirmar permissões concedidas."
+                    )
+            except (requests.RequestException, ValueError, AttributeError, TypeError) as permission_error:
+                print(
+                    f"[FACEBOOK OAUTH DIAGNOSTIC] /me/permissions falhou: "
+                    f"{type(permission_error).__name__}."
+                )
+
             pages_response = requests.get(
                 "https://graph.facebook.com/v25.0/me/accounts",
                 params={
@@ -1816,6 +1852,15 @@ def setup_auth(server: Flask):
                     for page in pages:
                         page_id = str(page.get("id", "")).strip()
                         page_name = str(page.get("name", "")).strip()
+                        page_tasks = page.get("tasks") or []
+                        safe_tasks = [
+                            str(task.get("name", "")) if isinstance(task, dict) else str(task)
+                            for task in page_tasks
+                        ]
+                        print(
+                            f"[FACEBOOK PAGE DIAGNOSTIC] page_id={page_id!r} "
+                            f"tasks={safe_tasks!r} analyze_access={'ANALYZE' in safe_tasks}."
+                        )
                         page_token = page.get("access_token")
                         if not page_id or not page_name or not page_token:
                             continue
