@@ -2009,9 +2009,17 @@ def setup_auth(server: Flask):
                     if existing_ig:
                         # Preserve the existing Instagram Login token and its identity.
                         instagram_social_account_id = existing_ig[0]
+                    elif isinstance(account_limit, int) and active_accounts + 1 > account_limit:
+                        # Não ultrapassar o limite contratado ao criar a identidade
+                        # Instagram adicional. A associação à Página fica registada;
+                        # a conta pode ser ativada quando houver capacidade no plano.
+                        print(
+                            "[FACEBOOK INSTAGRAM LINK] Conta Instagram associada identificada, "
+                            "mas não foi criada: limite de contas do plano atingido."
+                        )
                     else:
-                        # A Facebook-linked Instagram profile gets its own account row
-                        # and metrics identity; it never shares the Facebook Page ID.
+                        # A conta ligada tem identidade própria, sem token autónomo:
+                        # usa o token da Página apenas no fluxo de sincronização Facebook.
                         cur.execute(
                             """INSERT INTO social_accounts
                                (workspace_id, platform, username, display_name, access_token,
