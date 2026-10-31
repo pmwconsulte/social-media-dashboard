@@ -89,7 +89,7 @@ def _facebook_authorize_url(state):
     # Facebook Login: permissões necessárias para descobrir a conta
     # Instagram profissional ligada à Página. Insights avançados serão
     # solicitados apenas quando a permissão correspondente estiver validada.
-    scopes = ["pages_show_list", "pages_read_engagement", "instagram_basic"]
+    scopes = ["pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_manage_insights"]
     params = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
@@ -616,7 +616,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token, graph_host="
             )
 
     followers = None
-    api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+    api_version = os.getenv("FACEBOOK_GRAPH_API_VERSION" if graph_host == "graph.facebook.com" else "INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
     try:
         profile_response = requests.get(
             f"https://{graph_host}/{api_version}/{ig_id}",
