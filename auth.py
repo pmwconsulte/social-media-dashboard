@@ -86,7 +86,7 @@ def _facebook_authorize_url(state):
     redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
     if not app_id or not redirect_uri:
         raise RuntimeError("Configure o App ID Meta e FACEBOOK_OAUTH_REDIRECT_URI.")
-    scopes = ["pages_show_list", "pages_read_engagement"]
+    scopes = ["pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_manage_insights"]
     # Só pedir read_insights depois de ativar essa permissão no Meta for Developers.
     # Mantém o fluxo OAuth funcional enquanto a permissão ainda não está disponível.
     if os.getenv("FACEBOOK_REQUEST_READ_INSIGHTS", "false").strip().lower() in {"1", "true", "yes", "on"}:
@@ -298,7 +298,7 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         params["until"] = int(until)
     try:
         response = requests.get(
-            f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
+            f"https://graph.facebook.com/{api_version}/{ig_id}/insights",
             params=params,
             timeout=15,
         )
@@ -620,7 +620,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
     try:
         profile_response = requests.get(
-            f"https://graph.instagram.com/{api_version}/me",
+            f"https://graph.facebook.com/{api_version}/{ig_id}",
             params={"fields": "followers_count", "access_token": access_token},
             timeout=15,
         )
