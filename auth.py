@@ -571,31 +571,32 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token, graph_host="
     # Na API atual, impressions/profile_views/website_clicks não são métricas
     # de conta suportadas de forma geral no Instagram Login. 'views' substitui
     # impressions; fica na coluna legada impressions até uma migração de esquema.
-    # Métricas diárias: reach é série temporal; views/interações usam total_value diário.
+    # Compatibilidade com Instagram Insights: reach aceita série temporal;
+    # views e total_interactions devem ser consultadas como valores agregados.
     reach_value = _read_instagram_insight(
         ig_id, access_token, "reach", metric_type="time_series", period="day", graph_host=graph_host
     )
     views_value = _read_instagram_insight(
-        ig_id, access_token, "views", metric_type="time_series", period="day", graph_host=graph_host
+        ig_id, access_token, "views", metric_type="total_value", period="day", graph_host=graph_host
     )
     interactions_value = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
-        metric_type="time_series", period="day", graph_host=graph_host
+        metric_type="total_value", period="day", graph_host=graph_host
     )
 
-    # Totais oficiais de 28 dias. Não somar reach diário: a mesma pessoa pode
-    # ser alcançada em dias diferentes.
+    # Totais oficiais da janela móvel de 28 dias. A API usa total_over_range
+    # com since/until; não somar reach diário, pois isso duplicaria pessoas.
     reach_28d = _read_instagram_insight(
-        ig_id, access_token, "reach", metric_type="total_value", period="days_28",
+        ig_id, access_token, "reach", metric_type="total_value", period="total_over_range",
         since=since_28d, until=until_28d, graph_host=graph_host,
     )
     views_28d = _read_instagram_insight(
-        ig_id, access_token, "views", metric_type="total_value", period="days_28",
+        ig_id, access_token, "views", metric_type="total_value", period="total_over_range",
         since=since_28d, until=until_28d, graph_host=graph_host,
     )
     interactions_28d = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
-        metric_type="total_value", period="days_28",
+        metric_type="total_value", period="total_over_range",
         since=since_28d, until=until_28d, graph_host=graph_host,
     )
     if interactions_value is None:
