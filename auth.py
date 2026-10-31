@@ -2003,12 +2003,15 @@ def setup_auth(server: Flask):
                     # e este mesmo Instagram ligado pelo Facebook Login. Nunca reutilizar
                     # uma conta Instagram Login, mesmo que o username coincida.
                     cur.execute(
-                        """SELECT instagram_social_account_id
-                           FROM facebook_instagram_links
-                           WHERE social_account_id=%s AND page_id=%s
-                             AND instagram_account_id=%s
+                        """SELECT fil.instagram_social_account_id
+                           FROM facebook_instagram_links fil
+                           JOIN social_accounts ig ON ig.id=fil.instagram_social_account_id
+                           WHERE fil.social_account_id=%s AND fil.page_id=%s
+                             AND fil.instagram_account_id=%s
+                             AND ig.workspace_id=%s AND ig.platform='Instagram'
+                             AND LOWER(COALESCE(ig.connection_status, ''))='linked'
                            LIMIT 1""",
-                        (str(social_account_id), page_id, str(linked_instagram["id"])),
+                        (str(social_account_id), page_id, str(linked_instagram["id"]), workspace[0]),
                     )
                     linked_row = cur.fetchone()
                     if linked_row and linked_row[0]:
