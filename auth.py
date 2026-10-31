@@ -1637,7 +1637,8 @@ def setup_auth(server: Flask):
                 account_limit = PLANS.get(plan_key, PLANS["trial"])["accounts"]
                 cur.execute(
                     """SELECT COUNT(*) FROM social_accounts
-                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE""",
+                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE
+                         AND LOWER(COALESCE(connection_status, '')) <> 'linked'""",
                     (workspace[0],),
                 )
                 active_accounts = cur.fetchone()[0]
@@ -2374,7 +2375,8 @@ def setup_auth(server: Flask):
 
                 cur.execute(
                     """SELECT COUNT(*) FROM social_accounts
-                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)""",
+                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)
+                         AND LOWER(COALESCE(connection_status, '')) <> 'linked'""",
                     (workspace[0],),
                 )
                 count = cur.fetchone()[0]
