@@ -279,9 +279,9 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
             conn.close()
 
 
-def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None, since=None, until=None):
-    """Consulta uma métrica da Instagram Login API, com intervalo opcional explícito."""
-    api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_value", period=None, since=None, until=None, graph_host="graph.instagram.com"):
+    """Consulta Insights Instagram; permite Instagram Login ou Facebook Login."""
+    api_version = os.getenv("FACEBOOK_GRAPH_API_VERSION" if graph_host == "graph.facebook.com" else "INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
     params = {
         "metric": metric,
         "metric_type": metric_type,
@@ -297,7 +297,7 @@ def _read_instagram_insight(ig_id, access_token, metric, metric_type="total_valu
         params["until"] = int(until)
     try:
         response = requests.get(
-            f"https://graph.instagram.com/{api_version}/{ig_id}/insights",
+            f"https://{graph_host}/{api_version}/{ig_id}/insights",
             params=params,
             timeout=15,
         )
@@ -548,8 +548,8 @@ def _sync_instagram_reels_periods(social_account_id, ig_id, access_token):
             conn.close()
 
 
-def _sync_instagram_metrics(social_account_id, ig_id, access_token):
-    """Guarda métricas válidas da conta, sem inventar valores indisponíveis."""
+def _sync_instagram_metrics(social_account_id, ig_id, access_token, graph_host="graph.instagram.com"):
+    """Guarda métricas Instagram via Instagram Login ou Facebook Login."""
     from datetime import datetime, timedelta, timezone
 
     # Janela explícita de 28 dias, em timestamps Unix UTC. O fim é o momento
@@ -564,30 +564,30 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     # impressions; fica na coluna legada impressions até uma migração de esquema.
     # Métricas diárias: reach é série temporal; views/interações usam total_value diário.
     reach_value = _read_instagram_insight(
-        ig_id, access_token, "reach", metric_type="time_series", period="day"
+        ig_id, access_token, "reach", metric_type="time_series", period="day", graph_host=graph_host
     )
     views_value = _read_instagram_insight(
-        ig_id, access_token, "views", metric_type="time_series", period="day"
+        ig_id, access_token, "views", metric_type="time_series", period="day", graph_host=graph_host
     )
     interactions_value = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
-        metric_type="time_series", period="day"
+        metric_type="time_series", period="day", graph_host=graph_host
     )
 
     # Totais oficiais de 28 dias. Não somar reach diário: a mesma pessoa pode
     # ser alcançada em dias diferentes.
     reach_28d = _read_instagram_insight(
         ig_id, access_token, "reach", metric_type="total_value", period="days_28",
-        since=since_28d, until=until_28d,
+        since=since_28d, until=until_28d, graph_host=graph_host,
     )
     views_28d = _read_instagram_insight(
         ig_id, access_token, "views", metric_type="total_value", period="days_28",
-        since=since_28d, until=until_28d,
+        since=since_28d, until=until_28d, graph_host=graph_host,
     )
     interactions_28d = _read_instagram_insight(
         ig_id, access_token, "total_interactions",
         metric_type="total_value", period="days_28",
-        since=since_28d, until=until_28d,
+        since=since_28d, until=until_28d, graph_host=graph_host,
     )
     if interactions_value is None:
         # Compatibilidade: tenta compor interações a partir das métricas
@@ -595,7 +595,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
         # nunca trata uma métrica em falta como zero.
         interaction_parts = {
             metric: _read_instagram_insight(
-                ig_id, access_token, metric, metric_type="total_value"
+                ig_id, access_token, metric, metric_type="total_value", graph_host=graph_host
             )
             for metric in ("likes", "comments", "shares", "saves")
         }
@@ -619,7 +619,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     api_version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
     try:
         profile_response = requests.get(
-            f"https://graph.instagram.com/{api_version}/me",
+            f"https://{graph_host}/{api_version}/{ig_id}",
             params={"fields": "followers_count", "access_token": access_token},
             timeout=15,
         )
@@ -649,10 +649,9 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token):
     )
 
     # Guardar os totais oficiais de cada janela, sem somar amostras diárias.
-    _sync_instagram_period_snapshots(social_account_id, ig_id, access_token)
-
-    # Consultar métricas de Reels separadamente dos totais gerais da conta.
-    _sync_instagram_reels_periods(social_account_id, ig_id, access_token)
+    if graph_host == "graph.instagram.com":
+        _sync_instagram_period_snapshots(social_account_id, ig_id, access_token)
+        _sync_instagram_reels_periods(social_account_id, ig_id, access_token)
 
     available_values = (
         reach_value,
@@ -2012,10 +2011,23 @@ def setup_auth(server: Flask):
                     )
             conn.commit()
             synced = _sync_facebook_metrics(social_account_id, page_id, page_token)
+            instagram_synced = False
+            if linked_instagram and linked_instagram.get("id"):
+                instagram_synced = _sync_instagram_metrics(
+                    social_account_id,
+                    str(linked_instagram["id"]),
+                    page_token,
+                    graph_host="graph.facebook.com",
+                )
+            if synced and instagram_synced:
+                return redirect(url_for(
+                    "account",
+                    message="Facebook e conta Instagram profissional associada conectados; métricas disponíveis sincronizadas."
+                ))
             if synced and linked_instagram and linked_instagram.get("id"):
                 return redirect(url_for(
                     "account",
-                    message="Página do Facebook conectada. Conta Instagram profissional associada identificada; a sincronização Instagram será ativada após validação das permissões."
+                    message="Facebook conectado e conta Instagram profissional identificada. A API não disponibilizou métricas Instagram nesta sincronização; consulte os logs e permissões."
                 ))
             if synced:
                 return redirect(url_for(
