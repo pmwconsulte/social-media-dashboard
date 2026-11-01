@@ -142,135 +142,72 @@ def calcular_score(df):
 
     dados = _preparar(df)
 
-    if dados.empty:
-        return 0
+    if dados.empty or not {"seguidores", "engajamento"}.issubset(dados.columns):
+        return None
 
-    obrigatorias = [
-        "seguidores",
-        "alcance",
-        "engajamento",
-    ]
-
-    for coluna in obrigatorias:
-        if coluna not in dados.columns:
-            return 0
-
-    dados = dados.dropna(
-        subset=obrigatorias
-    )
-
-    if dados.empty:
-        return 0
-
-    # Manter o Score IA no mesmo horizonte temporal do KPI de interação:
-    # últimos 28 dias em relação à data mais recente disponível.
+    # Usar a janela mais recente disponível, sem exigir 14 dias completos.
     if "data" in dados.columns and dados["data"].notna().any():
         data_fim = dados["data"].max()
         data_inicio = data_fim - pd.Timedelta(days=27)
         dados = dados.loc[dados["data"].between(data_inicio, data_fim)].copy()
 
-    dados_validos = dados.loc[
-        (dados["alcance"] > 0) & dados["engajamento"].notna()
-    ].copy()
-    dias_validos = (
-        dados_validos["data"].dt.date.nunique()
-        if "data" in dados_validos.columns
-        else len(dados_validos)
-    )
+    # Sete dias válidos permitem uma análise preliminar.
+    base = dados.dropna(subset=["seguidores", "engajamento"]).copy()
+    if "data" in base.columns and base["data"].notna().any():
+        dias_validos = base.loc[base["data"].notna(), "data"].dt.date.nunique()
+    else:
+        dias_validos = len(base)
 
-    # Não publicar um score com amostra diária curta ou alcance inválido.
-    # Exigimos 14 dias distintos com alcance e taxa de engajamento válidos.
-    if dados_validos.empty or dias_validos < 14:
+    if dias_validos < 7:
         return None
 
-    dados = dados_validos
+    componentes = []
+    pesos_disponiveis = 0
 
-    crescimento = calcular_crescimento(
-        dados
-    )
+    engajamento = _numero(base["engajamento"]).dropna()
+    if not engajamento.empty:
+        componentes.append((min(max(float(engajamento.mean()), 0) * 4, 40), 40))
+        pesos_disponiveis += 40
 
-    engajamento = float(
-        dados["engajamento"].mean()
-    )
-
-    alcance = float(
-        dados["alcance"].mean()
-    )
-
-    seguidores = float(
-        dados["seguidores"].iloc[-1]
-    )
-
-    # --------------------------------------------------------
-    # Normalização
-    # --------------------------------------------------------
-
-    score_engajamento = min(
-        max(engajamento, 0) * 4,
-        40
-    )
-
-    score_crescimento = min(
-        max(crescimento, 0) * 0.8,
-        20
-    )
-
-    # Alcance relativo aos seguidores
-    if seguidores > 0:
-        alcance_ratio = (
-            alcance / seguidores
+    historico_seguidores = base[["seguidores"]].copy()
+    if "data" in base.columns:
+        historico_seguidores["data"] = base["data"]
+        historico_seguidores = (
+            historico_seguidores.dropna(subset=["data", "seguidores"])
+            .sort_values("data")
+            .drop_duplicates(subset=["data"], keep="last")
         )
-    else:
-        alcance_ratio = 0
+    serie_seguidores = _numero(historico_seguidores["seguidores"]).dropna()
+    if len(serie_seguidores) >= 2 and serie_seguidores.iloc[0] > 0:
+        crescimento = ((float(serie_seguidores.iloc[-1]) - float(serie_seguidores.iloc[0])) /
+                       float(serie_seguidores.iloc[0])) * 100
+        componentes.append((min(max(crescimento, 0) * 0.8, 20), 20))
+        pesos_disponiveis += 20
 
-    score_alcance = min(
-        alcance_ratio * 10,
-        20
-    )
+    alcance = _numero(base["alcance"]).dropna() if "alcance" in base.columns else pd.Series(dtype=float)
+    seguidores_atual = float(serie_seguidores.iloc[-1]) if not serie_seguidores.empty else 0
+    alcance_positivo = alcance[alcance > 0]
+    if not alcance_positivo.empty and seguidores_atual > 0:
+        alcance_ratio = float(alcance_positivo.mean()) / seguidores_atual
+        componentes.append((min(alcance_ratio * 10, 20), 20))
+        pesos_disponiveis += 20
 
-    # Crescimento de tráfego
-    score_trafego = 0
+    for coluna, peso, divisor in (
+        ("cliques_site", 10, 10),
+        ("visualizacoes_perfil", 10, 50),
+    ):
+        if coluna in base.columns:
+            valores = _numero(base[coluna]).dropna()
+            if not valores.empty:
+                componentes.append((min(max(float(valores.mean()), 0) / divisor, peso), peso))
+                pesos_disponiveis += peso
 
-    if "cliques_site" in dados.columns:
-        cliques = _numero(
-            dados["cliques_site"]
-        ).fillna(0)
+    if pesos_disponiveis == 0:
+        return None
 
-        if cliques.mean() > 0:
-            score_trafego = min(
-                cliques.mean() / 10,
-                10
-            )
-
-    # Visualizações de perfil
-    score_perfil = 0
-
-    if "visualizacoes_perfil" in dados.columns:
-        views = _numero(
-            dados["visualizacoes_perfil"]
-        ).fillna(0)
-
-        if views.mean() > 0:
-            score_perfil = min(
-                views.mean() / 50,
-                10
-            )
-
-    score = (
-        score_engajamento
-        + score_crescimento
-        + score_alcance
-        + score_trafego
-        + score_perfil
-    )
-
-    return max(
-        0,
-        min(
-            round(score),
-            100
-        )
-    )
+    # Reponderar apenas os indicadores efetivamente disponíveis.
+    score_normalizado = sum(valor for valor, _ in componentes) / pesos_disponiveis * 100
+    return max(0, min(round(score_normalizado), 100))
 
 
 # ============================================================
@@ -389,67 +326,65 @@ def gerar_recomendacao(df):
     dados = _preparar(df)
 
     if dados.empty:
-        return (
-            "💡 Adicione mais dados históricos "
-            "para gerar recomendações."
-        )
+        return "Ainda estamos a reunir dados para identificar oportunidades para a sua conta."
 
     score = calcular_score(dados)
     crescimento = calcular_crescimento(dados)
-
-    if score is None:
-        return (
-            "💡 Ainda não há pelo menos 14 dias distintos com alcance e "
-            "engajamento válidos. Continue a sincronização diária para obter "
-            "um Score IA mais estável antes de ajustar a estratégia."
-        )
-
     recomendacoes = []
 
-    if score >= 85:
-        recomendacoes.append(
-            "Escalar os conteúdos de melhor desempenho."
-        )
-
-    elif score >= 70:
-        recomendacoes.append(
-            "Manter a estratégia atual e testar "
-            "novos formatos de conteúdo."
-        )
-
-    elif score >= 50:
-        recomendacoes.append(
-            "Melhorar engagement através de vídeos, "
-            "CTAs e conteúdos interativos."
-        )
-
-    else:
-        recomendacoes.append(
-            "Rever estratégia, frequência, horários "
-            "e segmentação."
-        )
-
-    if crescimento < 0:
-        recomendacoes.append(
-            "Investigar a queda de seguidores e "
-            "identificar conteúdos com baixo desempenho."
-        )
-
-    if "cliques_site" in dados.columns:
-
-        cliques = _numero(
-            dados["cliques_site"]
-        ).fillna(0)
-
-        if cliques.mean() < 10:
+    engagement = (
+        _numero(dados["engajamento"]).dropna()
+        if "engajamento" in dados.columns
+        else pd.Series(dtype=float)
+    )
+    if not engagement.empty:
+        taxa = float(engagement.mean())
+        if taxa >= 10:
             recomendacoes.append(
-                "Aumentar CTAs direcionando o público "
-                "para o website."
+                "O envolvimento observado é um sinal positivo. Continue a testar conteúdos que incentivem comentários, partilhas e respostas."
+            )
+        elif taxa >= 3:
+            recomendacoes.append(
+                "Reforce chamadas à ação claras e conteúdos que convidem o público a participar, guardar e partilhar."
+            )
+        else:
+            recomendacoes.append(
+                "Experimente publicações com perguntas simples, dicas úteis e chamadas à ação para estimular a participação do público."
             )
 
-    return "💡 " + " ".join(
-        recomendacoes
+    alcance = (
+        _numero(dados["alcance"]).dropna()
+        if "alcance" in dados.columns
+        else pd.Series(dtype=float)
     )
+    if not alcance.empty and alcance.max() > 0:
+        recomendacoes.append(
+            "Identifique as publicações dos dias de maior alcance e teste novamente os temas e formatos que tiveram melhor resposta."
+        )
+    else:
+        recomendacoes.append(
+            "Continue a acompanhar o alcance nos próximos dias para identificar os conteúdos que conseguem chegar a mais pessoas."
+        )
+
+    if crescimento > 0:
+        recomendacoes.append(
+            "A audiência está a crescer. Mantenha uma frequência de publicação consistente e convide novos visitantes a seguir a página."
+        )
+    elif crescimento < 0:
+        recomendacoes.append(
+            "Reforce conteúdos de descoberta e valor prático para recuperar o interesse de novos visitantes e seguidores."
+        )
+    else:
+        recomendacoes.append(
+            "Teste horários e temas diferentes durante a próxima semana e compare os resultados antes de ajustar a estratégia."
+        )
+
+    if score is None:
+        prefixo = "Com os dados disponíveis, já é possível observar tendências preliminares. "
+    else:
+        prefixo = f"A análise atual apresenta um Score de {score}/100. "
+
+    return "💡 " + prefixo + " ".join(recomendacoes[:3])
 
 
 # ============================================================
@@ -461,102 +396,77 @@ def gerar_relatorio_executivo(df):
     dados = _preparar(df)
 
     if dados.empty:
-        return "Sem dados disponíveis."
+        return "Ainda não existem dados oficiais suficientes para gerar este relatório."
 
     score = calcular_score(dados)
-
-    classificacao = classificar_score(
-        score
-    )
+    classificacao = classificar_score(score)
 
     seguidores_series = (
-        _numero(dados["seguidores"])
-        .dropna()
+        _numero(dados["seguidores"]).dropna()
+        if "seguidores" in dados.columns
+        else pd.Series(dtype=float)
     )
-
     alcance_series = (
-        _numero(dados["alcance"])
-        .dropna()
+        _numero(dados["alcance"]).dropna()
+        if "alcance" in dados.columns
+        else pd.Series(dtype=float)
     )
-
     engagement_series = (
-        _numero(dados["engajamento"])
-        .dropna()
+        _numero(dados["engajamento"]).dropna()
+        if "engajamento" in dados.columns
+        else pd.Series(dtype=float)
     )
 
-    seguidores = (
-        int(seguidores_series.iloc[-1])
-        if not seguidores_series.empty
-        else 0
-    )
+    seguidores = int(seguidores_series.iloc[-1]) if not seguidores_series.empty else None
+    alcance_atual = int(alcance_series.iloc[-1]) if not alcance_series.empty else None
+    alcance_maximo = int(alcance_series.max()) if not alcance_series.empty else None
+    engajamento = float(engagement_series.mean()) if not engagement_series.empty else None
+    crescimento = calcular_crescimento(dados) if len(seguidores_series) >= 2 else None
 
-    # O KPI "Alcance" deve refletir o registo mais recente disponível,
-    # tal como o cartão do dashboard. O máximo histórico é apresentado
-    # separadamente para não ser confundido com o valor atual.
-    alcance_atual = (
-        int(alcance_series.iloc[-1])
-        if not alcance_series.empty
-        else None
-    )
-    alcance_maximo = (
-        int(alcance_series.max())
-        if not alcance_series.empty
-        else None
-    )
+    if "data" in dados.columns and dados["data"].notna().any():
+        data_fim = dados["data"].max()
+        data_inicio = dados["data"].min()
+        periodo = f"{data_inicio:%d/%m/%Y} a {data_fim:%d/%m/%Y}"
+        dias_disponiveis = dados.loc[dados["data"].notna(), "data"].dt.date.nunique()
+    else:
+        data_fim = None
+        periodo = "Período disponível na base de dados"
+        dias_disponiveis = len(dados)
 
-    engajamento = (
-        float(engagement_series.mean())
-        if not engagement_series.empty
-        else 0
-    )
+    previsao = prever_crescimento(dados, dias=30)
+    seguidores_30 = int(previsao[-1]) if previsao else seguidores
 
-    crescimento = (
-        calcular_crescimento(dados)
-        if len(seguidores_series) >= 2
-        else None
-    )
-
-    previsao = prever_crescimento(
-        dados,
-        dias=30
-    )
-
-    seguidores_30 = (
-        int(previsao[-1])
-        if previsao
-        else seguidores
-    )
-    crescimento_formatado = (
-        f"{crescimento:.2f}%"
-        if crescimento is not None
-        else "N/D (histórico insuficiente)"
-    )
-
-    return f"""
-RELATÓRIO EXECUTIVO IA
-=================================================
-
-Seguidores atuais: {seguidores:,}
-Alcance mais recente registado: {f"{alcance_atual:,}" if alcance_atual is not None else "N/D"}
-Maior alcance diário no histórico: {f"{alcance_maximo:,}" if alcance_maximo is not None else "N/D"}
-Engajamento médio registado: {engajamento:.2f}%
-Crescimento histórico: {crescimento_formatado}
-
-Score IA: {f"{score}/100" if score is not None else "N/D (histórico diário insuficiente)"}
-Classificação: {classificacao}
-
-=================================================
-PREVISÃO IA — 30 DIAS
-
-Seguidores estimados: {seguidores_30:,}
-
-=================================================
-RECOMENDAÇÃO
-
-{gerar_recomendacao(dados)}
-
-=================================================
-
-PMW Consultoria & Tecnologia
-Social Media Analytics AI
-"""
+    linhas = [
+        "RELATÓRIO EXECUTIVO",
+        f"Período analisado: {periodo}",
+        f"Dias com registos disponíveis: {dias_disponiveis}",
+        "",
+        "DESEMPENHO DA CONTA",
+        f"Seguidores atuais: {seguidores:,}" if seguidores is not None else "Seguidores atuais: Dados indisponíveis",
+        (
+            f"Alcance mais recente: {alcance_atual:,}"
+            if alcance_atual is not None and alcance_atual > 0
+            else ("Sem alcance registado no último dia disponível" if alcance_atual == 0
+                  else "Dados de alcance em atualização")
+        ),
+        f"Maior alcance diário no período: {alcance_maximo:,}" if alcance_maximo is not None else "Maior alcance diário: Dados indisponíveis",
+        f"Taxa média de interação: {engajamento:.2f}%" if engajamento is not None else "Taxa média de interação: Dados indisponíveis",
+        f"Crescimento de seguidores no período: {crescimento:.2f}%" if crescimento is not None else "Crescimento de seguidores: A reunir histórico",
+        "",
+        "ANÁLISE INTELIGENTE",
+        (
+            f"Score IA preliminar: {score}/100 — {classificacao}"
+            if score is not None and dias_disponiveis < 14
+            else (f"Score IA: {score}/100 — {classificacao}" if score is not None
+                  else f"Análise preliminar: a reunir pelo menos 7 dias válidos (atualmente {dias_disponiveis}).")
+        ),
+        f"Projeção indicativa de seguidores em 30 dias: {seguidores_30:,}" if seguidores_30 is not None else "Projeção de seguidores: indisponível",
+        "",
+        "RECOMENDAÇÕES PARA A SUA ESTRATÉGIA",
+        gerar_recomendacao(dados),
+        "",
+        "Nota: as conclusões refletem apenas os dados oficiais disponíveis para o período indicado. Projeções são estimativas, não garantias.",
+        "",
+        "PMW Consultoria & Tecnologia | Social Media Analytics AI",
+    ]
+    return "\n".join(linhas)
