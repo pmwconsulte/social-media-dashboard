@@ -493,19 +493,24 @@ def gerar_relatorio_executivo(df):
         "ANÁLISE INTELIGENTE",
         f"Dias válidos para o Score IA: {dias_validos_score}/14",
         (
-            f"Score IA preliminar: {score}/100 — {classificacao}"
-            if score is not None and dias_validos_score < 14
-            else (f"Score IA consolidado: {score}/100 — {classificacao}" if score is not None
-                  else f"Score IA indisponível: são necessários pelo menos 7 dias válidos (actualmente {dias_validos_score}).")
+            f"Score IA: {score}/100 — {classificacao} (calculado com {dias_validos_score} dias válidos)"
+            if score is not None
+            else f"Score IA indisponível: são necessários pelo menos 7 dias válidos (actualmente {dias_validos_score})."
         ),
         (
-            "Estado da análise: preliminar; será mais estável após 14 dias válidos."
+            "Nota de maturidade: a pontuação já é calculável; a referência de 14 dias melhora a estabilidade da análise."
             if 7 <= dias_validos_score < 14
-            else ("Estado da análise: consolidada (14 ou mais dias válidos)." if dias_validos_score >= 14
-                  else "Estado da análise: em recolha de dados; o Score será apresentado a partir de 7 dias válidos.")
+            else ("Nota de maturidade: análise baseada em 14 ou mais dias válidos."
+                  if dias_validos_score >= 14
+                  else "Nota de maturidade: o Score será apresentado quando existirem pelo menos 7 dias válidos.")
         ),
         "Nota do Score: são considerados apenas indicadores oficiais disponíveis; métricas ausentes não são pontuadas nem estimadas.",
-        f"Projeção indicativa de seguidores em 30 dias: {seguidores_30:,}" if seguidores_30 is not None else "Projeção de seguidores: indisponível",
+        (
+            f"Potencial de estabilização em {seguidores:,} seguidores. Recomenda-se reforçar estratégias de aquisição para retomar o crescimento."
+            if seguidores is not None and crescimento is not None and abs(crescimento) < 0.01
+            else (f"Projeção indicativa de seguidores em 30 dias: {seguidores_30:,}" if seguidores_30 is not None
+                  else "Projeção de seguidores: indisponível")
+        ),
         "",
         "RECOMENDAÇÕES PARA A SUA ESTRATÉGIA",
         gerar_recomendacao(dados),
