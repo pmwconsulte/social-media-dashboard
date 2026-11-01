@@ -330,7 +330,6 @@ def gerar_recomendacao(df):
         return "Ainda estamos a reunir dados para identificar oportunidades para a sua conta."
 
     score = calcular_score(dados)
-    crescimento = calcular_crescimento(dados)
     recomendacoes = []
 
     engagement = (
@@ -338,54 +337,71 @@ def gerar_recomendacao(df):
         if "engajamento" in dados.columns
         else pd.Series(dtype=float)
     )
-    if not engagement.empty:
-        taxa = float(engagement.mean())
-        if taxa >= 10:
-            recomendacoes.append(
-                "O envolvimento observado é um sinal positivo. Continue a testar conteúdos que incentivem comentários, partilhas e respostas."
-            )
-        elif taxa >= 3:
-            recomendacoes.append(
-                "Reforce chamadas à ação claras e conteúdos que convidem o público a participar, guardar e partilhar."
-            )
-        else:
-            recomendacoes.append(
-                "Experimente publicações com perguntas simples, dicas úteis e chamadas à ação para estimular a participação do público."
-            )
+    taxa = float(engagement.mean()) if not engagement.empty else None
+
+    seguidores = (
+        _numero(dados["seguidores"]).dropna()
+        if "seguidores" in dados.columns
+        else pd.Series(dtype=float)
+    )
+    crescimento = calcular_crescimento(dados) if len(seguidores) >= 2 else None
+    seguidores_atuais = int(seguidores.iloc[-1]) if not seguidores.empty else None
 
     alcance = (
         _numero(dados["alcance"]).dropna()
         if "alcance" in dados.columns
         else pd.Series(dtype=float)
     )
-    if not alcance.empty and alcance.max() > 0:
+    alcance_positivo = alcance[alcance > 0]
+    maior_alcance = int(alcance_positivo.max()) if not alcance_positivo.empty else None
+
+    if taxa is not None and taxa >= 10:
         recomendacoes.append(
-            "Identifique as publicações dos dias de maior alcance e teste novamente os temas e formatos que tiveram melhor resposta."
+            f"• Ponto forte: a taxa média de interação é de {taxa:.2f}%, um sinal muito positivo de resposta do público. "
+            "Preserve os temas e a abordagem que estão a gerar participação; teste variações sem abandonar o que já funciona."
+        )
+    elif taxa is not None:
+        recomendacoes.append(
+            f"• Envolvimento: a taxa média de interação é de {taxa:.2f}%. "
+            "Experimente chamadas à ação claras, perguntas e conteúdos úteis que incentivem comentários, partilhas e guardados."
+        )
+
+    if maior_alcance is not None:
+        recomendacoes.append(
+            f"• Alcance: o maior alcance diário observado foi de {maior_alcance:,}. "
+            "Identifique a publicação correspondente no Instagram e confirme se foi Reel, carrossel ou imagem antes de repetir o formato."
         )
     else:
         recomendacoes.append(
-            "Continue a acompanhar o alcance nos próximos dias para identificar os conteúdos que conseguem chegar a mais pessoas."
+            "• Alcance: ainda não há valores diários positivos consolidados suficientes para identificar qual conteúdo chegou a mais pessoas."
         )
 
-    if crescimento > 0:
+    if crescimento is not None and crescimento > 0:
         recomendacoes.append(
-            "A audiência está a crescer. Mantenha uma frequência de publicação consistente e convide novos visitantes a seguir a página."
+            f"• Conversão em seguidores: a audiência cresceu {crescimento:.2f}% no período. "
+            "Mantenha uma frequência consistente e inclua convites relevantes para novos visitantes seguirem a conta."
         )
-    elif crescimento < 0:
+    elif crescimento is not None and crescimento == 0:
+        base_seguidores = f" A conta mantém {seguidores_atuais:,} seguidores." if seguidores_atuais is not None else ""
         recomendacoes.append(
-            "Reforce conteúdos de descoberta e valor prático para recuperar o interesse de novos visitantes e seguidores."
+            "• Crescimento: não foi registada variação líquida de seguidores no período."
+            + base_seguidores
+            + " Aproveite o bom envolvimento para incluir convites explícitos para seguir a página e acompanhar a conversão nos próximos dias."
         )
-    else:
+    elif crescimento is not None:
         recomendacoes.append(
-            "Teste horários e temas diferentes durante a próxima semana e compare os resultados antes de ajustar a estratégia."
+            f"• Crescimento: a audiência variou {crescimento:.2f}% no período. "
+            "Reforce conteúdos de descoberta e acompanhe quais publicações atraem novos seguidores."
         )
 
-    if score is None:
-        prefixo = "Com os dados disponíveis, já é possível observar tendências preliminares. "
-    else:
-        prefixo = f"A análise atual apresenta um Score de {score}/100. "
-
-    return "💡 " + prefixo + " ".join(recomendacoes[:3])
+    prefixo = (
+        f"Score IA atual: {score}/100. "
+        if score is not None
+        else "Análise baseada nos indicadores oficiais disponíveis. "
+    )
+    return prefixo + "
+" + "
+".join(recomendacoes[:3])
 
 
 # ============================================================
@@ -407,24 +423,24 @@ def gerar_relatorio_executivo(df):
         if "seguidores" in dados.columns
         else pd.Series(dtype=float)
     )
-    # O alcance atual deve corresponder ao registo mais recente, mesmo
-    # quando esse registo não contém valor. Não reutilizar um valor antigo
-    # como se fosse atual.
+    # Ignorar o zero/null do dia ainda não consolidado e apresentar o
+    # registo mais recente com alcance diário positivo e data válida.
     alcance_atual = None
     if "alcance" in dados.columns:
-        if "data" in dados.columns and dados["data"].notna().any():
-            registo_mais_recente = dados.loc[dados["data"].notna()].sort_values("data").iloc[-1]
-        else:
-            registo_mais_recente = dados.iloc[-1]
-        valor_alcance_recente = _numero(pd.Series([registo_mais_recente.get("alcance")])).iloc[0]
-        if pd.notna(valor_alcance_recente):
-            alcance_atual = int(valor_alcance_recente)
+        base_alcance = dados.copy()
+        base_alcance["_alcance_num"] = _numero(base_alcance["alcance"])
+        base_alcance = base_alcance.loc[base_alcance["_alcance_num"] > 0]
+        if "data" in base_alcance.columns:
+            base_alcance = base_alcance.loc[base_alcance["data"].notna()].sort_values("data")
+        if not base_alcance.empty:
+            alcance_atual = int(base_alcance.iloc[-1]["_alcance_num"])
 
     alcance_series = (
         _numero(dados["alcance"]).dropna()
         if "alcance" in dados.columns
         else pd.Series(dtype=float)
     )
+    alcance_series = alcance_series[alcance_series > 0]
     engagement_series = (
         _numero(dados["engajamento"]).dropna()
         if "engajamento" in dados.columns
@@ -468,9 +484,9 @@ def gerar_relatorio_executivo(df):
         "DESEMPENHO DA CONTA",
         f"Seguidores atuais: {seguidores:,}" if seguidores is not None else "Seguidores atuais: Dados indisponíveis",
         (
-            f"Alcance mais recente: {alcance_atual:,}"
+            f"Alcance do último dia com dados consolidados: {alcance_atual:,}"
             if alcance_atual is not None
-            else "Alcance em atualização"
+            else "Alcance: dados consolidados ainda indisponíveis"
         ),
         f"Maior alcance diário no período: {alcance_maximo:,}" if alcance_maximo is not None else "Maior alcance diário: Dados indisponíveis",
         f"Taxa média de interação: {engajamento:.2f}%" if engajamento is not None else "Taxa média de interação: Dados indisponíveis",

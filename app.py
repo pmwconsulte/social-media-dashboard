@@ -1513,11 +1513,19 @@ def descarregar_relatorio_pdf(n_clicks, relatorio, idioma="pt", plataforma="Inst
             continue
         if texto.startswith("Nota:"):
             elementos.append(Paragraph(escape(texto), nota))
+        elif texto.startswith(("• ", "- ")):
+            elementos.append(Paragraph("&#8226;&nbsp;" + escape(texto[2:]), corpo))
         elif any(texto.startswith(prefixo) for prefixo in (
-            "Taxa média de interação:", "Maior alcance diário no período:",
-            "Score IA:", "Score IA preliminar:",
+            "Seguidores atuais:", "Alcance do último dia com dados consolidados:",
+            "Maior alcance diário no período:", "Taxa média de interação:",
+            "Score IA:", "Score IA preliminar:", "Crescimento de seguidores no período:",
         )):
-            elementos.append(Paragraph(escape(texto), destaque))
+            if ":" in texto:
+                rotulo, valor = texto.split(":", 1)
+                conteudo = f"<b>{escape(rotulo)}:</b>{escape(valor)}"
+            else:
+                conteudo = escape(texto)
+            elementos.append(Paragraph(conteudo, destaque))
         else:
             elementos.append(Paragraph(escape(texto), corpo))
 
@@ -1793,15 +1801,15 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
         kpis["alcance"] = alcance_28d
         kpis["engajamento"] = engajamento_28d
 
-    # O Score IA exige pelo menos 14 dias distintos com alcance positivo e
-    # taxa válida. O motor de IA aplica o mesmo limiar; não exibir 0/100
-    # como se fosse uma avaliação real quando a amostra é insuficiente.
+    # O Score IA segue exatamente o critério de calcular_score():
+    # pelo menos 7 datas distintas com seguidores e taxa de interação válidos.
+    # O alcance pode estar indisponível sem invalidar os restantes componentes.
     dias_com_metricas_validas = dados.loc[
-        (pd.to_numeric(dados["alcance"], errors="coerce") > 0)
+        pd.to_numeric(dados["seguidores"], errors="coerce").notna()
         & pd.to_numeric(dados["engajamento"], errors="coerce").notna(),
         "data",
     ].nunique()
-    if kpis.get("alcance") is None or dias_com_metricas_validas < 14:
+    if dias_com_metricas_validas < 7:
         kpis["score"] = None
 
     try:
@@ -1834,11 +1842,11 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
 
     try:
         relatorio = gerar_relatorio_executivo(dados)
-        if dias_com_metricas_validas < 14:
+        if dias_com_metricas_validas < 7:
             relatorio += (
                 "\n\nQUALIDADE E CONFIANÇA\n"
-                f"Score IA não apresentado: existem {dias_com_metricas_validas} dias distintos "
-                "com alcance positivo e taxa válida; são necessários pelo menos 14. "
+                f"Score IA ainda indisponível: existem {dias_com_metricas_validas} dias distintos "
+                "com seguidores e taxa de interação válidos; são necessários pelo menos 7. "
                 "A taxa de interação apresentada é agregada para os últimos 28 dias.\n"
             )
         if dados["data"].nunique() < 2:
