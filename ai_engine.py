@@ -491,13 +491,20 @@ def gerar_relatorio_executivo(df):
         f"Crescimento de seguidores no período: {crescimento:.2f}%" if crescimento is not None else "Crescimento de seguidores: A reunir histórico",
         "",
         "ANÁLISE INTELIGENTE",
+        f"Dias válidos para o Score IA: {dias_validos_score}/14",
         (
             f"Score IA preliminar: {score}/100 — {classificacao}"
             if score is not None and dias_validos_score < 14
-            else (f"Score IA: {score}/100 — {classificacao}" if score is not None
-                  else f"Análise preliminar: a reunir pelo menos 7 dias válidos (atualmente {dias_validos_score}).")
+            else (f"Score IA consolidado: {score}/100 — {classificacao}" if score is not None
+                  else f"Score IA indisponível: são necessários pelo menos 7 dias válidos (actualmente {dias_validos_score}).")
         ),
-        "Nota do Score: a pontuação considera apenas os indicadores disponíveis; métricas sem dados não são pontuadas.",
+        (
+            "Estado da análise: preliminar; será mais estável após 14 dias válidos."
+            if 7 <= dias_validos_score < 14
+            else ("Estado da análise: consolidada (14 ou mais dias válidos)." if dias_validos_score >= 14
+                  else "Estado da análise: em recolha de dados; o Score será apresentado a partir de 7 dias válidos.")
+        ),
+        "Nota do Score: são considerados apenas indicadores oficiais disponíveis; métricas ausentes não são pontuadas nem estimadas.",
         f"Projeção indicativa de seguidores em 30 dias: {seguidores_30:,}" if seguidores_30 is not None else "Projeção de seguidores: indisponível",
         "",
         "RECOMENDAÇÕES PARA A SUA ESTRATÉGIA",
