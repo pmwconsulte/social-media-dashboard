@@ -469,7 +469,7 @@ def gerar_relatorio_executivo(df):
         f"Seguidores atuais: {seguidores:,}" if seguidores is not None else "Seguidores atuais: Dados indisponíveis",
         (
             f"Alcance mais recente: {alcance_atual:,}"
-            if alcance_atual is not None and alcance_atual > 0
+            if alcance_atual is not None
             else "Alcance em atualização"
         ),
         f"Maior alcance diário no período: {alcance_maximo:,}" if alcance_maximo is not None else "Maior alcance diário: Dados indisponíveis",
