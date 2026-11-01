@@ -399,9 +399,7 @@ def gerar_recomendacao(df):
         if score is not None
         else "Análise baseada nos indicadores oficiais disponíveis. "
     )
-    return prefixo + "
-" + "
-".join(recomendacoes[:3])
+    return prefixo + "\n" + "\n".join(recomendacoes[:3])
 
 
 # ============================================================
