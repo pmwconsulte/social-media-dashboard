@@ -407,6 +407,19 @@ def gerar_relatorio_executivo(df):
         if "seguidores" in dados.columns
         else pd.Series(dtype=float)
     )
+    # O alcance atual deve corresponder ao registo mais recente, mesmo
+    # quando esse registo não contém valor. Não reutilizar um valor antigo
+    # como se fosse atual.
+    alcance_atual = None
+    if "alcance" in dados.columns:
+        if "data" in dados.columns and dados["data"].notna().any():
+            registo_mais_recente = dados.loc[dados["data"].notna()].sort_values("data").iloc[-1]
+        else:
+            registo_mais_recente = dados.iloc[-1]
+        valor_alcance_recente = _numero(pd.Series([registo_mais_recente.get("alcance")])).iloc[0]
+        if pd.notna(valor_alcance_recente):
+            alcance_atual = int(valor_alcance_recente)
+
     alcance_series = (
         _numero(dados["alcance"]).dropna()
         if "alcance" in dados.columns
@@ -419,7 +432,6 @@ def gerar_relatorio_executivo(df):
     )
 
     seguidores = int(seguidores_series.iloc[-1]) if not seguidores_series.empty else None
-    alcance_atual = int(alcance_series.iloc[-1]) if not alcance_series.empty else None
     alcance_maximo = int(alcance_series.max()) if not alcance_series.empty else None
     engajamento = float(engagement_series.mean()) if not engagement_series.empty else None
     crescimento = calcular_crescimento(dados) if len(seguidores_series) >= 2 else None
@@ -433,6 +445,17 @@ def gerar_relatorio_executivo(df):
         data_fim = None
         periodo = "Período disponível na base de dados"
         dias_disponiveis = len(dados)
+
+    # Contar apenas dias com seguidores e taxa de interação válidos,
+    # que são os requisitos mínimos efetivos do Score IA.
+    if {"seguidores", "engajamento"}.issubset(dados.columns):
+        base_score = dados.dropna(subset=["seguidores", "engajamento"])
+        if "data" in base_score.columns and base_score["data"].notna().any():
+            dias_validos_score = base_score.loc[base_score["data"].notna(), "data"].dt.date.nunique()
+        else:
+            dias_validos_score = len(base_score)
+    else:
+        dias_validos_score = 0
 
     previsao = prever_crescimento(dados, dias=30)
     seguidores_30 = int(previsao[-1]) if previsao else seguidores
@@ -456,10 +479,11 @@ def gerar_relatorio_executivo(df):
         "ANÁLISE INTELIGENTE",
         (
             f"Score IA preliminar: {score}/100 — {classificacao}"
-            if score is not None and dias_disponiveis < 14
+            if score is not None and dias_validos_score < 14
             else (f"Score IA: {score}/100 — {classificacao}" if score is not None
-                  else f"Análise preliminar: a reunir pelo menos 7 dias válidos (atualmente {dias_disponiveis}).")
+                  else f"Análise preliminar: a reunir pelo menos 7 dias válidos (atualmente {dias_validos_score}).")
         ),
+        "Nota do Score: a pontuação considera apenas os indicadores disponíveis; métricas sem dados não são pontuadas.",
         f"Projeção indicativa de seguidores em 30 dias: {seguidores_30:,}" if seguidores_30 is not None else "Projeção de seguidores: indisponível",
         "",
         "RECOMENDAÇÕES PARA A SUA ESTRATÉGIA",
