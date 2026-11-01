@@ -1427,60 +1427,112 @@ def descarregar_relatorio_pdf(n_clicks, relatorio, idioma="pt", plataforma="Inst
     if not n_clicks or not relatorio:
         return None
 
+    from datetime import datetime
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, HRFlowable, KeepTogether
+    )
 
     memoria = io.BytesIO()
     documento = SimpleDocTemplate(
         memoria, pagesize=A4, rightMargin=20 * mm, leftMargin=20 * mm,
         topMargin=18 * mm, bottomMargin=18 * mm,
-        title="PMW Social Media Dashboard AI - Executive Report",
+        title="PMW Social Media Dashboard AI - Relatório Executivo",
         author="PMW Consultoria & Tecnologia",
     )
     estilos = getSampleStyleSheet()
+    azul = colors.HexColor("#123B5D")
+    azul_claro = colors.HexColor("#EAF3F8")
+    verde = colors.HexColor("#16794B")
+    cinza = colors.HexColor("#64748B")
     titulo = ParagraphStyle(
         "PMWTitle", parent=estilos["Title"], fontName="Helvetica-Bold",
-        fontSize=16, leading=20, textColor=colors.HexColor("#0f3b63"),
-        alignment=TA_LEFT, spaceAfter=8,
+        fontSize=20, leading=24, textColor=azul,
+        alignment=TA_LEFT, spaceAfter=4,
+    )
+    subtitulo = ParagraphStyle(
+        "PMWSubtitle", parent=estilos["Normal"], fontName="Helvetica",
+        fontSize=10, leading=14, textColor=cinza, spaceAfter=12,
+    )
+    secao = ParagraphStyle(
+        "PMWSection", parent=estilos["Heading2"], fontName="Helvetica-Bold",
+        fontSize=11, leading=15, textColor=azul, spaceBefore=10, spaceAfter=5,
     )
     corpo = ParagraphStyle(
         "PMWBody", parent=estilos["BodyText"], fontName="Helvetica",
         fontSize=9, leading=13, textColor=colors.HexColor("#172033"),
-        spaceAfter=4, wordWrap="LTR",
+        spaceAfter=5, wordWrap="LTR",
     )
-    idioma_nome = "English" if idioma == "en" else "Português"
+    destaque = ParagraphStyle(
+        "PMWHighlight", parent=corpo, fontName="Helvetica-Bold",
+        fontSize=10, leading=14, textColor=verde, backColor=azul_claro,
+        borderPadding=6, spaceBefore=2, spaceAfter=7,
+    )
+    nota = ParagraphStyle(
+        "PMWNote", parent=corpo, fontSize=8, leading=11,
+        textColor=cinza, spaceBefore=6,
+    )
+
+    data_emissao = datetime.now().strftime("%d/%m/%Y")
+    nome_plataforma = str(plataforma or "Redes sociais")
     elementos = [
-        Paragraph("PMW Social Media Dashboard AI", titulo),
+        Paragraph("PMW SOCIAL MEDIA DASHBOARD AI", titulo),
         Paragraph(
-            ("AI Executive Report" if idioma == "en" else "Relatório Executivo IA")
-            + " — " + escape(str(plataforma or "")),
-            estilos["Heading2"],
+            ("Relatório executivo" if idioma != "en" else "Executive report")
+            + f" · {escape(nome_plataforma)} · "
+            + (f"Emitido em {data_emissao}" if idioma != "en" else f"Issued {data_emissao}"),
+            subtitulo,
         ),
-        Paragraph(
-            ("Language: " if idioma == "en" else "Idioma: ") + idioma_nome,
-            estilos["Italic"],
-        ),
-        Spacer(1, 8),
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#CBD5E1"), spaceAfter=10),
     ]
-    for linha in str(relatorio).splitlines():
-        if linha.strip():
-            elementos.append(Paragraph(escape(linha), corpo))
-        else:
+
+    secoes = {
+        "DESEMPENHO DA CONTA",
+        "ANÁLISE INTELIGENTE",
+        "RECOMENDAÇÕES PARA A SUA ESTRATÉGIA",
+        "PREVISÃO IA — 30 DIAS",
+        "RECOMENDAÇÃO",
+    }
+    linhas = str(relatorio).splitlines()
+    for linha in linhas:
+        texto = linha.strip()
+        if not texto or texto in {"RELATÓRIO EXECUTIVO", "RELATÓRIO EXECUTIVO IA"}:
+            continue
+        if set(texto) == {"="}:
+            continue
+        if texto in secoes:
             elementos.append(Spacer(1, 5))
+            elementos.append(KeepTogether([
+                Paragraph(escape(texto), secao),
+                HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#D7E0E8"), spaceAfter=7),
+            ]))
+            continue
+        if texto.startswith("Nota:"):
+            elementos.append(Paragraph(escape(texto), nota))
+        elif any(texto.startswith(prefixo) for prefixo in (
+            "Taxa média de interação:", "Maior alcance diário no período:",
+            "Score IA:", "Score IA preliminar:",
+        )):
+            elementos.append(Paragraph(escape(texto), destaque))
+        else:
+            elementos.append(Paragraph(escape(texto), corpo))
+
     elementos.append(Spacer(1, 12))
-    elementos.append(Paragraph("PMW Consultoria &amp; Tecnologia", estilos["Italic"]))
+    elementos.append(HRFlowable(width="100%", thickness=0.7, color=colors.HexColor("#CBD5E1")))
+    elementos.append(Spacer(1, 6))
+    elementos.append(Paragraph("PMW Consultoria &amp; Tecnologia", nota))
     documento.build(elementos)
     memoria.seek(0)
-    nome_plataforma = "".join(
-        ch.lower() if ch.isalnum() else "-" for ch in str(plataforma or "redes-sociais")
+    nome_ficheiro = "".join(
+        ch.lower() if ch.isalnum() else "-" for ch in nome_plataforma
     ).strip("-") or "redes-sociais"
     return dcc.send_bytes(
         memoria.getvalue(),
-        filename=f"pmw-relatorio-ia-{nome_plataforma}.pdf",
+        filename=f"pmw-relatorio-executivo-{nome_ficheiro}.pdf",
         type="application/pdf",
     )
 
