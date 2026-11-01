@@ -205,9 +205,10 @@ def calcular_score(df):
     if pesos_disponiveis == 0:
         return None
 
-    # Reponderar apenas os indicadores efetivamente disponíveis.
-    score_normalizado = sum(valor for valor, _ in componentes) / pesos_disponiveis * 100
-    return max(0, min(round(score_normalizado), 100))
+    # Manter a ponderação original sobre 100 pontos. Indicadores ausentes
+    # não são inventados nem ampliados artificialmente para preencher a escala.
+    score = sum(valor for valor, _ in componentes)
+    return max(0, min(round(score), 100))
 
 
 # ============================================================
@@ -446,8 +447,7 @@ def gerar_relatorio_executivo(df):
         (
             f"Alcance mais recente: {alcance_atual:,}"
             if alcance_atual is not None and alcance_atual > 0
-            else ("Sem alcance registado no último dia disponível" if alcance_atual == 0
-                  else "Dados de alcance em atualização")
+            else "Alcance em atualização"
         ),
         f"Maior alcance diário no período: {alcance_maximo:,}" if alcance_maximo is not None else "Maior alcance diário: Dados indisponíveis",
         f"Taxa média de interação: {engajamento:.2f}%" if engajamento is not None else "Taxa média de interação: Dados indisponíveis",
