@@ -276,6 +276,19 @@ PUBLIC_HOME_PAGE = """<!doctype html>
       <article class="card"><span class="step-number">3</span><h3>Explore os indicadores</h3><p>Consulte os dados disponíveis, acompanhe tendências e reveja as recomendações.</p></article>
     </div>
   </section>
+  <section class="section" id="regras-meta">
+    <h2>Privacidade, regras e procedimentos para ligações Meta</h2>
+    <p class="intro">A PMW Social Media Dashboard AI utiliza as integrações oficiais disponibilizadas pela Meta, respeitando as permissões autorizadas pelo titular da conta e a finalidade apresentada durante a ligação.</p>
+    <div class="grid">
+      <article class="card"><div class="symbol">🔑</div><h3>1. Autorização e permissões</h3><p>A ligação ao Facebook e Instagram é iniciada através do fluxo oficial de autenticação da Meta. Nunca solicitamos nem pedimos que envie a sua palavra-passe da Meta à PMW. Reveja o ecrã de autorização e conceda apenas as permissões apresentadas e necessárias para as funcionalidades que pretende utilizar.</p></article>
+      <article class="card"><div class="symbol">📊</div><h3>2. Utilização dos dados</h3><p>Os dados disponibilizados pelas APIs são utilizados para identificar a conta ligada, apresentar métricas e gerar análises e relatórios no dashboard. A informação é utilizada para prestar estas funcionalidades, não para vender dados pessoais ou criar perfis independentes para publicidade.</p></article>
+      <article class="card"><div class="symbol">🛡️</div><h3>3. Segurança e confidencialidade</h3><p>A PMW aplica controlos de acesso e medidas técnicas e organizacionais para proteger os dados e limitar o acesso a pessoas autorizadas. Não partilhe códigos de autenticação, palavras-passe ou tokens. Suspeitas de acesso indevido ou vulnerabilidades devem ser comunicadas à nossa equipa.</p></article>
+      <article class="card"><div class="symbol">🔌</div><h3>4. Desligar ou revogar o acesso</h3><p>Pode remover a ligação à plataforma e também revogar as permissões da aplicação nas definições de segurança e integrações da sua conta Meta. A revogação impede novos acessos através das permissões retiradas, mas não substitui um pedido de eliminação dos dados anteriormente guardados.</p></article>
+      <article class="card"><div class="symbol">🗑️</div><h3>5. Acesso, correcção e eliminação de dados</h3><p>O titular da conta ou o cliente pode solicitar acesso, correcção ou eliminação dos dados associados à integração. Envie o pedido para <a href="mailto:info@pmwconsultoria.com?subject=Pedido%20de%20privacidade%20e%20eliminacao%20de%20dados">info@pmwconsultoria.com</a>, indicando a conta ou organização a que respeita. A equipa confirmará o pedido e tratará os dados de acordo com as obrigações legais aplicáveis.</p></article>
+      <article class="card"><div class="symbol">⚠️</div><h3>6. Incidentes e apoio</h3><p>Comunique imediatamente qualquer suspeita de acesso não autorizado, exposição de dados ou falha de segurança através de <a href="mailto:info@pmwconsultoria.com?subject=Comunicacao%20de%20incidente%20de%20seguranca">info@pmwconsultoria.com</a>. Inclua uma descrição do ocorrido e os elementos necessários para investigarmos, sem enviar palavras-passe ou tokens.</p></article>
+    </div>
+    <p class="microcopy">A disponibilidade das integrações e dos indicadores depende das permissões aprovadas pela Meta, do tipo de conta e da disponibilidade das APIs. A aprovação da aplicação pela Meta não é garantida por esta informação. Para conhecer os dados tratados, os prazos de conservação, os destinatários e os direitos dos titulares, consulte a Política de Privacidade da PMW ou contacte-nos.</p>
+  </section>
   <section class="section" id="contacto">
     <h2>Contacte a PMW Consultoria</h2>
     <p class="intro">Tem dúvidas ou precisa de apoio? Entre em contacto connosco através do email ou telefone.</p>
