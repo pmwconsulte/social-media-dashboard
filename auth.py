@@ -64,7 +64,7 @@ def _instagram_authorize_url(state):
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "instagram_business_basic,instagram_business_manage_insights",
+        "scope": "instagram_business_basic,instagram_business_manage_insights,instagram_business_manage_messages",
         "state": state,
     }
 
