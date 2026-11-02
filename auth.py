@@ -1751,7 +1751,7 @@ def setup_auth(server: Flask):
             if conn: conn.close()
 
 
-    @server.get("/instagram/inbox")
+    @server.route("/instagram/inbox", methods=["GET", "POST"])
     def instagram_inbox():
         """Inbox Instagram isolada por workspace; tokens nunca são enviados ao browser."""
         if not session.get("authenticated"):
@@ -1839,8 +1839,45 @@ def setup_auth(server: Flask):
                 f"response_has_data={'data' in conversations_payload if isinstance(conversations_payload, dict) else False}"
             )
 
-            selected_conversation = request.args.get("conversation", "")
+            selected_conversation = (
+                request.form.get("conversation", "") if request.method == "POST"
+                else request.args.get("conversation", "")
+            )
             messages = []
+            if request.method == "POST":
+                reply_text = (request.form.get("message") or "").strip()
+                if not selected_conversation or not any(str(item.get("id")) == selected_conversation for item in conversations):
+                    return redirect(url_for("instagram_inbox", account=str(account_id)))
+                if not reply_text or len(reply_text) > 1000:
+                    return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="A mensagem deve ter entre 1 e 1.000 caracteres."))
+                participant_data = next(item for item in conversations if str(item.get("id")) == selected_conversation).get("participants", {})
+                participant_list = participant_data.get("data", []) if isinstance(participant_data, dict) else []
+                recipient = next((item for item in participant_list if str(item.get("username", "")).lower() != str(username).lower()), None)
+                recipient_id = str(recipient.get("id", "")) if isinstance(recipient, dict) else ""
+                if not recipient_id:
+                    return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="Não foi possível identificar o destinatário."))
+                me_response = requests.get(f"{base_url}/me", params={"fields":"id", "access_token":access_token}, timeout=15)
+                me_response.raise_for_status()
+                instagram_user_id = str(me_response.json().get("id", ""))
+                if not instagram_user_id:
+                    return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="A API não identificou a conta Instagram ligada."))
+                send_response = requests.post(
+                    f"{base_url}/{instagram_user_id}/messages",
+                    params={"access_token":access_token},
+                    json={"recipient":{"id":recipient_id}, "message":{"text":reply_text}},
+                    timeout=20,
+                )
+                try:
+                    send_payload = send_response.json()
+                except ValueError:
+                    send_payload = {}
+                if not send_response.ok:
+                    api_error = send_payload.get("error", {}) if isinstance(send_payload, dict) else {}
+                    print(f"[INSTAGRAM SEND API ERROR] http={send_response.status_code} code={api_error.get('code')} subcode={api_error.get('error_subcode')} message={str(api_error.get('message','Erro sem detalhe'))[:300]}")
+                    return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="A Meta não aceitou o envio. Verifique as permissões e tente novamente."))
+                print(f"[INSTAGRAM SEND] success=true account={account_id} conversation={selected_conversation}")
+                return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, sent="Mensagem enviada com sucesso."))
+
             if selected_conversation and any(
                 str(item.get("id")) == selected_conversation for item in conversations
             ):
@@ -1904,6 +1941,11 @@ def setup_auth(server: Flask):
                 .msg.outgoing{margin-left:auto;background:#075985;border-radius:12px 12px 3px 12px}
                 .sender{font-size:12px;font-weight:bold;color:#bae6fd;margin-bottom:5px}
                 .muted{color:#94a3b8;font-size:12px}
+                .reply-form{margin-top:18px;border-top:1px solid #334155;padding-top:16px}
+                .reply-form textarea{width:100%;box-sizing:border-box;min-height:90px;padding:12px;border:1px solid #475569;border-radius:9px;background:#0f172a;color:#f8fafc;font:inherit;resize:vertical}
+                .reply-form button{margin-top:9px;padding:11px 18px;border:0;border-radius:8px;background:#38bdf8;color:#082f49;font-weight:700;cursor:pointer}
+                .notice{padding:10px 12px;border-radius:8px;background:#164e63;color:#cffafe;margin:10px 0}
+                .error{padding:10px 12px;border-radius:8px;background:#7f1d1d;color:#fee2e2;margin:10px 0}
                 @media(max-width:700px){body{padding:12px}.grid{grid-template-columns:1fr}.msg{max-width:90%}}
                 </style><div class="wrap"><p><a href="/account">← Minha Conta</a></p>
                 <h1>Instagram Direct</h1><p class="muted">Conta: {{ username }} · Workspace protegido</p>
@@ -1922,6 +1964,17 @@ def setup_auth(server: Flask):
                     <div class="muted">{{ msg.created_time or "" }}</div>
                   </div>
                 {% else %}<p class="muted">Seleccione uma conversa para consultar as mensagens.</p>{% endfor %}
+                {% if selected_conversation %}
+                  {% if request.args.get('sent') %}<div class="notice">{{ request.args.get('sent') }}</div>{% endif %}
+                  {% if request.args.get('error') %}<div class="error">{{ request.args.get('error') }}</div>{% endif %}
+                  <form class="reply-form" method="post" action="/instagram/inbox?account={{ account_id }}&conversation={{ selected_conversation }}">
+                    <input type="hidden" name="conversation" value="{{ selected_conversation }}">
+                    <label for="instagram-reply">Responder pelo Instagram</label>
+                    <textarea id="instagram-reply" name="message" maxlength="1000" required placeholder="Escreva a sua resposta..."></textarea>
+                    <button type="submit">Enviar mensagem</button>
+                    <p class="muted">O envio depende das permissões e das regras de mensagens da Meta.</p>
+                  </form>
+                {% endif %}
                 </section></div></div></html>""",
                 username=username,
                 account_id=str(account_id),
