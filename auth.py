@@ -1838,8 +1838,33 @@ def setup_auth(server: Flask):
                     },
                     timeout=20,
                 )
-                detail_response.raise_for_status()
-                messages = detail_response.json().get("messages", {}).get("data", [])
+                print(
+                    "[INSTAGRAM INBOX] detail_http_status="
+                    f"{detail_response.status_code} selected_conversation_present=true"
+                )
+                try:
+                    detail_payload = detail_response.json()
+                except ValueError:
+                    detail_payload = {}
+                    print("[INSTAGRAM INBOX] detail_resposta_json_valida=false")
+
+                if detail_response.status_code >= 400:
+                    detail_error = detail_payload.get("error", {}) if isinstance(detail_payload, dict) else {}
+                    print(
+                        "[INSTAGRAM INBOX DETAIL API ERROR] "
+                        f"type={detail_error.get('type')} code={detail_error.get('code')} "
+                        f"subcode={detail_error.get('error_subcode')} "
+                        f"message={str(detail_error.get('message', 'Erro sem detalhe'))[:500]}"
+                    )
+                    detail_response.raise_for_status()
+
+                message_container = detail_payload.get("messages", {}) if isinstance(detail_payload, dict) else {}
+                messages = message_container.get("data", []) if isinstance(message_container, dict) else []
+                print(
+                    f"[INSTAGRAM INBOX] messages_count={len(messages)} "
+                    f"detail_has_messages={'messages' in detail_payload if isinstance(detail_payload, dict) else False} "
+                    f"detail_keys={','.join(sorted(detail_payload.keys())) if isinstance(detail_payload, dict) else 'invalid_json'}"
+                )
 
             return render_template_string(
                 """<!doctype html><html lang="pt"><meta charset="utf-8">
