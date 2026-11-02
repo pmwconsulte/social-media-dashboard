@@ -888,7 +888,7 @@ def calcular_kpis(dados):
 EN_TRANSLATIONS = {
     "Analytics • Métricas • IA": "Analytics • Metrics • AI",
     "Transforme os Seus Dados em Oportunidades de Negócio": "Turn Your Data into Business Opportunities",
-    "🔗 Conectar Redes": "🔗 Connect Social Accounts", "💳 Plano": "💳 Plan", "🚪 Logout": "🚪 Log out",
+    "🔗 Conectar Redes": "🔗 Connect Social Accounts", "💬 Mensagens": "💬 Messages", "💳 Plano": "💳 Plan", "🚪 Logout": "🚪 Log out",
     "Seguidores": "Followers", "Alcance": "Reach", "Taxa de interação": "Engagement rate",
     "Crescimento": "Growth", "Score IA": "AI Score",
     "📆 Instagram — resumo oficial dos últimos 28 dias": "📆 Instagram — official summary for the last 28 days",
@@ -1202,6 +1202,22 @@ app.layout = html.Div(
                                 "fontWeight": "700",
                                 "fontSize": "13px",
                                 "cursor": "default",
+                            },
+                        ),
+                        html.A(
+                            "💬 Mensagens",
+                            id="botao-mensagens",
+                            href="/instagram/inbox",
+                            title="Abrir a caixa de entrada do Instagram Direct",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": "#0f766e",
+                                "color": "white",
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
                             },
                         ),
                         html.A(

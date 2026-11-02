@@ -64,7 +64,7 @@ def _instagram_authorize_url(state):
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "instagram_business_basic,instagram_business_manage_insights",
+        "scope": "instagram_business_basic,instagram_business_manage_insights,instagram_business_manage_messages",
         "state": state,
     }
 
@@ -1176,7 +1176,7 @@ def _env_bool(name, default=True):
 ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Minha Conta — PMW Social Media Dashboard AI</title>
 <style>body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}.wrap{max-width:1050px;margin:35px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:24px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}label{display:block;margin:12px 0 7px;font-weight:600}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #334155;background:#020617;color:#fff;box-sizing:border-box}button,.btn{display:inline-block;padding:11px 16px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;text-decoration:none;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#172554;color:#7dd3fc;font-size:12px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #1e293b}</style></head><body><div class="wrap">
-<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p><form method="post" action="/social-accounts/sync" style="display:inline-block;margin:8px 0 0"><button type="submit" style="background:#22c55e;color:#052e16">🔄 Sincronizar métricas agora</button></form>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
+<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p><a class="btn" href="/instagram/inbox" style="background:#7c3aed;color:#fff">💬 Instagram Direct</a> <form method="post" action="/social-accounts/sync" style="display:inline-block;margin:8px 0 0"><button type="submit" style="background:#22c55e;color:#052e16">🔄 Sincronizar métricas agora</button></form>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
 <div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
 <div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
 <div class="card" style="border:2px solid #a855f7;background:#111827">
@@ -1276,7 +1276,7 @@ def setup_auth(server: Flask):
         # de pesquisa; X-Robots-Tag também cobre respostas que não são HTML.
         noindex_paths = (
             "/login", "/signup", "/account", "/account/password", "/billing",
-            "/logout", "/oauth/instagram", "/oauth/instagram/callback",
+            "/logout", "/oauth/instagram", "/oauth/instagram/callback", "/instagram/inbox",
             "/health", "/diagnostico-dados",
         )
         if request.path in noindex_paths or request.path.startswith("/social-accounts/"):
@@ -1317,6 +1317,7 @@ def setup_auth(server: Flask):
             "/logout",
             "/oauth/instagram",
             "/oauth/instagram/callback",
+            "/instagram/inbox",
             "/health",
         }
         if request.path in auth_paths:
@@ -1748,6 +1749,114 @@ def setup_auth(server: Flask):
             return redirect(url_for("account", error="Erro ao configurar a conta Instagram."))
         finally:
             if conn: conn.close()
+
+
+    @server.get("/instagram/inbox")
+    def instagram_inbox():
+        """Inbox Instagram isolada por workspace; tokens nunca são enviados ao browser."""
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+
+        workspace_slug = session.get("workspace_slug")
+        conn = None
+        try:
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT sa.id, sa.username, sa.access_token
+                       FROM social_accounts sa
+                       JOIN workspaces w ON w.id = sa.workspace_id
+                       WHERE w.slug=%s AND LOWER(sa.platform)='instagram'
+                         AND COALESCE(sa.is_active, TRUE)=TRUE
+                         AND LOWER(COALESCE(sa.connection_status,''))='connected'
+                       ORDER BY sa.last_sync_at DESC NULLS LAST""",
+                    (workspace_slug,),
+                )
+                accounts = cur.fetchall()
+            if not accounts:
+                return render_template_string(
+                    "<h2>Instagram Direct</h2><p>Não existe uma conta Instagram ligada neste workspace.</p><a href='/account'>Voltar</a>"
+                )
+
+            requested_account = request.args.get("account", "")
+            selected = next((row for row in accounts if str(row[0]) == requested_account), accounts[0])
+            account_id, username, encrypted_token = selected
+            access_token = _token_cipher().decrypt(
+                encrypted_token.encode("utf-8")
+            ).decode("utf-8")
+
+            base_url = "https://graph.instagram.com/v25.0"
+            conversations_response = requests.get(
+                f"{base_url}/me/conversations",
+                params={
+                    "platform": "instagram",
+                    "fields": "id,updated_time,participants",
+                    "limit": 25,
+                    "access_token": access_token,
+                },
+                timeout=20,
+            )
+            conversations_response.raise_for_status()
+            conversations = conversations_response.json().get("data", [])
+
+            selected_conversation = request.args.get("conversation", "")
+            messages = []
+            if selected_conversation and any(
+                str(item.get("id")) == selected_conversation for item in conversations
+            ):
+                detail_response = requests.get(
+                    f"{base_url}/{selected_conversation}",
+                    params={
+                        "fields": "id,updated_time,participants,messages{id,created_time,from,to,message}",
+                        "access_token": access_token,
+                    },
+                    timeout=20,
+                )
+                detail_response.raise_for_status()
+                messages = detail_response.json().get("messages", {}).get("data", [])
+
+            return render_template_string(
+                """<!doctype html><html lang="pt"><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <title>Instagram Direct | PMW</title>
+                <style>
+                body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}
+                a{color:#7dd3fc} .wrap{max-width:1100px;margin:auto}
+                .grid{display:grid;grid-template-columns: minmax(260px,1fr) 2fr;gap:18px}
+                .panel{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px}
+                .item{display:block;padding:12px;border-bottom:1px solid #334155;text-decoration:none}
+                .msg{padding:10px;margin:8px 0;background:#334155;border-radius:8px}
+                .muted{color:#94a3b8;font-size:13px}
+                @media(max-width:700px){.grid{grid-template-columns:1fr}}
+                </style><div class="wrap"><p><a href="/account">← Minha Conta</a></p>
+                <h1>Instagram Direct</h1><p class="muted">Conta: {{ username }} · Workspace protegido</p>
+                <div class="grid"><section class="panel"><h2>Conversas</h2>
+                {% for item in conversations %}
+                  <a class="item" href="/instagram/inbox?account={{ account_id }}&conversation={{ item.id }}">
+                    <strong>Conversa {{ loop.index }}</strong><br>
+                    <span class="muted">{{ item.updated_time or "Data indisponível" }}</span>
+                  </a>
+                {% else %}<p class="muted">Não há conversas disponíveis. Só aparecem conversas iniciadas por clientes que enviaram mensagem à conta profissional.</p>{% endfor %}
+                </section><section class="panel"><h2>Mensagens</h2>
+                {% for msg in messages %}<div class="msg"><div>{{ msg.message or "[Conteúdo não textual]" }}</div>
+                <div class="muted">{{ msg.created_time or "" }} · Mensagem recebida/enviada</div></div>
+                {% else %}<p class="muted">Seleccione uma conversa para consultar as mensagens.</p>{% endfor %}
+                </section></div></div></html>""",
+                username=username,
+                account_id=str(account_id),
+                conversations=conversations,
+                messages=messages,
+            )
+        except requests.RequestException as erro:
+            status = getattr(getattr(erro, "response", None), "status_code", None)
+            print(f"[INSTAGRAM INBOX API ERROR] status={status} type={type(erro).__name__}")
+            return "Não foi possível consultar o Instagram Direct. Confirme as permissões e tente novamente.", 502
+        except Exception as erro:
+            print(f"[INSTAGRAM INBOX ERROR] {type(erro).__name__}")
+            return "Não foi possível abrir a caixa de entrada Instagram.", 500
+        finally:
+            if conn:
+                conn.close()
 
 
     @server.get("/oauth/facebook")
