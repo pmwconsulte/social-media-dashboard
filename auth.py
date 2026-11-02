@@ -1798,7 +1798,7 @@ def setup_auth(server: Flask):
                 raise RuntimeError("Instagram não devolveu o identificador da conta.")
 
             conversations_response = requests.get(
-                f"{base_url}/{ig_user_id}/conversations",
+                f"{base_url}/me/conversations",
                 params={
                     "platform": "instagram",
                     "fields": "id,updated_time,participants",
