@@ -1873,30 +1873,38 @@ def setup_auth(server: Flask):
                 <style>
                 body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}
                 a{color:#7dd3fc} .wrap{max-width:1100px;margin:auto}
-                .grid{display:grid;grid-template-columns: minmax(260px,1fr) 2fr;gap:18px}
-                .panel{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px}
+                .grid{display:grid;grid-template-columns:minmax(260px,1fr) 2fr;gap:18px}
+                .panel{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;min-width:0}
                 .item{display:block;padding:12px;border-bottom:1px solid #334155;text-decoration:none}
-                .msg{padding:10px;margin:8px 0;background:#334155;border-radius:8px}
-                .muted{color:#94a3b8;font-size:13px}
-                @media(max-width:700px){.grid{grid-template-columns:1fr}}
+                .item.active{background:#334155;border-radius:8px}
+                .msg{padding:11px 14px;margin:10px 0;max-width:78%;background:#334155;border-radius:12px 12px 12px 3px;overflow-wrap:anywhere}
+                .msg.outgoing{margin-left:auto;background:#075985;border-radius:12px 12px 3px 12px}
+                .sender{font-size:12px;font-weight:bold;color:#bae6fd;margin-bottom:5px}
+                .muted{color:#94a3b8;font-size:12px}
+                @media(max-width:700px){body{padding:12px}.grid{grid-template-columns:1fr}.msg{max-width:90%}}
                 </style><div class="wrap"><p><a href="/account">← Minha Conta</a></p>
                 <h1>Instagram Direct</h1><p class="muted">Conta: {{ username }} · Workspace protegido</p>
                 <div class="grid"><section class="panel"><h2>Conversas</h2>
                 {% for item in conversations %}
-                  <a class="item" href="/instagram/inbox?account={{ account_id }}&conversation={{ item.id }}">
-                    <strong>Conversa {{ loop.index }}</strong><br>
+                  <a class="item {% if selected_conversation == item.id|string %}active{% endif %}" href="/instagram/inbox?account={{ account_id }}&conversation={{ item.id }}">
+                    <strong>{{ item.display_name }}</strong><br>
                     <span class="muted">{{ item.updated_time or "Data indisponível" }}</span>
                   </a>
                 {% else %}<p class="muted">Não há conversas disponíveis. Só aparecem conversas iniciadas por clientes que enviaram mensagem à conta profissional.</p>{% endfor %}
                 </section><section class="panel"><h2>Mensagens</h2>
-                {% for msg in messages %}<div class="msg"><div>{{ msg.message or "[Conteúdo não textual]" }}</div>
-                <div class="muted">{{ msg.created_time or "" }} · Mensagem recebida/enviada</div></div>
+                {% for msg in messages %}
+                  <div class="msg {% if msg.is_outgoing %}outgoing{% endif %}">
+                    <div class="sender">{{ msg.sender_name }} · {% if msg.is_outgoing %}Enviada{% else %}Recebida{% endif %}</div>
+                    <div>{{ msg.message or "[Conteúdo não textual]" }}</div>
+                    <div class="muted">{{ msg.created_time or "" }}</div>
+                  </div>
                 {% else %}<p class="muted">Seleccione uma conversa para consultar as mensagens.</p>{% endfor %}
                 </section></div></div></html>""",
                 username=username,
                 account_id=str(account_id),
                 conversations=conversations,
                 messages=messages,
+                selected_conversation=selected_conversation,
             )
         except requests.RequestException as erro:
             status = getattr(getattr(erro, "response", None), "status_code", None)
