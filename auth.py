@@ -1796,8 +1796,34 @@ def setup_auth(server: Flask):
                 },
                 timeout=20,
             )
-            conversations_response.raise_for_status()
-            conversations = conversations_response.json().get("data", [])
+            # Diagnóstico seguro: nunca registar URL, parâmetros, token ou cabeçalhos.
+            print(
+                f"[INSTAGRAM INBOX] conversations_http_status={conversations_response.status_code}"
+            )
+            try:
+                conversations_payload = conversations_response.json()
+            except ValueError:
+                conversations_payload = {}
+                print("[INSTAGRAM INBOX] resposta_json_valida=false")
+
+            if conversations_response.status_code >= 400:
+                api_error = conversations_payload.get("error", {}) if isinstance(conversations_payload, dict) else {}
+                error_code = api_error.get("code")
+                error_subcode = api_error.get("error_subcode")
+                error_type = api_error.get("type")
+                error_message = str(api_error.get("message", "Erro sem detalhe"))[:500]
+                print(
+                    "[INSTAGRAM INBOX API ERROR] "
+                    f"type={error_type} code={error_code} subcode={error_subcode} "
+                    f"message={error_message}"
+                )
+                conversations_response.raise_for_status()
+
+            conversations = conversations_payload.get("data", []) if isinstance(conversations_payload, dict) else []
+            print(
+                f"[INSTAGRAM INBOX] conversations_count={len(conversations)} "
+                f"response_has_data={'data' in conversations_payload if isinstance(conversations_payload, dict) else False}"
+            )
 
             selected_conversation = request.args.get("conversation", "")
             messages = []
