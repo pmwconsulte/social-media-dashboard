@@ -1788,17 +1788,18 @@ def setup_auth(server: Flask):
             base_url = "https://graph.instagram.com/v25.0"
             response = requests.get(
                 f"{base_url}/me",
-                params={"fields": "id,username", "access_token": access_token},
+                params={"fields": "user_id,id,username", "access_token": access_token},
                 timeout=20,
             )
             response.raise_for_status()
             ig_profile = response.json()
-            ig_user_id = str(ig_profile.get("id") or "")
+            # Instagram Login pode devolver user_id (ID profissional) e id (IGSID).
+            ig_user_id = str(ig_profile.get("user_id") or ig_profile.get("id") or "")
             if not ig_user_id:
                 raise RuntimeError("Instagram não devolveu o identificador da conta.")
 
             conversations_response = requests.get(
-                f"{base_url}/me/conversations",
+                f"{base_url}/{ig_user_id}/conversations",
                 params={
                     "platform": "instagram",
                     "fields": "id,updated_time,participants",
