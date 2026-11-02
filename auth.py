@@ -1845,17 +1845,34 @@ def setup_auth(server: Flask):
             )
             messages = []
             if request.method == "POST":
+                csrf_expected = session.get("instagram_inbox_csrf", "")
+                csrf_received = request.form.get("csrf_token", "")
+                if not csrf_expected or not csrf_received or not secrets.compare_digest(csrf_expected, csrf_received):
+                    return "Pedido inválido ou expirado. Actualize a página e tente novamente.", 400
                 reply_text = (request.form.get("message") or "").strip()
                 if not selected_conversation or not any(str(item.get("id")) == selected_conversation for item in conversations):
                     return redirect(url_for("instagram_inbox", account=str(account_id)))
                 if not reply_text or len(reply_text) > 1000:
                     return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="A mensagem deve ter entre 1 e 1.000 caracteres."))
-                participant_data = next(item for item in conversations if str(item.get("id")) == selected_conversation).get("participants", {})
-                participant_list = participant_data.get("data", []) if isinstance(participant_data, dict) else []
-                recipient = next((item for item in participant_list if str(item.get("username", "")).lower() != str(username).lower()), None)
-                recipient_id = str(recipient.get("id", "")) if isinstance(recipient, dict) else ""
+                # O ID de destinatário exigido pela Messaging API é o IGSID
+                # obtido no campo from.id de uma mensagem recebida nesta conversa.
+                detail_for_reply = requests.get(
+                    f"{base_url}/{selected_conversation}",
+                    params={"fields":"id,participants,messages{id,created_time,from,message}", "access_token":access_token},
+                    timeout=20,
+                )
+                detail_for_reply.raise_for_status()
+                reply_detail = detail_for_reply.json()
+                reply_messages = reply_detail.get("messages", {}).get("data", [])
+                incoming = next((
+                    msg for msg in reply_messages
+                    if isinstance(msg.get("from"), dict)
+                    and str(msg["from"].get("username", "")).lower() != str(username).lower()
+                    and msg["from"].get("id")
+                ), None)
+                recipient_id = str(incoming["from"]["id"]) if incoming else ""
                 if not recipient_id:
-                    return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="Não foi possível identificar o destinatário."))
+                    return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="Não foi possível obter o ID do cliente a partir de uma mensagem recebida."))
                 me_response = requests.get(f"{base_url}/me", params={"fields":"id", "access_token":access_token}, timeout=15)
                 me_response.raise_for_status()
                 instagram_user_id = str(me_response.json().get("id", ""))
@@ -1968,6 +1985,7 @@ def setup_auth(server: Flask):
                   {% if request.args.get('sent') %}<div class="notice">{{ request.args.get('sent') }}</div>{% endif %}
                   {% if request.args.get('error') %}<div class="error">{{ request.args.get('error') }}</div>{% endif %}
                   <form class="reply-form" method="post" action="/instagram/inbox?account={{ account_id }}&conversation={{ selected_conversation }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="conversation" value="{{ selected_conversation }}">
                     <label for="instagram-reply">Responder pelo Instagram</label>
                     <textarea id="instagram-reply" name="message" maxlength="1000" required placeholder="Escreva a sua resposta..."></textarea>
@@ -1978,6 +1996,7 @@ def setup_auth(server: Flask):
                 </section></div></div></html>""",
                 username=username,
                 account_id=str(account_id),
+                csrf_token=session.setdefault("instagram_inbox_csrf", secrets.token_urlsafe(32)),
                 conversations=conversations,
                 messages=messages,
                 selected_conversation=selected_conversation,
