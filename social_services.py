@@ -93,6 +93,6 @@ def coletar_facebook():
         )
 
     except Exception as erro:
+        print(f"Erro Facebook: {erro}")
 
-        print(
-
+        return None
