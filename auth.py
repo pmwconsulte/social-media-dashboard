@@ -1820,6 +1820,20 @@ def setup_auth(server: Flask):
                 conversations_response.raise_for_status()
 
             conversations = conversations_payload.get("data", []) if isinstance(conversations_payload, dict) else []
+            for conversation in conversations:
+                participant_data = conversation.get("participants", {})
+                participant_list = participant_data.get("data", []) if isinstance(participant_data, dict) else []
+                other_participants = [
+                    participant for participant in participant_list
+                    if str(participant.get("username", "")).lower() != str(username).lower()
+                ]
+                conversation["display_name"] = (
+                    ", ".join(
+                        participant.get("name") or participant.get("username") or str(participant.get("id", ""))
+                        for participant in other_participants
+                    )
+                    or "Conversa Instagram"
+                )
             print(
                 f"[INSTAGRAM INBOX] conversations_count={len(conversations)} "
                 f"response_has_data={'data' in conversations_payload if isinstance(conversations_payload, dict) else False}"
@@ -1860,6 +1874,15 @@ def setup_auth(server: Flask):
 
                 message_container = detail_payload.get("messages", {}) if isinstance(detail_payload, dict) else {}
                 messages = message_container.get("data", []) if isinstance(message_container, dict) else []
+                for message in messages:
+                    sender = message.get("from", {})
+                    sender_username = sender.get("username", "") if isinstance(sender, dict) else ""
+                    sender_name = (
+                        sender.get("name") or sender_username or
+                        (str(sender.get("id")) if isinstance(sender, dict) and sender.get("id") else "Participante")
+                    )
+                    message["sender_name"] = sender_name
+                    message["is_outgoing"] = str(sender_username).lower() == str(username).lower()
                 print(
                     f"[INSTAGRAM INBOX] messages_count={len(messages)} "
                     f"detail_has_messages={'messages' in detail_payload if isinstance(detail_payload, dict) else False} "
