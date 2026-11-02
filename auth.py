@@ -1276,7 +1276,7 @@ def setup_auth(server: Flask):
         # de pesquisa; X-Robots-Tag também cobre respostas que não são HTML.
         noindex_paths = (
             "/login", "/signup", "/account", "/account/password", "/billing",
-            "/logout", "/oauth/instagram", "/oauth/instagram/callback",
+            "/logout", "/oauth/instagram", "/oauth/instagram/callback", "/instagram/inbox",
             "/health", "/diagnostico-dados",
         )
         if request.path in noindex_paths or request.path.startswith("/social-accounts/"):
@@ -1317,6 +1317,7 @@ def setup_auth(server: Flask):
             "/logout",
             "/oauth/instagram",
             "/oauth/instagram/callback",
+            "/instagram/inbox",
             "/health",
         }
         if request.path in auth_paths:
@@ -1849,7 +1850,7 @@ def setup_auth(server: Flask):
                 {% else %}<p class="muted">Não há conversas disponíveis. Só aparecem conversas iniciadas por clientes que enviaram mensagem à conta profissional.</p>{% endfor %}
                 </section><section class="panel"><h2>Mensagens</h2>
                 {% for msg in messages %}<div class="msg"><div>{{ msg.message or "[Conteúdo não textual]" }}</div>
-                <div class="muted">{{ msg.created_time or "" }} · {{ msg.from.username or msg.from.id or "Utilizador" if msg.from else "Utilizador" }}</div></div>
+                <div class="muted">{{ msg.created_time or "" }} · Mensagem recebida/enviada</div></div>
                 {% else %}<p class="muted">Seleccione uma conversa para consultar as mensagens.</p>{% endfor %}
                 </section></div></div></html>""",
                 username=username,
