@@ -1750,6 +1750,125 @@ def setup_auth(server: Flask):
             if conn: conn.close()
 
 
+    @server.get("/instagram/inbox")
+    def instagram_inbox():
+        """Inbox Instagram isolada por workspace; tokens nunca são enviados ao browser."""
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+
+        workspace_slug = session.get("workspace_slug")
+        conn = None
+        try:
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT sa.id, sa.username, sa.access_token
+                       FROM social_accounts sa
+                       JOIN workspaces w ON w.id = sa.workspace_id
+                       WHERE w.slug=%s AND LOWER(sa.platform)='instagram'
+                         AND COALESCE(sa.is_active, TRUE)=TRUE
+                         AND LOWER(COALESCE(sa.connection_status,''))='connected'
+                       ORDER BY sa.last_sync_at DESC NULLS LAST""",
+                    (workspace_slug,),
+                )
+                accounts = cur.fetchall()
+            if not accounts:
+                return render_template_string(
+                    "<h2>Instagram Direct</h2><p>Não existe uma conta Instagram ligada neste workspace.</p><a href='/account'>Voltar</a>"
+                )
+
+            requested_account = request.args.get("account", "")
+            selected = next((row for row in accounts if str(row[0]) == requested_account), accounts[0])
+            account_id, username, encrypted_token = selected
+            access_token = _token_cipher().decrypt(
+                encrypted_token.encode("utf-8")
+            ).decode("utf-8")
+
+            base_url = "https://graph.instagram.com/v25.0"
+            response = requests.get(
+                f"{base_url}/me",
+                params={"fields": "id,username", "access_token": access_token},
+                timeout=20,
+            )
+            response.raise_for_status()
+            ig_profile = response.json()
+            ig_user_id = str(ig_profile.get("id") or "")
+            if not ig_user_id:
+                raise RuntimeError("Instagram não devolveu o identificador da conta.")
+
+            conversations_response = requests.get(
+                f"{base_url}/{ig_user_id}/conversations",
+                params={
+                    "platform": "instagram",
+                    "fields": "id,updated_time,participants",
+                    "limit": 25,
+                    "access_token": access_token,
+                },
+                timeout=20,
+            )
+            conversations_response.raise_for_status()
+            conversations = conversations_response.json().get("data", [])
+
+            selected_conversation = request.args.get("conversation", "")
+            messages = []
+            if selected_conversation and any(
+                str(item.get("id")) == selected_conversation for item in conversations
+            ):
+                detail_response = requests.get(
+                    f"{base_url}/{selected_conversation}",
+                    params={
+                        "fields": "id,updated_time,participants,messages{id,created_time,from,to,message}",
+                        "access_token": access_token,
+                    },
+                    timeout=20,
+                )
+                detail_response.raise_for_status()
+                messages = detail_response.json().get("messages", {}).get("data", [])
+
+            return render_template_string(
+                """<!doctype html><html lang="pt"><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <title>Instagram Direct | PMW</title>
+                <style>
+                body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}
+                a{color:#7dd3fc} .wrap{max-width:1100px;margin:auto}
+                .grid{display:grid;grid-template-columns: minmax(260px,1fr) 2fr;gap:18px}
+                .panel{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px}
+                .item{display:block;padding:12px;border-bottom:1px solid #334155;text-decoration:none}
+                .msg{padding:10px;margin:8px 0;background:#334155;border-radius:8px}
+                .muted{color:#94a3b8;font-size:13px}
+                @media(max-width:700px){.grid{grid-template-columns:1fr}}
+                </style><div class="wrap"><p><a href="/account">← Minha Conta</a></p>
+                <h1>Instagram Direct</h1><p class="muted">Conta: {{ username }} · Workspace protegido</p>
+                <div class="grid"><section class="panel"><h2>Conversas</h2>
+                {% for item in conversations %}
+                  <a class="item" href="/instagram/inbox?account={{ account_id }}&conversation={{ item.id }}">
+                    <strong>Conversa {{ loop.index }}</strong><br>
+                    <span class="muted">{{ item.updated_time or "Data indisponível" }}</span>
+                  </a>
+                {% else %}<p class="muted">Não há conversas disponíveis. Só aparecem conversas iniciadas por clientes que enviaram mensagem à conta profissional.</p>{% endfor %}
+                </section><section class="panel"><h2>Mensagens</h2>
+                {% for msg in messages %}<div class="msg"><div>{{ msg.message or "[Conteúdo não textual]" }}</div>
+                <div class="muted">{{ msg.created_time or "" }} · {{ msg.from.username or msg.from.id or "Utilizador" if msg.from else "Utilizador" }}</div></div>
+                {% else %}<p class="muted">Seleccione uma conversa para consultar as mensagens.</p>{% endfor %}
+                </section></div></div></html>""",
+                username=username,
+                account_id=str(account_id),
+                conversations=conversations,
+                messages=messages,
+            )
+        except requests.RequestException as erro:
+            status = getattr(getattr(erro, "response", None), "status_code", None)
+            print(f"[INSTAGRAM INBOX API ERROR] status={status} type={type(erro).__name__}")
+            return "Não foi possível consultar o Instagram Direct. Confirme as permissões e tente novamente.", 502
+        except Exception as erro:
+            print(f"[INSTAGRAM INBOX ERROR] {type(erro).__name__}")
+            return "Não foi possível abrir a caixa de entrada Instagram.", 500
+        finally:
+            if conn:
+                conn.close()
+
+
     @server.get("/oauth/facebook")
     def facebook_oauth():
         if not session.get("authenticated"):
