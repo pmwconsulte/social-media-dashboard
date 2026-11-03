@@ -1186,22 +1186,24 @@ app.layout = html.Div(
                                 style={"color": "#111827", "minWidth": "125px"},
                             ),
                         ], style={"minWidth": "125px"}),
-                        html.Div(
+                        html.A(
                             [
                                 html.Div("💬 WhatsApp", style={"fontWeight": "700"}),
-                                html.Div("WhatsApp Business Platform · Em breve", style={"fontSize": "11px", "opacity": "0.8", "marginTop": "3px"}),
+                                html.Div("WhatsApp Business Platform · Caixa de Entrada", style={"fontSize": "11px", "opacity": "0.9", "marginTop": "3px"}),
                             ],
                             id="botao-whatsapp-inbox",
-                            title="Funcionalidade em breve",
+                            href="/whatsapp/inbox",
+                            title="Abrir a caixa de entrada do WhatsApp Business",
                             style={
                                 "display": "inline-block",
                                 "padding": "9px 14px",
                                 "borderRadius": "9px",
-                                "background": "#334155",
+                                "background": "#15803d",
                                 "color": "white",
+                                "textDecoration": "none",
                                 "fontWeight": "700",
                                 "fontSize": "13px",
-                                "cursor": "default",
+                                "cursor": "pointer",
                             },
                         ),
                         html.A(
