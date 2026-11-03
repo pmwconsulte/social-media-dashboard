@@ -126,7 +126,8 @@ def test_inbox_nao_confirma_envio_quando_meta_rejeita(inbox_client, monkeypatch)
             return conversations_response()
         if url.endswith("/conversation-1"):
             return FakeResponse({"messages": {"data": [
-                {"from": {"username": "customer", "id": "ig-user-123"}, "message": "Olá"}
+                {"from": {"id": "ig-owner-456"}, "message": "Resposta anterior"},
+                {"from": {"id": "ig-user-123"}, "message": "Olá"}
             ]}})
         if url.endswith("/me"):
             return FakeResponse({"id": "ig-owner-456"})
