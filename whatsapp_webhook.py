@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 
+import requests
 from flask import Response, request
 from database import get_connection
 
@@ -97,6 +98,52 @@ def _save_messages(payload):
         raise
     finally:
         conn.close()
+
+
+
+def send_whatsapp_text(phone_number_id, recipient, message_text):
+    """Send a customer-service text through the configured WhatsApp Cloud API."""
+    token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("WHATSAPP_ACCESS_TOKEN não está configurado.")
+    phone_id = str(phone_number_id or "").strip()
+    if not phone_id:
+        raise RuntimeError("O número de telefone WhatsApp não está identificado.")
+    recipient = "".join(ch for ch in str(recipient or "") if ch.isdigit())
+    if not recipient or len(recipient) < 8 or len(recipient) > 15:
+        raise ValueError("Número de destino inválido.")
+    text = str(message_text or "").strip()
+    if not text or len(text) > 4096:
+        raise ValueError("A mensagem deve ter entre 1 e 4096 caracteres.")
+
+    version = os.getenv("WHATSAPP_GRAPH_API_VERSION", "v25.0").strip() or "v25.0"
+    url = f"https://graph.facebook.com/{version}/{phone_id}/messages"
+    response = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": recipient,
+            "type": "text",
+            "text": {"preview_url": False, "body": text},
+        },
+        timeout=20,
+    )
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    if not response.ok:
+        error = payload.get("error") or {}
+        code = error.get("code")
+        message = str(error.get("message") or "A Meta recusou o envio.")
+        raise RuntimeError(f"WhatsApp API ({code}): {message}" if code else message)
+    messages = payload.get("messages") or []
+    message_id = (messages[0] or {}).get("id") if messages else None
+    if not message_id:
+        raise RuntimeError("A API não confirmou o identificador da mensagem enviada.")
+    return message_id
 
 
 def register_whatsapp_webhooks(server):
