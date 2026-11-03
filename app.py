@@ -9,6 +9,8 @@ import dash
 
 from dash import html, dcc
 from flask import Response, has_request_context, request, session, send_from_directory
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 from dash.dependencies import Input, Output, State
 from dotenv import load_dotenv
 
@@ -52,8 +54,59 @@ app = dash.Dash(
 server = app.server
 
 # WhatsApp Cloud API webhook verification and event acknowledgement.
-from whatsapp_webhook import register_whatsapp_webhooks
+from whatsapp_webhook import register_whatsapp_webhooks, send_whatsapp_text
 register_whatsapp_webhooks(server)
+
+
+@server.post("/whatsapp/send")
+def whatsapp_send():
+    if not session.get("authenticated"):
+        return Response("", status=302, headers={"Location": "/login"})
+    workspace_slug = (session.get("workspace_slug") or "").strip()
+    recipient = "".join(ch for ch in (request.form.get("recipient") or "") if ch.isdigit())
+    message_text = (request.form.get("message") or "").strip()
+    conn = None
+    try:
+        if not message_text or len(message_text) > 4096:
+            return Response("A mensagem deve ter entre 1 e 4096 caracteres.", status=400)
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM workspaces WHERE slug=%s LIMIT 1", (workspace_slug,))
+            workspace = cur.fetchone()
+            if not workspace:
+                return Response("Workspace não encontrado.", status=404)
+            cur.execute("""
+                SELECT phone_number_id, message_timestamp
+                FROM whatsapp_messages
+                WHERE workspace_id=%s AND sender_phone=%s
+                  AND COALESCE(direction, 'inbound')='inbound'
+                ORDER BY COALESCE(message_timestamp, created_at) DESC LIMIT 1
+            """, (workspace[0], recipient))
+            inbound = cur.fetchone()
+            if not inbound:
+                return Response("Não existe uma mensagem recebida deste contacto.", status=400)
+            phone_id, last_received = inbound
+            if not last_received or last_received < datetime.now(timezone.utc) - timedelta(hours=24):
+                return Response("A janela de atendimento de 24 horas terminou. É necessário usar um modelo aprovado pela Meta.", status=400)
+            api_message_id = send_whatsapp_text(phone_id, recipient, message_text)
+            cur.execute("""
+                INSERT INTO whatsapp_messages
+                    (workspace_id, message_id, phone_number_id, sender_phone,
+                     sender_name, message_type, message_text, message_timestamp,
+                     direction, status)
+                VALUES (%s,%s,%s,%s,%s,'text',%s,NOW(),'outbound','sent')
+                ON CONFLICT (message_id) DO NOTHING
+            """, (workspace[0], api_message_id, phone_id, recipient, "PMW Dashboard", message_text))
+        conn.commit()
+        return Response("", status=303, headers={"Location": "/whatsapp/inbox?q=" + quote(recipient)})
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        print(f"[WHATSAPP SEND] Erro: {type(exc).__name__}.")
+        return Response("Falha no envio. Verifique a configuração da Cloud API e os logs do servidor.", status=502)
+    finally:
+        if conn:
+            conn.close()
 
 
 @server.get("/whatsapp/inbox")
@@ -102,11 +155,25 @@ def whatsapp_inbox():
             body = safe(message_text or ("Mensagem do tipo: " + (message_type or "não textual")))
             stamp = message_timestamp or created_at
             date_label = safe(stamp.strftime("%d/%m/%Y %H:%M") if stamp else "Data indisponível")
+            reply_form = ""
+            within_window = (
+                direction != "outbound" and message_timestamp is not None
+                and message_timestamp >= datetime.now(timezone.utc) - timedelta(hours=24)
+                and bool(sender_phone)
+            )
+            if within_window:
+                reply_form = (
+                    "<form class='reply' method='post' action='/whatsapp/send'>"
+                    f"<input type='hidden' name='recipient' value='{phone}'>"
+                    "<textarea name='message' maxlength='4096' required placeholder='Escreva uma resposta...'></textarea>"
+                    "<button type='submit'>Enviar resposta</button></form>"
+                    "<div class='reply-note'>Disponível dentro da janela de atendimento de 24 horas.</div>"
+                )
             message_rows.append(
                 "<article class='message'><div class='message-top'>"
                 f"<strong>{sender}</strong><span>{date_label}</span></div>"
                 f"<div class='phone'>{phone}</div><div class='message-body'>{body}</div>"
-                f"<span class='type'>{direction_label} · {kind} · {status_label}</span></article>"
+                f"<span class='type'>{direction_label} · {kind} · {status_label}</span>{reply_form}</article>"
             )
         listing = "".join(message_rows) or (
             "<div class='empty'><strong>Ainda não existem mensagens.</strong>"
@@ -128,7 +195,7 @@ a{{color:#38bdf8;text-decoration:none;font-weight:700}}
 .message-top span,.phone{{font-size:12px;color:#94a3b8}} .phone{{margin-top:5px}}
 .message-body{{white-space:pre-wrap;line-height:1.55;margin:10px 0;color:#e2e8f0}}
 .type{{display:inline-block;font-size:11px;color:#7dd3fc;background:#082f49;padding:4px 8px;border-radius:20px}}
-.empty{{text-align:center;padding:42px 12px;color:#cbd5e1}} .empty p{{color:#94a3b8}}
+.empty{{text-align:center;padding:42px 12px;color:#cbd5e1}} .empty p{{color:#94a3b8}} .reply{{display:flex;gap:9px;margin:12px 0 4px}} .reply textarea{{flex:1;min-width:0;min-height:46px;padding:10px;border:1px solid #334155;border-radius:8px;background:#081426;color:#f8fafc;font:inherit}} .reply button{{border:0;border-radius:8px;padding:0 18px;background:#15803d;color:white;font-weight:700;cursor:pointer}} .reply-note{{font-size:11px;color:#94a3b8;margin-top:5px}}
 </style></head><body><main>
 <header><div><h1>💬 WhatsApp — Caixa de Entrada</h1>
 <div class="muted">{safe(workspace[1] or workspace_slug)} · Últimas 100 mensagens</div></div>
