@@ -1863,21 +1863,23 @@ def setup_auth(server: Flask):
                 )
                 detail_for_reply.raise_for_status()
                 reply_detail = detail_for_reply.json()
-                reply_messages = reply_detail.get("messages", {}).get("data", [])
-                incoming = next((
-                    msg for msg in reply_messages
-                    if isinstance(msg.get("from"), dict)
-                    and str(msg["from"].get("username", "")).lower() != str(username).lower()
-                    and msg["from"].get("id")
-                ), None)
-                recipient_id = str(incoming["from"]["id"]) if incoming else ""
-                if not recipient_id:
-                    return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="Não foi possível obter o ID do cliente a partir de uma mensagem recebida."))
                 me_response = requests.get(f"{base_url}/me", params={"fields":"id", "access_token":access_token}, timeout=15)
                 me_response.raise_for_status()
                 instagram_user_id = str(me_response.json().get("id", ""))
                 if not instagram_user_id:
                     return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="A API não identificou a conta Instagram ligada."))
+                reply_messages = reply_detail.get("messages", {}).get("data", [])
+                # Não confiar em username: a API pode omiti-lo. O ID do remetente
+                # é comparado com o ID da conta profissional autenticada.
+                incoming = next((
+                    msg for msg in reply_messages
+                    if isinstance(msg.get("from"), dict)
+                    and msg["from"].get("id")
+                    and str(msg["from"]["id"]) != instagram_user_id
+                ), None)
+                recipient_id = str(incoming["from"]["id"]) if incoming else ""
+                if not recipient_id:
+                    return redirect(url_for("instagram_inbox", account=str(account_id), conversation=selected_conversation, error="Não foi possível identificar uma mensagem recebida de um cliente nesta conversa."))
                 send_response = requests.post(
                     f"{base_url}/{instagram_user_id}/messages",
                     params={"access_token":access_token},
