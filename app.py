@@ -102,8 +102,15 @@ def whatsapp_send():
     except Exception as exc:
         if conn:
             conn.rollback()
-        print(f"[WHATSAPP SEND] Erro: {type(exc).__name__}.")
-        return Response("Falha no envio. Verifique a configuração da Cloud API e os logs do servidor.", status=502)
+        # Log the actionable error returned by configuration checks or Meta Graph API.
+        # Never log request headers, access tokens, or the full HTTP request.
+        detail = str(exc).replace("\\n", " ")[:600]
+        print(f"[WHATSAPP SEND] {type(exc).__name__}: {detail}")
+        safe_detail = escape(detail) if detail else "Erro sem detalhe fornecido."
+        return Response(
+            "Falha no envio: " + safe_detail + " — confirme a configuração da Cloud API.",
+            status=502, mimetype="text/plain",
+        )
     finally:
         if conn:
             conn.close()
