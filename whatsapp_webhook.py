@@ -100,7 +100,6 @@ def _save_messages(payload):
         conn.close()
 
 
-
 def send_whatsapp_text(phone_number_id, recipient, message_text):
     """Send a customer-service text through the configured WhatsApp Cloud API."""
     token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
@@ -134,11 +133,43 @@ def send_whatsapp_text(phone_number_id, recipient, message_text):
         payload = response.json()
     except ValueError:
         payload = {}
+
     if not response.ok:
         error = payload.get("error") or {}
         code = error.get("code")
+        subcode = error.get("error_subcode")
+        error_type = error.get("type")
         message = str(error.get("message") or "A Meta recusou o envio.")
-        raise RuntimeError(f"WhatsApp API ({code}): {message}" if code else message)
+        error_data = error.get("error_data") or {}
+        details = error_data.get("details") or error_data.get("blame_field_specs")
+        trace_id = error.get("fbtrace_id")
+
+        diagnostic = {
+            "phone_number_id": phone_id,
+            "http_status": response.status_code,
+            "code": code,
+            "error_subcode": subcode,
+            "type": error_type,
+            "message": message,
+            "details": details,
+            "fbtrace_id": trace_id,
+        }
+        print("[WHATSAPP GRAPH API ERROR] " + json.dumps(
+            diagnostic, ensure_ascii=False, default=str
+        ))
+
+        parts = [f"WhatsApp API ({code})" if code is not None else "WhatsApp API"]
+        if subcode is not None:
+            parts.append(f"subcode {subcode}")
+        if error_type:
+            parts.append(str(error_type))
+        parts.append(message)
+        if details:
+            parts.append(f"Detalhes: {details}")
+        if trace_id:
+            parts.append(f"fbtrace_id: {trace_id}")
+        raise RuntimeError(" — ".join(parts))
+
     messages = payload.get("messages") or []
     message_id = (messages[0] or {}).get("id") if messages else None
     if not message_id:
