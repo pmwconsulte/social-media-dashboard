@@ -85,9 +85,17 @@ def whatsapp_send():
             inbound = cur.fetchone()
             if not inbound:
                 return Response("Não existe uma mensagem recebida deste contacto.", status=400)
-            phone_id, last_received = inbound
+            inbound_phone_id, last_received = inbound
             if not last_received or last_received < datetime.now(timezone.utc) - timedelta(hours=24):
                 return Response("A janela de atendimento de 24 horas terminou. É necessário usar um modelo aprovado pela Meta.", status=400)
+
+            # Use the phone number explicitly configured for this Cloud API token.
+            # Inbound webhook metadata may refer to an old or different phone number.
+            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            if not phone_id:
+                raise RuntimeError("WHATSAPP_PHONE_NUMBER_ID não está configurado no Render.")
+            if inbound_phone_id and str(inbound_phone_id).strip() != phone_id:
+                print("[WHATSAPP SEND CONFIG] Inbound phone ID differs from configured phone ID; using Render configuration.")
             api_message_id = send_whatsapp_text(phone_id, recipient, message_text)
             cur.execute("""
                 INSERT INTO whatsapp_messages
