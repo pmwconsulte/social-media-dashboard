@@ -1,6 +1,7 @@
 import os
 import traceback
 import io
+import secrets
 from xml.sax.saxutils import escape
 
 import pandas as pd
@@ -54,7 +55,7 @@ app = dash.Dash(
 server = app.server
 
 # WhatsApp Cloud API webhook verification and event acknowledgement.
-from whatsapp_webhook import register_whatsapp_webhooks, send_whatsapp_text
+from whatsapp_webhook import register_whatsapp_webhooks, send_whatsapp_text, send_whatsapp_template
 register_whatsapp_webhooks(server)
 
 
@@ -62,6 +63,10 @@ register_whatsapp_webhooks(server)
 def whatsapp_send():
     if not session.get("authenticated"):
         return Response("", status=302, headers={"Location": "/login"})
+    expected_csrf = session.get("whatsapp_csrf", "")
+    received_csrf = request.form.get("csrf_token", "")
+    if not expected_csrf or not received_csrf or not secrets.compare_digest(expected_csrf, received_csrf):
+        return Response("Pedido inválido. Atualize a página e tente novamente.", status=400)
     workspace_slug = (session.get("workspace_slug") or "").strip()
     recipient = "".join(ch for ch in (request.form.get("recipient") or "") if ch.isdigit())
     message_text = (request.form.get("message") or "").strip()
@@ -124,6 +129,57 @@ def whatsapp_send():
             conn.close()
 
 
+@server.post("/whatsapp/send-template")
+def whatsapp_send_template():
+    """Start a new WhatsApp conversation using a Meta-approved template only."""
+    if not session.get("authenticated"):
+        return Response("", status=302, headers={"Location": "/login"})
+    expected_csrf = session.get("whatsapp_csrf", "")
+    received_csrf = request.form.get("csrf_token", "")
+    if not expected_csrf or not received_csrf or not secrets.compare_digest(expected_csrf, received_csrf):
+        return Response("Pedido inválido. Atualize a página e tente novamente.", status=400)
+
+    # Fail closed until approval has been verified in WhatsApp Manager.
+    if os.getenv("WHATSAPP_TEMPLATE_STATUS", "IN_REVIEW").strip().upper() != "APPROVED":
+        return Response("O modelo pmw_primeiro_contacto ainda não está aprovado pela Meta. O envio de novas conversas permanece bloqueado.", status=409, mimetype="text/plain")
+    workspace_slug = (session.get("workspace_slug") or "").strip()
+    recipient = "".join(ch for ch in (request.form.get("recipient") or "") if ch.isdigit())
+    if not recipient or len(recipient) < 8 or len(recipient) > 15:
+        return Response("Introduza um número WhatsApp válido, com indicativo do país.", status=400)
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM workspaces WHERE slug=%s LIMIT 1", (workspace_slug,))
+            workspace = cur.fetchone()
+            if not workspace:
+                return Response("Workspace não encontrado.", status=404)
+            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            if not phone_id:
+                raise RuntimeError("WHATSAPP_PHONE_NUMBER_ID não está configurado no Render.")
+            template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto").strip()
+            language_code = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT").strip()
+            api_message_id = send_whatsapp_template(phone_id, recipient, template_name, language_code)
+            cur.execute("""
+                INSERT INTO whatsapp_messages
+                    (workspace_id, message_id, phone_number_id, sender_phone,
+                     sender_name, message_type, message_text, message_timestamp, direction, status)
+                VALUES (%s,%s,%s,%s,%s,'template',%s,NOW(),'outbound','sent')
+                ON CONFLICT (message_id) DO NOTHING
+            """, (workspace[0], api_message_id, phone_id, recipient, "PMW Dashboard", "[Modelo: " + template_name + "]"))
+        conn.commit()
+        return Response("", status=303, headers={"Location": "/whatsapp/inbox?q=" + quote(recipient)})
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        detail = str(exc).replace("\\n", " ")[:500]
+        print(f"[WHATSAPP TEMPLATE SEND] {type(exc).__name__}: {detail}")
+        return Response("Falha no envio do modelo: " + escape(detail), status=502, mimetype="text/plain")
+    finally:
+        if conn:
+            conn.close()
+
+
 @server.get("/whatsapp/inbox")
 def whatsapp_inbox():
     """Caixa de entrada WhatsApp isolada por workspace autenticado."""
@@ -132,6 +188,8 @@ def whatsapp_inbox():
 
     workspace_slug = (session.get("workspace_slug") or "").strip()
     term = (request.args.get("q") or "").strip()[:120]
+    csrf_token = session.setdefault("whatsapp_csrf", secrets.token_urlsafe(32))
+    template_approved = os.getenv("WHATSAPP_TEMPLATE_STATUS", "IN_REVIEW").strip().upper() == "APPROVED"
     conn = None
     try:
         conn = get_connection()
@@ -179,6 +237,7 @@ def whatsapp_inbox():
             if within_window:
                 reply_form = (
                     "<form class='reply' method='post' action='/whatsapp/send'>"
+                    f"<input type='hidden' name='csrf_token' value='{safe(csrf_token)}'>"
                     f"<input type='hidden' name='recipient' value='{phone}'>"
                     "<textarea name='message' maxlength='4096' required placeholder='Escreva uma resposta...'></textarea>"
                     "<button type='submit'>Enviar resposta</button></form>"
@@ -194,8 +253,24 @@ def whatsapp_inbox():
             "<div class='empty'><strong>Ainda não existem mensagens.</strong>"
             "<p>Quando o WhatsApp receber uma mensagem, ela aparecerá aqui.</p></div>"
         )
-        page = f"""<!doctype html>
-<html lang="pt"><head><meta charset="utf-8">
+        if template_approved:
+            new_conversation = (
+                "<div class='new-conversation'><h2>Nova conversa</h2>"
+                "<form method='post' action='/whatsapp/send-template' class='new-message'>"
+                f"<input type='hidden' name='csrf_token' value='{safe(csrf_token)}'>"
+                "<input name='recipient' inputmode='tel' autocomplete='tel' required maxlength='15' "
+                "placeholder='Número com indicativo, ex.: 25884...'>"
+                "<button type='submit'>Enviar primeiro contacto</button></form>"
+                "<p class='reply-note'>Será utilizado o modelo aprovado pmw_primeiro_contacto.</p></div>"
+            )
+        else:
+            new_conversation = (
+                "<div class='new-conversation'><h2>Nova conversa</h2>"
+                "<p class='template-pending'>Modelo pmw_primeiro_contacto: Em revisão na Meta. "
+                "O envio de novas conversas está bloqueado até à aprovação.</p></div>"
+            )
+
+        page = f"""<!doctype html><html lang="pt"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WhatsApp | PMW Dashboard</title>
 <style>
@@ -210,12 +285,13 @@ a{{color:#38bdf8;text-decoration:none;font-weight:700}}
 .message-top span,.phone{{font-size:12px;color:#94a3b8}} .phone{{margin-top:5px}}
 .message-body{{white-space:pre-wrap;line-height:1.55;margin:10px 0;color:#e2e8f0}}
 .type{{display:inline-block;font-size:11px;color:#7dd3fc;background:#082f49;padding:4px 8px;border-radius:20px}}
-.empty{{text-align:center;padding:42px 12px;color:#cbd5e1}} .empty p{{color:#94a3b8}} .reply{{display:flex;gap:9px;margin:12px 0 4px}} .reply textarea{{flex:1;min-width:0;min-height:46px;padding:10px;border:1px solid #334155;border-radius:8px;background:#081426;color:#f8fafc;font:inherit}} .reply button{{border:0;border-radius:8px;padding:0 18px;background:#15803d;color:white;font-weight:700;cursor:pointer}} .reply-note{{font-size:11px;color:#94a3b8;margin-top:5px}}
+.empty{{text-align:center;padding:42px 12px;color:#cbd5e1}} .empty p{{color:#94a3b8}} .new-conversation{{padding:4px 0 18px;margin-bottom:16px;border-bottom:1px solid #263449}} .new-conversation h2{{font-size:18px;margin:0 0 12px}} .new-message{{display:flex;gap:9px;flex-wrap:wrap}} .new-message input{{flex:1;min-width:220px;padding:11px;border:1px solid #334155;border-radius:8px;background:#081426;color:#f8fafc}} .new-message button{{border:0;border-radius:8px;padding:0 18px;background:#0369a1;color:white;font-weight:700;cursor:pointer;min-height:42px}} .template-pending{{color:#fbbf24;background:#422006;padding:12px;border-radius:8px}} .reply{{display:flex;gap:9px;margin:12px 0 4px}} .reply textarea{{flex:1;min-width:0;min-height:46px;padding:10px;border:1px solid #334155;border-radius:8px;background:#081426;color:#f8fafc;font:inherit}} .reply button{{border:0;border-radius:8px;padding:0 18px;background:#15803d;color:white;font-weight:700;cursor:pointer}} .reply-note{{font-size:11px;color:#94a3b8;margin-top:5px}}
 </style></head><body><main>
 <header><div><h1>💬 WhatsApp — Caixa de Entrada</h1>
 <div class="muted">{safe(workspace[1] or workspace_slug)} · Últimas 100 mensagens</div></div>
 <a href="/">← Voltar ao Dashboard</a></header>
 <section class="panel">
+{new_conversation}
 <form method="get">
 <input name="q" value="{safe(term)}" placeholder="Pesquisar por contacto, número ou mensagem">
 <button type="submit">Pesquisar</button></form>{listing}</section>
