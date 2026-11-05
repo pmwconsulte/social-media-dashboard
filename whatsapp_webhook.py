@@ -100,7 +100,7 @@ def _save_messages(payload):
 
                     IF latest_status IS NOT NULL THEN
                         SELECT
-                            COALESCE(MAX(event_timestamp) FILTER (WHERE status='delivered'), NEW.delivered_at),
+                            COALESCE(MAX(event_timestamp) FILTER (WHERE status IN ('delivered', 'read')), NEW.delivered_at),
                             COALESCE(MAX(event_timestamp) FILTER (WHERE status='read'), NEW.read_at),
                             COALESCE(MAX(event_timestamp) FILTER (WHERE status='failed'), NEW.failed_at),
                             (ARRAY_AGG(error_code ORDER BY event_timestamp DESC)
