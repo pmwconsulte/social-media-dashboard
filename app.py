@@ -201,7 +201,7 @@ def whatsapp_analytics():
                     COUNT(*) FILTER (WHERE COALESCE(direction,'inbound')='outbound'
                         AND COALESCE(message_timestamp,created_at) >= NOW() - INTERVAL '30 days') AS sent,
                     COUNT(*) FILTER (WHERE COALESCE(direction,'inbound')='outbound'
-                        AND status='delivered'
+                        AND (status IN ('delivered','read') OR delivered_at IS NOT NULL)
                         AND COALESCE(message_timestamp,created_at) >= NOW() - INTERVAL '30 days') AS delivered,
                     COUNT(*) FILTER (WHERE COALESCE(direction,'inbound')='outbound'
                         AND status='read'
