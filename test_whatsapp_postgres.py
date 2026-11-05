@@ -159,9 +159,9 @@ def test_postgres_eventos_duplicados_e_ordem_nao_regridem_estado(pg_schema):
 def test_postgres_read_prevalece_sobre_failed_independentemente_da_ordem(pg_schema):
     for first, second in (("failed", "read"), ("read", "failed")):
         message_id = f"wamid-{first}-{second}"
-        insert_outbound(pg_schema, message_id)
         whatsapp_webhook._save_messages(webhook_payload(first, message_id, "1790000001"))
         whatsapp_webhook._save_messages(webhook_payload(second, message_id, "1790000002"))
+        insert_outbound(pg_schema, message_id)
         row = fetch_message(pg_schema, message_id)
         assert row[0] == "read"
         assert row[2] is not None
@@ -171,7 +171,6 @@ def test_postgres_eventos_concorrentes_preservam_estado_final_read(pg_schema):
     from concurrent.futures import ThreadPoolExecutor
 
     message_id = "wamid-concurrent"
-    insert_outbound(pg_schema, message_id)
     payloads = [
         webhook_payload("failed", message_id, "1790000001"),
         webhook_payload("read", message_id, "1790000002"),
@@ -180,4 +179,5 @@ def test_postgres_eventos_concorrentes_preservam_estado_final_read(pg_schema):
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(whatsapp_webhook._save_messages, payloads))
 
+    insert_outbound(pg_schema, message_id)
     assert fetch_message(pg_schema, message_id)[0] == "read"
