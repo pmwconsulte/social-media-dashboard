@@ -1419,6 +1419,23 @@ app.layout = html.Div(
                             id="botao-whatsapp-inbox",
                             href="/whatsapp/inbox",
                             title="Abrir a caixa de entrada do WhatsApp Business",
+                        ),
+                        html.A(
+                            "📊 WhatsApp Analytics",
+                            id="botao-whatsapp-analytics",
+                            href="/whatsapp/analytics",
+                            title="Consultar métricas reais de atendimento WhatsApp",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": "#1d4ed8",
+                                "color": "white",
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
+                            },
+                        ),
                             style={
                                 "display": "inline-block",
                                 "padding": "9px 14px",
