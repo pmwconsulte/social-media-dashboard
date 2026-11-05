@@ -57,6 +57,10 @@ server = app.server
 from whatsapp_webhook import register_whatsapp_webhooks, send_whatsapp_text
 register_whatsapp_webhooks(server)
 
+# Facebook Messenger webhook and workspace-isolated inbox.
+from facebook_messenger import register_facebook_messenger
+register_facebook_messenger(server)
+
 
 @server.post("/whatsapp/send")
 def whatsapp_send():
@@ -1286,6 +1290,22 @@ app.layout = html.Div(
                                 "fontWeight": "700",
                                 "fontSize": "13px",
                                 "cursor": "pointer",
+                            },
+                        ),
+                        html.A(
+                            "💬 Messenger",
+                            id="botao-messenger",
+                            href="/facebook/messenger/inbox",
+                            title="Abrir a caixa de entrada Facebook Messenger",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": "#2563eb",
+                                "color": "white",
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
                             },
                         ),
                         html.A(
