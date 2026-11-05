@@ -177,6 +177,58 @@ def send_whatsapp_text(phone_number_id, recipient, message_text):
     return message_id
 
 
+
+def send_whatsapp_template(phone_number_id, recipient, template_name, language_code="pt_PT"):
+    """Send an approved WhatsApp template; caller must enforce approval status."""
+    token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("WHATSAPP_ACCESS_TOKEN não está configurado.")
+    phone_id = str(phone_number_id or "").strip()
+    if not phone_id:
+        raise RuntimeError("O número de telefone WhatsApp não está identificado.")
+    recipient = "".join(ch for ch in str(recipient or "") if ch.isdigit())
+    if not recipient or len(recipient) < 8 or len(recipient) > 15:
+        raise ValueError("Número de destino inválido.")
+    name = str(template_name or "").strip()
+    language = str(language_code or "").strip()
+    if not name or not language:
+        raise ValueError("O modelo e o idioma são obrigatórios.")
+
+    version = os.getenv("WHATSAPP_GRAPH_API_VERSION", "v25.0").strip() or "v25.0"
+    response = requests.post(
+        f"https://graph.facebook.com/{version}/{phone_id}/messages",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": recipient,
+            "type": "template",
+            "template": {"name": name, "language": {"code": language}},
+        },
+        timeout=20,
+    )
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    if not response.ok:
+        error = payload.get("error") or {}
+        detail = str(error.get("message") or "A Meta recusou o envio do modelo.")
+        code = error.get("code")
+        trace_id = error.get("fbtrace_id")
+        print("[WHATSAPP TEMPLATE ERROR] " + json.dumps({
+            "phone_number_id": phone_id, "http_status": response.status_code,
+            "code": code, "message": detail[:250], "fbtrace_id": trace_id,
+        }, ensure_ascii=False))
+        raise RuntimeError(f"WhatsApp API ({code}): {detail}" if code is not None else detail)
+
+    messages = payload.get("messages") or []
+    message_id = (messages[0] or {}).get("id") if messages else None
+    if not message_id:
+        raise RuntimeError("A API não confirmou o identificador da mensagem modelo.")
+    return message_id
+
+
 def register_whatsapp_webhooks(server):
     @server.route("/webhooks/whatsapp", methods=["GET", "POST"])
     def whatsapp_webhook():
