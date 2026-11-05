@@ -107,17 +107,18 @@ def test_evento_antecipado_fica_guardado_para_reconciliacao_no_insert(monkeypatc
     assert "RETURNS TRIGGER AS $whatsapp$" in trigger
     assert "FROM whatsapp_message_status_events" in trigger
     assert "NEW.status := latest_status" in trigger
+    assert "END DESC" in trigger
+    assert trigger.index("END DESC") < trigger.index("event_timestamp DESC")
     assert "CREATE TRIGGER trg_sync_whatsapp_message_status" in " ".join(queries)
 
 
 def test_estado_entregue_nao_regride_de_lido_ou_falhado(monkeypatch):
-    for existing_status in ("read", "failed"):
-        conn, _ = _run(monkeypatch, _payload("delivered"))
-        update = next(
-            q for q in _queries(conn)
-            if "UPDATE whatsapp_messages" in q and "SET status='delivered'" in q
-        )
-        assert "status NOT IN ('read', 'failed')" in update
+    conn, _ = _run(monkeypatch, _payload("delivered"))
+    update = next(
+        q for q in _queries(conn)
+        if "UPDATE whatsapp_messages" in q and "SET status='delivered'" in q
+    )
+    assert "status NOT IN ('read', 'failed')" in update
 
 
 def test_estado_lido_nao_sobrescreve_falha(monkeypatch):
@@ -145,6 +146,7 @@ def test_falha_guarda_codigo_e_descricao(monkeypatch):
     )
     assert "failure_code=%s" in update
     assert "failure_detail=%s" in update
+    assert "status <> 'read'" in update
 
 
 def test_timestamp_invalido_usa_fallback_sem_interpolacao_sql(monkeypatch):
