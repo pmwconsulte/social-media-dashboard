@@ -1,6 +1,7 @@
 import os
 import traceback
 import io
+import secrets
 from xml.sax.saxutils import escape
 
 import pandas as pd
@@ -54,7 +55,7 @@ app = dash.Dash(
 server = app.server
 
 # WhatsApp Cloud API webhook verification and event acknowledgement.
-from whatsapp_webhook import register_whatsapp_webhooks, send_whatsapp_text
+from whatsapp_webhook import register_whatsapp_webhooks, send_whatsapp_text, send_whatsapp_template
 register_whatsapp_webhooks(server)
 
 
@@ -62,6 +63,10 @@ register_whatsapp_webhooks(server)
 def whatsapp_send():
     if not session.get("authenticated"):
         return Response("", status=302, headers={"Location": "/login"})
+    expected_csrf = session.get("whatsapp_csrf", "")
+    received_csrf = request.form.get("csrf_token", "")
+    if not expected_csrf or not received_csrf or not secrets.compare_digest(expected_csrf, received_csrf):
+        return Response("Pedido inválido. Atualize a página e tente novamente.", status=400)
     workspace_slug = (session.get("workspace_slug") or "").strip()
     recipient = "".join(ch for ch in (request.form.get("recipient") or "") if ch.isdigit())
     message_text = (request.form.get("message") or "").strip()
@@ -119,6 +124,57 @@ def whatsapp_send():
             "Falha no envio: " + safe_detail + " — confirme a configuração da Cloud API.",
             status=502, mimetype="text/plain",
         )
+    finally:
+        if conn:
+            conn.close()
+
+
+@server.post("/whatsapp/send-template")
+def whatsapp_send_template():
+    """Start a new WhatsApp conversation using a Meta-approved template only."""
+    if not session.get("authenticated"):
+        return Response("", status=302, headers={"Location": "/login"})
+    expected_csrf = session.get("whatsapp_csrf", "")
+    received_csrf = request.form.get("csrf_token", "")
+    if not expected_csrf or not received_csrf or not secrets.compare_digest(expected_csrf, received_csrf):
+        return Response("Pedido inválido. Atualize a página e tente novamente.", status=400)
+
+    # Fail closed until approval has been verified in WhatsApp Manager.
+    if os.getenv("WHATSAPP_TEMPLATE_STATUS", "IN_REVIEW").strip().upper() != "APPROVED":
+        return Response("O modelo pmw_primeiro_contacto ainda não está aprovado pela Meta. O envio de novas conversas permanece bloqueado.", status=409, mimetype="text/plain")
+    workspace_slug = (session.get("workspace_slug") or "").strip()
+    recipient = "".join(ch for ch in (request.form.get("recipient") or "") if ch.isdigit())
+    if not recipient or len(recipient) < 8 or len(recipient) > 15:
+        return Response("Introduza um número WhatsApp válido, com indicativo do país.", status=400)
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM workspaces WHERE slug=%s LIMIT 1", (workspace_slug,))
+            workspace = cur.fetchone()
+            if not workspace:
+                return Response("Workspace não encontrado.", status=404)
+            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            if not phone_id:
+                raise RuntimeError("WHATSAPP_PHONE_NUMBER_ID não está configurado no Render.")
+            template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto").strip()
+            language_code = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT").strip()
+            api_message_id = send_whatsapp_template(phone_id, recipient, template_name, language_code)
+            cur.execute("""
+                INSERT INTO whatsapp_messages
+                    (workspace_id, message_id, phone_number_id, sender_phone,
+                     sender_name, message_type, message_text, message_timestamp, direction, status)
+                VALUES (%s,%s,%s,%s,%s,'template',%s,NOW(),'outbound','sent')
+                ON CONFLICT (message_id) DO NOTHING
+            """, (workspace[0], api_message_id, phone_id, recipient, "PMW Dashboard", "[Modelo: " + template_name + "]"))
+        conn.commit()
+        return Response("", status=303, headers={"Location": "/whatsapp/inbox?q=" + quote(recipient)})
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        detail = str(exc).replace("\\n", " ")[:500]
+        print(f"[WHATSAPP TEMPLATE SEND] {type(exc).__name__}: {detail}")
+        return Response("Falha no envio do modelo: " + escape(detail), status=502, mimetype="text/plain")
     finally:
         if conn:
             conn.close()
