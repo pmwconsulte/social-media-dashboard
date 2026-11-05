@@ -1293,6 +1293,22 @@ app.layout = html.Div(
                             },
                         ),
                         html.A(
+                            "💬 Messenger",
+                            id="botao-messenger",
+                            href="/facebook/messenger/inbox",
+                            title="Abrir a caixa de entrada Facebook Messenger",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": "#2563eb",
+                                "color": "white",
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
+                            },
+                        ),
+                        html.A(
                             "💬 Mensagens",
                             id="botao-mensagens",
                             href="/instagram/inbox",
