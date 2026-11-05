@@ -363,48 +363,6 @@ def register_whatsapp_webhooks(server):
             return Response("Webhook processing failed", status=500, mimetype="text/plain")
         return Response("EVENT_RECEIVED", status=200, mimetype="text/plain")
 
-                                THEN to_timestamp(%s::double precision) ELSE NOW() END,
-                                %s,%s)
-                            ON CONFLICT (message_id, status, event_timestamp) DO NOTHING
-                        """, (workspace_id, status_message_id, recipient, status_value,
-                              raw_stamp, raw_stamp, error_code, error_detail))
-                        event_time = None
-                        if raw_stamp.isdigit() and len(raw_stamp) <= 12:
-                            event_time = "to_timestamp(%s::double precision)"
-                        if status_value == "delivered":
-                            cur.execute("""
-                                UPDATE whatsapp_messages
-                                SET status='delivered',
-                                    delivered_at=COALESCE(delivered_at, CASE WHEN %s ~ '^[0-9]{1,12}
-                            continue
-                        msg_id = str(msg.get("id") or "").strip()
-                        sender = str(msg.get("from") or "").strip()
-                        if not msg_id or not sender:
-                            continue
-                        kind = str(msg.get("type") or "unknown")[:40]
-                        body = None
-                        if kind == "text":
-                            body = str((msg.get("text") or {}).get("body") or "")[:10000]
-                        stamp = str(msg.get("timestamp") or "")
-                        cur.execute("""
-                            INSERT INTO whatsapp_messages
-                                (workspace_id, message_id, phone_number_id, sender_phone,
-                                 sender_name, message_type, message_text, message_timestamp)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,
-                                CASE WHEN %s ~ '^[0-9]{1,12}$'
-                                THEN to_timestamp(%s::double precision) ELSE NOW() END)
-                            ON CONFLICT (message_id) DO NOTHING
-                        """, (workspace_id, msg_id, phone_id or None, sender[:80],
-                              names.get(sender) or None, kind, body, stamp, stamp))
-                        saved += cur.rowcount
-        conn.commit()
-        return saved
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
 
 def send_whatsapp_text(phone_number_id, recipient, message_text):
     """Send a customer-service text through the configured WhatsApp Cloud API."""
