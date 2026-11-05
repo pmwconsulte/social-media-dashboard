@@ -180,6 +180,73 @@ def whatsapp_send_template():
             conn.close()
 
 
+@server.get("/whatsapp/analytics")
+def whatsapp_analytics():
+    """Resumo de atendimento WhatsApp baseado exclusivamente em mensagens guardadas."""
+    if not session.get("authenticated"):
+        return Response("", status=302, headers={"Location": "/login"})
+    workspace_slug = (session.get("workspace_slug") or "").strip()
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name FROM workspaces WHERE slug=%s LIMIT 1", (workspace_slug,))
+            workspace = cur.fetchone()
+            if not workspace:
+                return Response("Workspace não encontrado.", status=404, mimetype="text/plain")
+            cur.execute("""
+                SELECT
+                    COUNT(*) FILTER (WHERE COALESCE(direction,'inbound')='inbound'
+                        AND COALESCE(message_timestamp,created_at) >= NOW() - INTERVAL '30 days') AS received,
+                    COUNT(*) FILTER (WHERE COALESCE(direction,'inbound')='outbound'
+                        AND COALESCE(message_timestamp,created_at) >= NOW() - INTERVAL '30 days') AS sent,
+                    COUNT(*) FILTER (WHERE COALESCE(direction,'inbound')='outbound'
+                        AND status='delivered'
+                        AND COALESCE(message_timestamp,created_at) >= NOW() - INTERVAL '30 days') AS delivered,
+                    COUNT(*) FILTER (WHERE COALESCE(direction,'inbound')='outbound'
+                        AND status='read'
+                        AND COALESCE(message_timestamp,created_at) >= NOW() - INTERVAL '30 days') AS read,
+                    COUNT(*) FILTER (WHERE COALESCE(direction,'inbound')='outbound'
+                        AND status='failed'
+                        AND COALESCE(message_timestamp,created_at) >= NOW() - INTERVAL '30 days') AS failed,
+                    COUNT(DISTINCT sender_phone) FILTER (
+                        WHERE COALESCE(direction,'inbound')='inbound'
+                        AND COALESCE(message_timestamp,created_at) >= NOW() - INTERVAL '30 days') AS contacts
+                FROM whatsapp_messages
+                WHERE workspace_id=%s
+            """, (workspace[0],))
+            row = cur.fetchone() or (0, 0, 0, 0, 0, 0)
+        values = [int(v or 0) for v in row]
+        labels = ["Mensagens recebidas", "Mensagens enviadas", "Entregues", "Lidas", "Falhadas", "Contactos"]
+        cards = "".join(
+            "<article class='metric'><span>" + label + "</span><strong>" + format(value, ",").replace(",", " ") + "</strong></article>"
+            for label, value in zip(labels, values)
+        )
+        page = """<!doctype html><html lang="pt"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>WhatsApp Analytics | PMW</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:28px 18px}header{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+a{color:#38bdf8;text-decoration:none;font-weight:700}.muted{color:#94a3b8;margin:8px 0 22px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.metric{background:#111827;border:1px solid #1e293b;border-radius:14px;padding:20px;min-height:112px}
+.metric span{display:block;color:#94a3b8;font-size:13px}.metric strong{display:block;font-size:30px;margin-top:12px}
+.note{margin-top:18px;padding:14px;background:#172554;border-radius:10px;color:#bfdbfe;font-size:13px;line-height:1.5}
+</style></head><body><main>
+<header><h1>WhatsApp · Analytics</h1><a href="/whatsapp/inbox">← Caixa de Entrada</a></header>
+<p class="muted">""" + escape(str(workspace[1] or workspace_slug)) + """ · Últimos 30 dias</p>
+<section class="grid">""" + cards + """</section>
+<p class="note">Fonte: mensagens registadas no PMW Dashboard e estados recebidos através dos webhooks da Meta. Os indicadores sem confirmação permanecem a zero; não são estimados. As métricas oficiais de utilização, categorias e custos da Meta serão acrescentadas numa fase seguinte.</p>
+</main></body></html>"""
+        return Response(page, status=200, mimetype="text/html")
+    except Exception as exc:
+        print(f"[WHATSAPP ANALYTICS] Falha ao carregar métricas: {type(exc).__name__}.")
+        return Response("Não foi possível carregar as métricas WhatsApp.", status=503, mimetype="text/plain")
+    finally:
+        if conn:
+            conn.close()
+
+
 @server.get("/whatsapp/inbox")
 def whatsapp_inbox():
     """Caixa de entrada WhatsApp isolada por workspace autenticado."""
@@ -1362,6 +1429,22 @@ app.layout = html.Div(
                                 "fontWeight": "700",
                                 "fontSize": "13px",
                                 "cursor": "pointer",
+                            },
+                        ),
+                        html.A(
+                            "📊 WhatsApp Analytics",
+                            id="botao-whatsapp-analytics",
+                            href="/whatsapp/analytics",
+                            title="Consultar métricas reais de atendimento WhatsApp",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": "#1d4ed8",
+                                "color": "white",
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
                             },
                         ),
                         html.A(

@@ -30,11 +30,6 @@ def _save_messages(payload):
     saved = 0
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM workspaces WHERE slug = %s LIMIT 1", (slug,))
-            row = cur.fetchone()
-            if not row:
-                raise RuntimeError("Workspace WhatsApp não encontrado.")
-            workspace_id = row[0]
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS whatsapp_messages (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -51,6 +46,99 @@ def _save_messages(payload):
             """)
             cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS direction VARCHAR(20) NOT NULL DEFAULT 'inbound'")
             cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'received'")
+            cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ")
+            cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ")
+            cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ")
+            cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS failure_code VARCHAR(80)")
+            cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS failure_detail TEXT")
+            # Mapeamento explícito do número Meta para o workspace proprietário.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS whatsapp_phone_number_workspaces (
+                    phone_number_id VARCHAR(80) PRIMARY KEY,
+                    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            # Compatibilidade de instalação single-tenant: regista o número configurado.
+            configured_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            if configured_phone_id and slug:
+                cur.execute("""
+                    INSERT INTO whatsapp_phone_number_workspaces (phone_number_id, workspace_id)
+                    SELECT %s, id FROM workspaces WHERE slug=%s
+                    ON CONFLICT (phone_number_id) DO NOTHING
+                """, (configured_phone_id, slug))
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS whatsapp_message_status_events (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    message_id VARCHAR(255) NOT NULL,
+                    recipient_phone VARCHAR(80),
+                    status VARCHAR(30) NOT NULL,
+                    event_timestamp TIMESTAMPTZ,
+                    error_code VARCHAR(80),
+                    error_detail TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (message_id, status, event_timestamp)
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_whatsapp_status_workspace_time
+                ON whatsapp_message_status_events(workspace_id, event_timestamp)
+            """)
+
+            # Reconcile status events that may arrive before the outbound message
+            # is persisted (Meta webhook and send request are independent requests).
+            # Serializa a instalação única do trigger. O caminho normal não o recria.
+            cur.execute("SELECT pg_advisory_xact_lock(74629180512027)")
+            cur.execute("""
+                DO $install$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_trigger
+                        WHERE tgname = 'trg_sync_whatsapp_message_status'
+                          AND NOT tgisinternal
+                    ) THEN
+                        EXECUTE $ddl$
+                            CREATE OR REPLACE FUNCTION sync_whatsapp_message_status_before_insert()
+                            RETURNS TRIGGER AS $whatsapp$
+                            DECLARE latest_status VARCHAR(30);
+                            BEGIN
+                                SELECT status INTO latest_status
+                                FROM whatsapp_message_status_events
+                                WHERE workspace_id = NEW.workspace_id
+                                  AND message_id = NEW.message_id
+                                ORDER BY CASE status
+                                    WHEN 'read' THEN 4
+                                    WHEN 'failed' THEN 3
+                                    WHEN 'delivered' THEN 2
+                                    WHEN 'sent' THEN 1
+                                    ELSE 0 END DESC,
+                                    event_timestamp DESC NULLS LAST
+                                LIMIT 1;
+                                IF latest_status IS NOT NULL THEN
+                                    SELECT
+                                        COALESCE(MAX(event_timestamp) FILTER (WHERE status IN ('delivered','read')), NEW.delivered_at),
+                                        COALESCE(MAX(event_timestamp) FILTER (WHERE status='read'), NEW.read_at),
+                                        COALESCE(MAX(event_timestamp) FILTER (WHERE status='failed'), NEW.failed_at),
+                                        (ARRAY_AGG(error_code ORDER BY event_timestamp DESC) FILTER (WHERE status='failed'))[1],
+                                        (ARRAY_AGG(error_detail ORDER BY event_timestamp DESC) FILTER (WHERE status='failed'))[1]
+                                    INTO NEW.delivered_at, NEW.read_at, NEW.failed_at,
+                                         NEW.failure_code, NEW.failure_detail
+                                    FROM whatsapp_message_status_events
+                                    WHERE workspace_id=NEW.workspace_id AND message_id=NEW.message_id;
+                                    NEW.status := latest_status;
+                                END IF;
+                                RETURN NEW;
+                            END;
+                            $whatsapp$ LANGUAGE plpgsql
+                        $ddl$;
+                        CREATE TRIGGER trg_sync_whatsapp_message_status
+                        BEFORE INSERT ON whatsapp_messages
+                        FOR EACH ROW EXECUTE FUNCTION sync_whatsapp_message_status_before_insert();
+                    END IF;
+                END;
+                $install$
+            """)
             for entry in payload.get("entry", []) or []:
                 if not isinstance(entry, dict):
                     continue
@@ -61,13 +149,103 @@ def _save_messages(payload):
                     if not isinstance(value, dict):
                         continue
                     meta = value.get("metadata") or {}
-                    phone_id = str(meta.get("phone_number_id") or "")[:80]
+                    phone_id = str(meta.get("phone_number_id") or "").strip()[:80]
+                    if not phone_id:
+                        raise RuntimeError("Webhook WhatsApp sem phone_number_id.")
+                    cur.execute(
+                        "SELECT workspace_id FROM whatsapp_phone_number_workspaces WHERE phone_number_id=%s",
+                        (phone_id,),
+                    )
+                    workspace_row = cur.fetchone()
+                    if not workspace_row:
+                        raise RuntimeError("phone_number_id WhatsApp sem workspace associado.")
+                    workspace_id = workspace_row[0]
                     names = {}
                     for contact in value.get("contacts", []) or []:
                         if isinstance(contact, dict) and contact.get("wa_id"):
                             names[str(contact["wa_id"])] = str(
                                 (contact.get("profile") or {}).get("name") or ""
                             )[:255]
+                    # Meta envia confirmações de entrega/leitura/falha no array statuses.
+                    # Guardamos o evento e atualizamos o estado actual da mensagem de forma idempotente.
+                    for status_item in value.get("statuses", []) or []:
+                        if not isinstance(status_item, dict):
+                            continue
+                        status_message_id = str(status_item.get("id") or "").strip()
+                        status_value = str(status_item.get("status") or "").strip().lower()
+                        if not status_message_id or status_value not in {"sent", "delivered", "read", "failed"}:
+                            continue
+                        recipient = str(status_item.get("recipient_id") or "").strip()[:80] or None
+                        raw_stamp = str(status_item.get("timestamp") or "")
+                        error_items = status_item.get("errors") or []
+                        first_error = error_items[0] if error_items and isinstance(error_items[0], dict) else {}
+                        error_code = str(first_error.get("code") or "")[:80] or None
+                        error_detail = str(first_error.get("title") or first_error.get("message") or "")[:2000] or None
+                        cur.execute(
+                            """
+                            INSERT INTO whatsapp_message_status_events
+                                (workspace_id, message_id, recipient_phone, status,
+                                 event_timestamp, error_code, error_detail)
+                            VALUES (%s, %s, %s, %s,
+                                CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                THEN to_timestamp(%s::double precision) ELSE NOW() END,
+                                %s, %s)
+                            ON CONFLICT (message_id, status, event_timestamp) DO NOTHING
+                            """,
+                            (workspace_id, status_message_id, recipient, status_value,
+                             raw_stamp, raw_stamp, error_code, error_detail),
+                        )
+                        if status_value == "delivered":
+                            cur.execute(
+                                """
+                                UPDATE whatsapp_messages
+                                SET status='delivered',
+                                    delivered_at=COALESCE(delivered_at,
+                                        CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                        THEN to_timestamp(%s::double precision) ELSE NOW() END)
+                                WHERE message_id=%s AND workspace_id=%s
+                                  AND status NOT IN ('read', 'failed')
+                                """,
+                                (raw_stamp, raw_stamp, status_message_id, workspace_id),
+                            )
+                        elif status_value == "read":
+                            cur.execute(
+                                """
+                                UPDATE whatsapp_messages
+                                SET status='read',
+                                    delivered_at=COALESCE(delivered_at,
+                                        CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                        THEN to_timestamp(%s::double precision) ELSE NOW() END),
+                                    read_at=CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                        THEN to_timestamp(%s::double precision) ELSE NOW() END
+                                WHERE message_id=%s AND workspace_id=%s
+                                """,
+                                (raw_stamp, raw_stamp, raw_stamp, raw_stamp,
+                                 status_message_id, workspace_id),
+                            )
+                        elif status_value == "failed":
+                            cur.execute(
+                                """
+                                UPDATE whatsapp_messages
+                                SET status='failed',
+                                    failed_at=CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                        THEN to_timestamp(%s::double precision) ELSE NOW() END,
+                                    failure_code=%s, failure_detail=%s
+                                WHERE message_id=%s AND workspace_id=%s
+                                  AND status <> 'read'
+                                """,
+                                (raw_stamp, raw_stamp, error_code, error_detail,
+                                 status_message_id, workspace_id),
+                            )
+                        elif status_value == "sent":
+                            cur.execute(
+                                """
+                                UPDATE whatsapp_messages SET status='sent'
+                                WHERE message_id=%s AND workspace_id=%s
+                                  AND status IN ('received', 'sent')
+                                """,
+                                (status_message_id, workspace_id),
+                            )
                     for msg in value.get("messages", []) or []:
                         if not isinstance(msg, dict):
                             continue
