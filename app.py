@@ -188,6 +188,8 @@ def whatsapp_inbox():
 
     workspace_slug = (session.get("workspace_slug") or "").strip()
     term = (request.args.get("q") or "").strip()[:120]
+    csrf_token = session.setdefault("whatsapp_csrf", secrets.token_urlsafe(32))
+    template_approved = os.getenv("WHATSAPP_TEMPLATE_STATUS", "IN_REVIEW").strip().upper() == "APPROVED"
     conn = None
     try:
         conn = get_connection()
@@ -235,6 +237,7 @@ def whatsapp_inbox():
             if within_window:
                 reply_form = (
                     "<form class='reply' method='post' action='/whatsapp/send'>"
+                    f"<input type='hidden' name='csrf_token' value='{safe(csrf_token)}'>"
                     f"<input type='hidden' name='recipient' value='{phone}'>"
                     "<textarea name='message' maxlength='4096' required placeholder='Escreva uma resposta...'></textarea>"
                     "<button type='submit'>Enviar resposta</button></form>"
@@ -250,8 +253,24 @@ def whatsapp_inbox():
             "<div class='empty'><strong>Ainda não existem mensagens.</strong>"
             "<p>Quando o WhatsApp receber uma mensagem, ela aparecerá aqui.</p></div>"
         )
-        page = f"""<!doctype html>
-<html lang="pt"><head><meta charset="utf-8">
+        if template_approved:
+            new_conversation = (
+                "<div class='new-conversation'><h2>Nova conversa</h2>"
+                "<form method='post' action='/whatsapp/send-template' class='new-message'>"
+                f"<input type='hidden' name='csrf_token' value='{safe(csrf_token)}'>"
+                "<input name='recipient' inputmode='tel' autocomplete='tel' required maxlength='15' "
+                "placeholder='Número com indicativo, ex.: 25884...'>"
+                "<button type='submit'>Enviar primeiro contacto</button></form>"
+                "<p class='reply-note'>Será utilizado o modelo aprovado pmw_primeiro_contacto.</p></div>"
+            )
+        else:
+            new_conversation = (
+                "<div class='new-conversation'><h2>Nova conversa</h2>"
+                "<p class='template-pending'>Modelo pmw_primeiro_contacto: Em revisão na Meta. "
+                "O envio de novas conversas está bloqueado até à aprovação.</p></div>"
+            )
+
+        page = f"""<!doctype html><html lang="pt"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WhatsApp | PMW Dashboard</title>
 <style>
@@ -266,12 +285,13 @@ a{{color:#38bdf8;text-decoration:none;font-weight:700}}
 .message-top span,.phone{{font-size:12px;color:#94a3b8}} .phone{{margin-top:5px}}
 .message-body{{white-space:pre-wrap;line-height:1.55;margin:10px 0;color:#e2e8f0}}
 .type{{display:inline-block;font-size:11px;color:#7dd3fc;background:#082f49;padding:4px 8px;border-radius:20px}}
-.empty{{text-align:center;padding:42px 12px;color:#cbd5e1}} .empty p{{color:#94a3b8}} .reply{{display:flex;gap:9px;margin:12px 0 4px}} .reply textarea{{flex:1;min-width:0;min-height:46px;padding:10px;border:1px solid #334155;border-radius:8px;background:#081426;color:#f8fafc;font:inherit}} .reply button{{border:0;border-radius:8px;padding:0 18px;background:#15803d;color:white;font-weight:700;cursor:pointer}} .reply-note{{font-size:11px;color:#94a3b8;margin-top:5px}}
+.empty{{text-align:center;padding:42px 12px;color:#cbd5e1}} .empty p{{color:#94a3b8}} .new-conversation{{padding:4px 0 18px;margin-bottom:16px;border-bottom:1px solid #263449}} .new-conversation h2{{font-size:18px;margin:0 0 12px}} .new-message{{display:flex;gap:9px;flex-wrap:wrap}} .new-message input{{flex:1;min-width:220px;padding:11px;border:1px solid #334155;border-radius:8px;background:#081426;color:#f8fafc}} .new-message button{{border:0;border-radius:8px;padding:0 18px;background:#0369a1;color:white;font-weight:700;cursor:pointer;min-height:42px}} .template-pending{{color:#fbbf24;background:#422006;padding:12px;border-radius:8px}} .reply{{display:flex;gap:9px;margin:12px 0 4px}} .reply textarea{{flex:1;min-width:0;min-height:46px;padding:10px;border:1px solid #334155;border-radius:8px;background:#081426;color:#f8fafc;font:inherit}} .reply button{{border:0;border-radius:8px;padding:0 18px;background:#15803d;color:white;font-weight:700;cursor:pointer}} .reply-note{{font-size:11px;color:#94a3b8;margin-top:5px}}
 </style></head><body><main>
 <header><div><h1>💬 WhatsApp — Caixa de Entrada</h1>
 <div class="muted">{safe(workspace[1] or workspace_slug)} · Últimas 100 mensagens</div></div>
 <a href="/">← Voltar ao Dashboard</a></header>
 <section class="panel">
+{new_conversation}
 <form method="get">
 <input name="q" value="{safe(term)}" placeholder="Pesquisar por contacto, número ou mensagem">
 <button type="submit">Pesquisar</button></form>{listing}</section>
