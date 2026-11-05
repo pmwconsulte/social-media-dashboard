@@ -219,7 +219,6 @@ def _save_messages(payload):
                                     read_at=CASE WHEN %s ~ '^[0-9]{1,12}$'
                                         THEN to_timestamp(%s::double precision) ELSE NOW() END
                                 WHERE message_id=%s AND workspace_id=%s
-                                  AND status <> 'failed'
                                 """,
                                 (raw_stamp, raw_stamp, raw_stamp, raw_stamp,
                                  status_message_id, workspace_id),
