@@ -57,6 +57,10 @@ server = app.server
 from whatsapp_webhook import register_whatsapp_webhooks, send_whatsapp_text
 register_whatsapp_webhooks(server)
 
+# Facebook Messenger webhook and workspace-isolated inbox.
+from facebook_messenger import register_facebook_messenger
+register_facebook_messenger(server)
+
 
 @server.post("/whatsapp/send")
 def whatsapp_send():
