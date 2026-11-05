@@ -79,7 +79,7 @@ def _save_messages(payload):
             # is persisted (Meta webhook and send request are independent requests).
             cur.execute("""
                 CREATE OR REPLACE FUNCTION sync_whatsapp_message_status_before_insert()
-                RETURNS TRIGGER AS $
+                RETURNS TRIGGER AS $whatsapp$
                 DECLARE
                     latest_status VARCHAR(30);
                 BEGIN
