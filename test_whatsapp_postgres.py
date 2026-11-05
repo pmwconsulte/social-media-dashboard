@@ -36,10 +36,21 @@ def pg_schema(monkeypatch):
             )
         ''')
         cur.execute(
+            f'''INSERT INTO "{schema}".workspaces (id, slug)
+                VALUES (%s, %s)''',
+            (str(uuid.uuid4()), "workspace-other"),
+        )
+        cur.execute(
             f'''INSERT INTO "{schema}".whatsapp_phone_number_workspaces
                 (phone_number_id, workspace_id)
                 SELECT 'phone-test', id FROM "{schema}".workspaces
                 WHERE slug='workspace-test' '''
+        )
+        cur.execute(
+            f'''INSERT INTO "{schema}".whatsapp_phone_number_workspaces
+                (phone_number_id, workspace_id)
+                SELECT 'phone-other', id FROM "{schema}".workspaces
+                WHERE slug='workspace-other' '''
         )
     admin.close()
 
@@ -59,13 +70,13 @@ def pg_schema(monkeypatch):
     cleanup.close()
 
 
-def webhook_payload(status, message_id="wamid.pg-test", timestamp="1790000000"):
+def webhook_payload(status, message_id="wamid.pg-test", timestamp="1790000000", phone_id="phone-test"):
     return {
         "entry": [{
             "changes": [{
                 "field": "messages",
                 "value": {
-                    "metadata": {"phone_number_id": "phone-test"},
+                    "metadata": {"phone_number_id": phone_id},
                     "statuses": [{
                         "id": message_id,
                         "status": status,
@@ -181,3 +192,31 @@ def test_postgres_eventos_concorrentes_preservam_estado_final_read(pg_schema):
 
     insert_outbound(pg_schema, message_id)
     assert fetch_message(pg_schema, message_id)[0] == "read"
+
+
+
+def test_postgres_encaminha_evento_para_workspace_do_phone_number_id(pg_schema):
+    message_id = "wamid-other-workspace"
+    whatsapp_webhook._save_messages(
+        webhook_payload("read", message_id, phone_id="phone-other")
+    )
+    conn = pg_schema()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT m.workspace_id, w.slug
+                FROM whatsapp_messages m
+                JOIN workspaces w ON w.id=m.workspace_id
+                WHERE m.message_id=%s
+            """, (message_id,))
+            row = cur.fetchone()
+            assert row[1] == "workspace-other"
+    finally:
+        conn.close()
+
+
+def test_postgres_rejeita_phone_number_id_sem_mapeamento(pg_schema):
+    with pytest.raises(RuntimeError, match="sem workspace associado"):
+        whatsapp_webhook._save_messages(
+            webhook_payload("read", "wamid-unmapped", phone_id="unknown-phone")
+        )
