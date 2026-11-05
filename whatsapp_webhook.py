@@ -116,7 +116,7 @@ def _save_messages(payload):
                     END IF;
                     RETURN NEW;
                 END;
-                $ LANGUAGE plpgsql
+                $whatsapp$ LANGUAGE plpgsql
             """)
             cur.execute("""
                 DROP TRIGGER IF EXISTS trg_sync_whatsapp_message_status
