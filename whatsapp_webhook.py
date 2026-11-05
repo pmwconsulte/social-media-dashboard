@@ -30,11 +30,6 @@ def _save_messages(payload):
     saved = 0
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM workspaces WHERE slug = %s LIMIT 1", (slug,))
-            row = cur.fetchone()
-            if not row:
-                raise RuntimeError("Workspace WhatsApp não encontrado.")
-            workspace_id = row[0]
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS whatsapp_messages (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -56,6 +51,22 @@ def _save_messages(payload):
             cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ")
             cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS failure_code VARCHAR(80)")
             cur.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS failure_detail TEXT")
+            # Mapeamento explícito do número Meta para o workspace proprietário.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS whatsapp_phone_number_workspaces (
+                    phone_number_id VARCHAR(80) PRIMARY KEY,
+                    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            # Compatibilidade de instalação single-tenant: regista o número configurado.
+            configured_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            if configured_phone_id and slug:
+                cur.execute("""
+                    INSERT INTO whatsapp_phone_number_workspaces (phone_number_id, workspace_id)
+                    SELECT %s, id FROM workspaces WHERE slug=%s
+                    ON CONFLICT (phone_number_id) DO NOTHING
+                """, (configured_phone_id, slug))
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS whatsapp_message_status_events (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -77,57 +88,56 @@ def _save_messages(payload):
 
             # Reconcile status events that may arrive before the outbound message
             # is persisted (Meta webhook and send request are independent requests).
+            # Serializa a instalação única do trigger. O caminho normal não o recria.
+            cur.execute("SELECT pg_advisory_xact_lock(74629180512027)")
             cur.execute("""
-                CREATE OR REPLACE FUNCTION sync_whatsapp_message_status_before_insert()
-                RETURNS TRIGGER AS $whatsapp$
-                DECLARE
-                    latest_status VARCHAR(30);
+                DO $install$
                 BEGIN
-                    SELECT status INTO latest_status
-                    FROM whatsapp_message_status_events
-                    WHERE workspace_id = NEW.workspace_id
-                      AND message_id = NEW.message_id
-                    ORDER BY
-                        CASE status
-                            WHEN 'read' THEN 4
-                            WHEN 'failed' THEN 3
-                            WHEN 'delivered' THEN 2
-                            WHEN 'sent' THEN 1
-                            ELSE 0
-                        END DESC,
-                        event_timestamp DESC NULLS LAST
-                    LIMIT 1;
-
-                    IF latest_status IS NOT NULL THEN
-                        SELECT
-                            COALESCE(MAX(event_timestamp) FILTER (WHERE status IN ('delivered', 'read')), NEW.delivered_at),
-                            COALESCE(MAX(event_timestamp) FILTER (WHERE status='read'), NEW.read_at),
-                            COALESCE(MAX(event_timestamp) FILTER (WHERE status='failed'), NEW.failed_at),
-                            (ARRAY_AGG(error_code ORDER BY event_timestamp DESC)
-                                FILTER (WHERE status='failed'))[1],
-                            (ARRAY_AGG(error_detail ORDER BY event_timestamp DESC)
-                                FILTER (WHERE status='failed'))[1]
-                        INTO NEW.delivered_at, NEW.read_at, NEW.failed_at,
-                             NEW.failure_code, NEW.failure_detail
-                        FROM whatsapp_message_status_events
-                        WHERE workspace_id = NEW.workspace_id
-                          AND message_id = NEW.message_id;
-
-                        NEW.status := latest_status;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_trigger
+                        WHERE tgname = 'trg_sync_whatsapp_message_status'
+                          AND NOT tgisinternal
+                    ) THEN
+                        EXECUTE $ddl$
+                            CREATE FUNCTION sync_whatsapp_message_status_before_insert()
+                            RETURNS TRIGGER AS $whatsapp$
+                            DECLARE latest_status VARCHAR(30);
+                            BEGIN
+                                SELECT status INTO latest_status
+                                FROM whatsapp_message_status_events
+                                WHERE workspace_id = NEW.workspace_id
+                                  AND message_id = NEW.message_id
+                                ORDER BY CASE status
+                                    WHEN 'read' THEN 4
+                                    WHEN 'failed' THEN 3
+                                    WHEN 'delivered' THEN 2
+                                    WHEN 'sent' THEN 1
+                                    ELSE 0 END DESC,
+                                    event_timestamp DESC NULLS LAST
+                                LIMIT 1;
+                                IF latest_status IS NOT NULL THEN
+                                    SELECT
+                                        COALESCE(MAX(event_timestamp) FILTER (WHERE status IN ('delivered','read')), NEW.delivered_at),
+                                        COALESCE(MAX(event_timestamp) FILTER (WHERE status='read'), NEW.read_at),
+                                        COALESCE(MAX(event_timestamp) FILTER (WHERE status='failed'), NEW.failed_at),
+                                        (ARRAY_AGG(error_code ORDER BY event_timestamp DESC) FILTER (WHERE status='failed'))[1],
+                                        (ARRAY_AGG(error_detail ORDER BY event_timestamp DESC) FILTER (WHERE status='failed'))[1]
+                                    INTO NEW.delivered_at, NEW.read_at, NEW.failed_at,
+                                         NEW.failure_code, NEW.failure_detail
+                                    FROM whatsapp_message_status_events
+                                    WHERE workspace_id=NEW.workspace_id AND message_id=NEW.message_id;
+                                    NEW.status := latest_status;
+                                END IF;
+                                RETURN NEW;
+                            END;
+                            $whatsapp$ LANGUAGE plpgsql
+                        $ddl$;
+                        CREATE TRIGGER trg_sync_whatsapp_message_status
+                        BEFORE INSERT ON whatsapp_messages
+                        FOR EACH ROW EXECUTE FUNCTION sync_whatsapp_message_status_before_insert();
                     END IF;
-                    RETURN NEW;
                 END;
-                $whatsapp$ LANGUAGE plpgsql
-            """)
-            cur.execute("""
-                DROP TRIGGER IF EXISTS trg_sync_whatsapp_message_status
-                ON whatsapp_messages
-            """)
-            cur.execute("""
-                CREATE TRIGGER trg_sync_whatsapp_message_status
-                BEFORE INSERT ON whatsapp_messages
-                FOR EACH ROW
-                EXECUTE FUNCTION sync_whatsapp_message_status_before_insert()
+                $install$
             """)
             for entry in payload.get("entry", []) or []:
                 if not isinstance(entry, dict):
@@ -139,7 +149,17 @@ def _save_messages(payload):
                     if not isinstance(value, dict):
                         continue
                     meta = value.get("metadata") or {}
-                    phone_id = str(meta.get("phone_number_id") or "")[:80]
+                    phone_id = str(meta.get("phone_number_id") or "").strip()[:80]
+                    if not phone_id:
+                        raise RuntimeError("Webhook WhatsApp sem phone_number_id.")
+                    cur.execute(
+                        "SELECT workspace_id FROM whatsapp_phone_number_workspaces WHERE phone_number_id=%s",
+                        (phone_id,),
+                    )
+                    workspace_row = cur.fetchone()
+                    if not workspace_row:
+                        raise RuntimeError("phone_number_id WhatsApp sem workspace associado.")
+                    workspace_id = workspace_row[0]
                     names = {}
                     for contact in value.get("contacts", []) or []:
                         if isinstance(contact, dict) and contact.get("wa_id"):
