@@ -74,6 +74,60 @@ def _save_messages(payload):
                 CREATE INDEX IF NOT EXISTS idx_whatsapp_status_workspace_time
                 ON whatsapp_message_status_events(workspace_id, event_timestamp)
             """)
+
+            # Reconcile status events that may arrive before the outbound message
+            # is persisted (Meta webhook and send request are independent requests).
+            cur.execute("""
+                CREATE OR REPLACE FUNCTION sync_whatsapp_message_status_before_insert()
+                RETURNS TRIGGER AS $
+                DECLARE
+                    latest_status VARCHAR(30);
+                BEGIN
+                    SELECT status INTO latest_status
+                    FROM whatsapp_message_status_events
+                    WHERE workspace_id = NEW.workspace_id
+                      AND message_id = NEW.message_id
+                    ORDER BY event_timestamp DESC NULLS LAST,
+                        CASE status
+                            WHEN 'read' THEN 4
+                            WHEN 'failed' THEN 3
+                            WHEN 'delivered' THEN 2
+                            WHEN 'sent' THEN 1
+                            ELSE 0
+                        END DESC
+                    LIMIT 1;
+
+                    IF latest_status IS NOT NULL THEN
+                        SELECT
+                            COALESCE(MAX(event_timestamp) FILTER (WHERE status='delivered'), NEW.delivered_at),
+                            COALESCE(MAX(event_timestamp) FILTER (WHERE status='read'), NEW.read_at),
+                            COALESCE(MAX(event_timestamp) FILTER (WHERE status='failed'), NEW.failed_at),
+                            (ARRAY_AGG(error_code ORDER BY event_timestamp DESC)
+                                FILTER (WHERE status='failed'))[1],
+                            (ARRAY_AGG(error_detail ORDER BY event_timestamp DESC)
+                                FILTER (WHERE status='failed'))[1]
+                        INTO NEW.delivered_at, NEW.read_at, NEW.failed_at,
+                             NEW.failure_code, NEW.failure_detail
+                        FROM whatsapp_message_status_events
+                        WHERE workspace_id = NEW.workspace_id
+                          AND message_id = NEW.message_id;
+
+                        NEW.status := latest_status;
+                    END IF;
+                    RETURN NEW;
+                END;
+                $ LANGUAGE plpgsql
+            """)
+            cur.execute("""
+                DROP TRIGGER IF EXISTS trg_sync_whatsapp_message_status
+                ON whatsapp_messages
+            """)
+            cur.execute("""
+                CREATE TRIGGER trg_sync_whatsapp_message_status
+                BEFORE INSERT ON whatsapp_messages
+                FOR EACH ROW
+                EXECUTE FUNCTION sync_whatsapp_message_status_before_insert()
+            """)
             for entry in payload.get("entry", []) or []:
                 if not isinstance(entry, dict):
                     continue
