@@ -99,7 +99,7 @@ def _save_messages(payload):
                           AND NOT tgisinternal
                     ) THEN
                         EXECUTE $ddl$
-                            CREATE FUNCTION sync_whatsapp_message_status_before_insert()
+                            CREATE OR REPLACE FUNCTION sync_whatsapp_message_status_before_insert()
                             RETURNS TRIGGER AS $whatsapp$
                             DECLARE latest_status VARCHAR(30);
                             BEGIN
