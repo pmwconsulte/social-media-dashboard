@@ -171,6 +171,9 @@ def _save_messages(payload):
                                 """,
                                 (status_message_id, workspace_id),
                             )
+                    for msg in value.get("messages", []) or []:
+                        if not isinstance(msg, dict):
+                            continue
                         msg_id = str(msg.get("id") or "").strip()
                         sender = str(msg.get("from") or "").strip()
                         if not msg_id or not sender:
