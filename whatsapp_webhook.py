@@ -106,13 +106,71 @@ def _save_messages(payload):
                         first_error = error_items[0] if error_items and isinstance(error_items[0], dict) else {}
                         error_code = str(first_error.get("code") or "")[:80] or None
                         error_detail = str(first_error.get("title") or first_error.get("message") or "")[:2000] or None
-                        cur.execute("""
+                        cur.execute(
+                            """
                             INSERT INTO whatsapp_message_status_events
                                 (workspace_id, message_id, recipient_phone, status,
                                  event_timestamp, error_code, error_detail)
-                            VALUES (%s,%s,%s,%s,
-                                CASE WHEN %s ~ '^[0-9]{1,12}
-                            continue
+                            VALUES (%s, %s, %s, %s,
+                                CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                THEN to_timestamp(%s::double precision) ELSE NOW() END,
+                                %s, %s)
+                            ON CONFLICT (message_id, status, event_timestamp) DO NOTHING
+                            """,
+                            (workspace_id, status_message_id, recipient, status_value,
+                             raw_stamp, raw_stamp, error_code, error_detail),
+                        )
+                        if status_value == "delivered":
+                            cur.execute(
+                                """
+                                UPDATE whatsapp_messages
+                                SET status='delivered',
+                                    delivered_at=COALESCE(delivered_at,
+                                        CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                        THEN to_timestamp(%s::double precision) ELSE NOW() END)
+                                WHERE message_id=%s AND workspace_id=%s
+                                  AND status NOT IN ('read', 'failed')
+                                """,
+                                (raw_stamp, raw_stamp, status_message_id, workspace_id),
+                            )
+                        elif status_value == "read":
+                            cur.execute(
+                                """
+                                UPDATE whatsapp_messages
+                                SET status='read',
+                                    delivered_at=COALESCE(delivered_at,
+                                        CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                        THEN to_timestamp(%s::double precision) ELSE NOW() END),
+                                    read_at=CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                        THEN to_timestamp(%s::double precision) ELSE NOW() END
+                                WHERE message_id=%s AND workspace_id=%s
+                                  AND status <> 'failed'
+                                """,
+                                (raw_stamp, raw_stamp, raw_stamp, raw_stamp,
+                                 status_message_id, workspace_id),
+                            )
+                        elif status_value == "failed":
+                            cur.execute(
+                                """
+                                UPDATE whatsapp_messages
+                                SET status='failed',
+                                    failed_at=CASE WHEN %s ~ '^[0-9]{1,12}$'
+                                        THEN to_timestamp(%s::double precision) ELSE NOW() END,
+                                    failure_code=%s, failure_detail=%s
+                                WHERE message_id=%s AND workspace_id=%s
+                                """,
+                                (raw_stamp, raw_stamp, error_code, error_detail,
+                                 status_message_id, workspace_id),
+                            )
+                        elif status_value == "sent":
+                            cur.execute(
+                                """
+                                UPDATE whatsapp_messages SET status='sent'
+                                WHERE message_id=%s AND workspace_id=%s
+                                  AND status IN ('received', 'sent')
+                                """,
+                                (status_message_id, workspace_id),
+                            )
                         msg_id = str(msg.get("id") or "").strip()
                         sender = str(msg.get("from") or "").strip()
                         if not msg_id or not sender:
