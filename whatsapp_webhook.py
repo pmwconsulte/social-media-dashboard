@@ -87,14 +87,15 @@ def _save_messages(payload):
                     FROM whatsapp_message_status_events
                     WHERE workspace_id = NEW.workspace_id
                       AND message_id = NEW.message_id
-                    ORDER BY event_timestamp DESC NULLS LAST,
+                    ORDER BY
                         CASE status
                             WHEN 'read' THEN 4
                             WHEN 'failed' THEN 3
                             WHEN 'delivered' THEN 2
                             WHEN 'sent' THEN 1
                             ELSE 0
-                        END DESC
+                        END DESC,
+                        event_timestamp DESC NULLS LAST
                     LIMIT 1;
 
                     IF latest_status IS NOT NULL THEN
@@ -212,6 +213,7 @@ def _save_messages(payload):
                                         THEN to_timestamp(%s::double precision) ELSE NOW() END,
                                     failure_code=%s, failure_detail=%s
                                 WHERE message_id=%s AND workspace_id=%s
+                                  AND status <> 'read'
                                 """,
                                 (raw_stamp, raw_stamp, error_code, error_detail,
                                  status_message_id, workspace_id),
