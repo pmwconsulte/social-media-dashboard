@@ -282,15 +282,31 @@ def _save_messages(payload):
 
 
 def get_whatsapp_template_status(template_name=None, language_code=None):
-    """Read the template approval status from Meta; quality is a separate signal."""
+    """Read Meta's live template approval state with safe diagnostic logging."""
     token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
     business_account_id = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "").strip()
-    if not token or not business_account_id:
-        return {"status": "UNKNOWN", "quality_score": None, "error": "Credenciais ou WABA não configuradas."}
-
     name = str(template_name or os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto")).strip()
     language = str(language_code or os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT")).strip()
     version = os.getenv("WHATSAPP_GRAPH_API_VERSION", "v25.0").strip() or "v25.0"
+
+    # Never log credentials, authorization headers, or full request URLs.
+    print(
+        "[WHATSAPP TEMPLATE STATUS] Consulta iniciada: "
+        f"token_configurado={bool(token)} "
+        f"waba_configurado={bool(business_account_id)} "
+        f"modelo={name!r} idioma={language!r} api={version}.",
+        flush=True,
+    )
+    if not token or not business_account_id:
+        missing = []
+        if not token:
+            missing.append("WHATSAPP_ACCESS_TOKEN")
+        if not business_account_id:
+            missing.append("WHATSAPP_BUSINESS_ACCOUNT_ID")
+        detail = "Configuração em falta: " + ", ".join(missing)
+        print(f"[WHATSAPP TEMPLATE STATUS] {detail}", flush=True)
+        return {"status": "UNKNOWN", "quality_score": None, "error": detail}
+
     try:
         response = requests.get(
             f"https://graph.facebook.com/{version}/{business_account_id}/message_templates",
@@ -302,23 +318,56 @@ def get_whatsapp_template_status(template_name=None, language_code=None):
         if not response.ok:
             error = payload.get("error") or {}
             detail = str(error.get("message") or f"HTTP {response.status_code}")[:250]
-            print(f"[WHATSAPP TEMPLATE STATUS] Meta API recusou consulta: {detail}")
+            error_code = error.get("code")
+            error_subcode = error.get("error_subcode")
+            print(
+                "[WHATSAPP TEMPLATE STATUS] Meta recusou consulta: "
+                f"http={response.status_code} code={error_code} "
+                f"subcode={error_subcode} detalhe={detail}",
+                flush=True,
+            )
             return {"status": "UNKNOWN", "quality_score": None, "error": detail}
 
         templates = payload.get("data") or []
         match = next((item for item in templates
                       if item.get("name") == name and item.get("language") == language), None)
+        match_type = "nome_idioma"
         if match is None:
             match = next((item for item in templates if item.get("name") == name), None)
+            match_type = "apenas_nome"
         if match is None:
+            print(
+                "[WHATSAPP TEMPLATE STATUS] Consulta concluída sem correspondência: "
+                f"http={response.status_code} resultados={len(templates)} "
+                f"modelo={name!r} idioma={language!r}.",
+                flush=True,
+            )
             return {"status": "NOT_FOUND", "quality_score": None, "error": None}
-        return {
-            "status": str(match.get("status") or "UNKNOWN").upper(),
-            "quality_score": match.get("quality_score"),
-            "error": None,
-        }
-    except Exception as exc:
-        print(f"[WHATSAPP TEMPLATE STATUS] {type(exc).__name__}: consulta indisponível.")
+
+        status = str(match.get("status") or "UNKNOWN").upper()
+        quality = match.get("quality_score")
+        print(
+            "[WHATSAPP TEMPLATE STATUS] Consulta concluída: "
+            f"http={response.status_code} resultados={len(templates)} "
+            f"correspondencia={match_type} status={status} "
+            f"idioma_meta={match.get('language')!r} qualidade={quality!r}.",
+            flush=True,
+        )
+        return {"status": status, "quality_score": quality, "error": None}
+    except requests.Timeout:
+        print("[WHATSAPP TEMPLATE STATUS] Timeout ao consultar a Meta (15s).", flush=True)
+        return {"status": "UNKNOWN", "quality_score": None, "error": "Timeout"}
+    except requests.RequestException as exc:
+        print(
+            f"[WHATSAPP TEMPLATE STATUS] Erro de rede: {type(exc).__name__}.",
+            flush=True,
+        )
+        return {"status": "UNKNOWN", "quality_score": None, "error": type(exc).__name__}
+    except (ValueError, TypeError) as exc:
+        print(
+            f"[WHATSAPP TEMPLATE STATUS] Resposta Meta inválida: {type(exc).__name__}.",
+            flush=True,
+        )
         return {"status": "UNKNOWN", "quality_score": None, "error": type(exc).__name__}
 
 def send_whatsapp_text(phone_number_id, recipient, message_text):
