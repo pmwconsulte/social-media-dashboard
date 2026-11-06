@@ -204,10 +204,10 @@ def test_postgres_encaminha_evento_para_workspace_do_phone_number_id(pg_schema):
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT m.workspace_id, w.slug
-                FROM whatsapp_messages m
-                JOIN workspaces w ON w.id=m.workspace_id
-                WHERE m.message_id=%s
+                SELECT e.workspace_id, w.slug
+                FROM whatsapp_message_status_events e
+                JOIN workspaces w ON w.id=e.workspace_id
+                WHERE e.message_id=%s
             """, (message_id,))
             row = cur.fetchone()
             assert row[1] == "workspace-other"
