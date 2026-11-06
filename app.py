@@ -55,7 +55,12 @@ app = dash.Dash(
 server = app.server
 
 # WhatsApp Cloud API webhook verification and event acknowledgement.
-from whatsapp_webhook import (register_whatsapp_webhooks, send_whatsapp_text, send_whatsapp_template,\n                               get_whatsapp_template_status)
+from whatsapp_webhook import (
+    register_whatsapp_webhooks,
+    send_whatsapp_text,
+    send_whatsapp_template,
+    get_whatsapp_template_status,
+)
 register_whatsapp_webhooks(server)
 
 
