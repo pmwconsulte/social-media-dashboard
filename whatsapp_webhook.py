@@ -278,6 +278,47 @@ def _save_messages(payload):
         conn.close()
 
 
+
+def get_whatsapp_template_status(template_name=None, language_code=None):
+    """Read the template approval status from Meta; quality is a separate signal."""
+    token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
+    business_account_id = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "").strip()
+    if not token or not business_account_id:
+        return {"status": "UNKNOWN", "quality_score": None, "error": "Credenciais ou WABA não configuradas."}
+
+    name = str(template_name or os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto")).strip()
+    language = str(language_code or os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT")).strip()
+    version = os.getenv("WHATSAPP_GRAPH_API_VERSION", "v25.0").strip() or "v25.0"
+    try:
+        response = requests.get(
+            f"https://graph.facebook.com/{version}/{business_account_id}/message_templates",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"name": name, "fields": "name,status,quality_score,language", "limit": 100},
+            timeout=15,
+        )
+        payload = response.json() if response.content else {}
+        if not response.ok:
+            error = payload.get("error") or {}
+            detail = str(error.get("message") or f"HTTP {response.status_code}")[:250]
+            print(f"[WHATSAPP TEMPLATE STATUS] Meta API recusou consulta: {detail}")
+            return {"status": "UNKNOWN", "quality_score": None, "error": detail}
+
+        templates = payload.get("data") or []
+        match = next((item for item in templates
+                      if item.get("name") == name and item.get("language") == language), None)
+        if match is None:
+            match = next((item for item in templates if item.get("name") == name), None)
+        if match is None:
+            return {"status": "NOT_FOUND", "quality_score": None, "error": None}
+        return {
+            "status": str(match.get("status") or "UNKNOWN").upper(),
+            "quality_score": match.get("quality_score"),
+            "error": None,
+        }
+    except Exception as exc:
+        print(f"[WHATSAPP TEMPLATE STATUS] {type(exc).__name__}: consulta indisponível.")
+        return {"status": "UNKNOWN", "quality_score": None, "error": type(exc).__name__}
+
 def send_whatsapp_text(phone_number_id, recipient, message_text):
     """Send a customer-service text through the configured WhatsApp Cloud API."""
     token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
