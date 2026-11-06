@@ -30,6 +30,8 @@ def _save_messages(payload):
     saved = 0
     try:
         with conn.cursor() as cur:
+            # Lock before all schema DDL to avoid concurrent first-request races.
+            cur.execute("SELECT pg_advisory_xact_lock(74629180512027)")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS whatsapp_messages (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -88,8 +90,7 @@ def _save_messages(payload):
 
             # Reconcile status events that may arrive before the outbound message
             # is persisted (Meta webhook and send request are independent requests).
-            # Serializa a instalação única do trigger. O caminho normal não o recria.
-            cur.execute("SELECT pg_advisory_xact_lock(74629180512027)")
+            # The transaction lock above also serializes trigger installation.
             cur.execute("""
                 DO $install$
                 BEGIN
@@ -219,6 +220,7 @@ def _save_messages(payload):
                                     read_at=CASE WHEN %s ~ '^[0-9]{1,12}$'
                                         THEN to_timestamp(%s::double precision) ELSE NOW() END
                                 WHERE message_id=%s AND workspace_id=%s
+                                  AND status <> 'failed'
                                 """,
                                 (raw_stamp, raw_stamp, raw_stamp, raw_stamp,
                                  status_message_id, workspace_id),
