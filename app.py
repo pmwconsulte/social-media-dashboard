@@ -55,7 +55,12 @@ app = dash.Dash(
 server = app.server
 
 # WhatsApp Cloud API webhook verification and event acknowledgement.
-from whatsapp_webhook import register_whatsapp_webhooks, send_whatsapp_text, send_whatsapp_template
+from whatsapp_webhook import (
+    register_whatsapp_webhooks,
+    send_whatsapp_text,
+    send_whatsapp_template,
+    get_whatsapp_template_status,
+)
 register_whatsapp_webhooks(server)
 
 
@@ -139,9 +144,24 @@ def whatsapp_send_template():
     if not expected_csrf or not received_csrf or not secrets.compare_digest(expected_csrf, received_csrf):
         return Response("Pedido inválido. Atualize a página e tente novamente.", status=400)
 
-    # Fail closed until approval has been verified in WhatsApp Manager.
-    if os.getenv("WHATSAPP_TEMPLATE_STATUS", "IN_REVIEW").strip().upper() != "APPROVED":
-        return Response("O modelo pmw_primeiro_contacto ainda não está aprovado pela Meta. O envio de novas conversas permanece bloqueado.", status=409, mimetype="text/plain")
+    # Confirm the live Meta approval state; quality_score is not an approval state.
+    template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto").strip()
+    language_code = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT").strip()
+    template_info = get_whatsapp_template_status(template_name, language_code)
+    if template_info.get("status") != "APPROVED":
+        state = template_info.get("status", "UNKNOWN")
+        if state == "PENDING":
+            detail = "A Meta ainda está a analisar o modelo."
+        elif state == "REJECTED":
+            detail = "A Meta rejeitou o modelo. Consulte o motivo no WhatsApp Manager."
+        elif state == "PAUSED":
+            detail = "A Meta pausou o modelo."
+        elif state == "DISABLED":
+            detail = "A Meta desactivou o modelo."
+        else:
+            detail = "Não foi possível confirmar a aprovação do modelo directamente na Meta."
+        return Response(detail + " Estado consultado: " + state + ". O envio permanece bloqueado por segurança.",
+                        status=409, mimetype="text/plain")
     workspace_slug = (session.get("workspace_slug") or "").strip()
     recipient = "".join(ch for ch in (request.form.get("recipient") or "") if ch.isdigit())
     if not recipient or len(recipient) < 8 or len(recipient) > 15:
@@ -256,7 +276,10 @@ def whatsapp_inbox():
     workspace_slug = (session.get("workspace_slug") or "").strip()
     term = (request.args.get("q") or "").strip()[:120]
     csrf_token = session.setdefault("whatsapp_csrf", secrets.token_urlsafe(32))
-    template_approved = os.getenv("WHATSAPP_TEMPLATE_STATUS", "IN_REVIEW").strip().upper() == "APPROVED"
+    template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto").strip()
+    language_code = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT").strip()
+    template_info = get_whatsapp_template_status(template_name, language_code)
+    template_approved = template_info.get("status") == "APPROVED"
     conn = None
     try:
         conn = get_connection()
@@ -333,8 +356,16 @@ def whatsapp_inbox():
         else:
             new_conversation = (
                 "<div class='new-conversation'><h2>Nova conversa</h2>"
-                "<p class='template-pending'>Modelo pmw_primeiro_contacto: Em revisão na Meta. "
-                "O envio de novas conversas está bloqueado até à aprovação.</p></div>"
+                "<p class='template-pending'>"
+                + ("Modelo pmw_primeiro_contacto: " +
+                   ("Em revisão na Meta." if template_info.get("status") == "PENDING" else
+                    "Rejeitado pela Meta." if template_info.get("status") == "REJECTED" else
+                    "Pausado pela Meta." if template_info.get("status") == "PAUSED" else
+                    "Estado não confirmado junto da Meta."))
+                + " O envio de novas conversas permanece bloqueado até a API confirmar o estado APPROVED."
+                + (" Qualidade: " + escape(str(template_info.get("quality_score")))
+                   if template_info.get("quality_score") else "")
+                + "</p></div>"
             )
 
         page = f"""<!doctype html><html lang="pt"><head><meta charset="utf-8">
