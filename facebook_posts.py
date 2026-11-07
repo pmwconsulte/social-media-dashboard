@@ -59,8 +59,8 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
                     params={
                         "fields": "id,message,created_time,permalink_url,full_picture,shares,comments.limit(0).summary(true),reactions.limit(0).summary(true)",
                         "limit": 25,
-                        "access_token": token,
                     },
+                    headers={"Authorization": f"Bearer {token}"},
                     timeout=20,
                 )
                 payload = response.json()
@@ -109,7 +109,7 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
                                 '</p><p class="stats">' + stats_text + '</p>' + link + '</article>'
                             )
                         body = "".join(cards)
-            except (requests.RequestException, ValueError, TypeError, Exception) as exc:
+            except Exception as exc:
                 print(f"[FACEBOOK POSTS] Erro ao consultar publicações: {type(exc).__name__}.")
                 body = '<p class="muted">Não foi possível consultar as publicações. Verifique os logs do servidor.</p>'
         else:
