@@ -1,4 +1,3 @@
-import io
 from unittest.mock import Mock
 
 import pytest
@@ -23,9 +22,10 @@ class FakeCursor:
     def execute(self, query, params):
         self.query = query
         self.params = params
+        self.result = [page[:4] for page in self.pages if page[4] == params[0]]
 
     def fetchall(self):
-        return self.pages
+        return self.result
 
 
 class FakeConnection:
@@ -46,8 +46,9 @@ def client(monkeypatch):
     cipher = Fernet(key)
     encrypted = cipher.encrypt(b"page-token").decode("utf-8")
     pages = [
-        ("page-row-1", "123456", "PMW Consult", encrypted),
-        ("page-row-2", "789012", "Ayane Doces", encrypted),
+        ("page-row-1", "123456", "PMW Consult", encrypted, "workspace-test"),
+        ("page-row-2", "789012", "Ayane Doces", encrypted, "workspace-test"),
+        ("page-row-foreign", "999999", "Página de outro workspace", encrypted, "workspace-alheio"),
     ]
     connection = FakeConnection(pages)
     app = Flask(__name__)
@@ -90,7 +91,10 @@ def test_only_pages_from_current_workspace_query_are_rendered(client, monkeypatc
     assert response.status_code == 200
     assert "PMW Consult" in response.get_data(as_text=True)
     assert "Ayane Doces" in response.get_data(as_text=True)
+    assert "Página de outro workspace" not in response.get_data(as_text=True)
     assert connection.fake_cursor.params == ("workspace-test",)
+    assert "JOIN workspaces w ON w.id=sa.workspace_id" in connection.fake_cursor.query
+    assert "WHERE w.slug=%s" in connection.fake_cursor.query
     assert connection.closed is True
 
 
@@ -99,15 +103,16 @@ def test_page_selection_uses_page_id_and_decrypted_page_token(client, monkeypatc
     login(test_client)
     calls = {}
 
-    def fake_get(url, params, timeout):
-        calls.update(url=url, params=params, timeout=timeout)
+    def fake_get(url, params, headers, timeout):
+        calls.update(url=url, params=params, headers=headers, timeout=timeout)
         return api_response({"data": []})
 
     monkeypatch.setattr(facebook_posts.requests, "get", fake_get)
     response = test_client.get("/facebook/posts?page=page-row-2")
     assert response.status_code == 200
     assert calls["url"].endswith("/789012/posts")
-    assert calls["params"]["access_token"] == "page-token"
+    assert "access_token" not in calls["params"]
+    assert calls["headers"]["Authorization"] == "Bearer page-token"
     assert calls["params"]["limit"] == 25
     assert "selected" in response.get_data(as_text=True)
 
