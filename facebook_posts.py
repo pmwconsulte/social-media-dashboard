@@ -131,5 +131,5 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
         <p class="muted">Publicações e contagens devolvidas pela API oficial. Campos não disponibilizados pela Meta não são estimados.</p>
         <form method="get"><label for="page">Página: </label>
         <select id="page" name="page">""" + options + """</select>
-        <button type="submit">Consultar</button></form>""" + body + """</main></body></html>
+        <button type="submit">Consultar</button></form>""" + body + """</main></body></html>"""
     return facebook_posts
