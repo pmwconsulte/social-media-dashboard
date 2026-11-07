@@ -66,10 +66,17 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
                 payload = response.json()
                 if not response.ok:
                     error = payload.get("error", {}) if isinstance(payload, dict) else {}
+                    # Log the Meta diagnostic message, but never log request headers,
+                    # access tokens, or the complete response payload.
+                    error_message = str(error.get("message") or "Sem mensagem de erro")[:500]
+                    error_type = str(error.get("type") or "desconhecido")[:100]
                     print(
                         "[FACEBOOK POSTS] API indisponível: "
-                        f"HTTP={response.status_code} code={error.get('code')!r} "
-                        f"subcode={error.get('error_subcode')!r}."
+                        f"HTTP={response.status_code} type={error_type!r} "
+                        f"code={error.get('code')!r} "
+                        f"subcode={error.get('error_subcode')!r} "
+                        f"message={error_message!r} "
+                        f"fbtrace_id={payload.get('fbtrace_id')!r}."
                     )
                     body = '<p class="muted">A Meta não disponibilizou as publicações desta Página com as permissões atuais. Os seguidores continuam preservados.</p>'
                 else:
