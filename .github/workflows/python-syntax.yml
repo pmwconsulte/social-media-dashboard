@@ -53,4 +53,4 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
       - name: Run automated tests
-        run: pytest -q test_instagram_inbox.py test_payments.py test_whatsapp_webhook.py test_whatsapp_postgres.py
+        run: pytest -q test_instagram_inbox.py test_payments.py test_whatsapp_webhook.py test_whatsapp_postgres.py test_facebook_posts.py
