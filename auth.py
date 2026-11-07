@@ -22,6 +22,7 @@ from flask import (
 
 from billing import PLANS, evaluate_workspace_access
 from database import get_connection
+from facebook_posts import register_facebook_posts_route
 
 
 def _oauth_configured():
@@ -1203,6 +1204,7 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 
 def setup_auth(server: Flask):
     """Configure secure session authentication for the Dash server."""
+    register_facebook_posts_route(server, get_connection, _token_cipher)
     secret_key = os.getenv("SECRET_KEY")
     if not secret_key:
         raise RuntimeError("SECRET_KEY não está configurada no ambiente.")
