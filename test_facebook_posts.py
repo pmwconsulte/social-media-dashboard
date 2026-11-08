@@ -196,3 +196,67 @@ def test_request_exception_does_not_expose_credentials(client, monkeypatch, caps
     assert response.status_code == 200
     assert "Não foi possível consultar as publicações" in response.get_data(as_text=True)
     assert "page-token" not in captured.out
+
+
+def test_photo_and_video_attachments_render_preview_and_original_link(client, monkeypatch):
+    test_client, _, _ = client
+    login(test_client)
+    payload = {
+        "data": [{
+            "id": "post-media",
+            "message": "Publicação com fotografia e Reel",
+            "created_time": "2026-10-24T05:38:23+0000",
+            "attachments": {"data": [
+                {
+                    "media_type": "photo",
+                    "type": "photo",
+                    "url": "https://www.facebook.com/photo.php?fbid=123",
+                    "media": {"image": {"src": "https://scontent.xx.fbcdn.net/photo.jpg"}},
+                },
+                {
+                    "media_type": "video",
+                    "type": "video_inline",
+                    "target": {"url": "https://www.facebook.com/reel/456/"},
+                    "media": {"image": {"src": "https://scontent.xx.fbcdn.net/reel.jpg"}},
+                },
+            ]},
+        }]
+    }
+    calls = {}
+    def fake_get(url, params, headers, timeout):
+        calls.update(url=url, params=params)
+        return api_response(payload)
+    monkeypatch.setattr(facebook_posts.requests, "get", fake_get)
+    response = test_client.get("/facebook/posts")
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "photo.jpg" in page
+    assert "reel.jpg" in page
+    assert "photo.php?fbid=123" in page
+    assert "/reel/456/" in page
+    assert "Ver vídeo/Reel no Facebook" in page
+    assert "attachments{media_type,type,url,target,media,subattachments}" in calls["params"]["fields"]
+
+
+def test_attachment_renderer_rejects_unsafe_image_and_link_schemes():
+    rendered = facebook_posts._render_attachment({
+        "media_type": "photo",
+        "url": "javascript:alert(1)",
+        "media": {"image": {"src": "https://evil.example/image.jpg"}},
+    })
+    assert "javascript:" not in rendered
+    assert "evil.example" not in rendered
+
+
+def test_attachment_renderer_supports_multiple_subattachments():
+    rendered = facebook_posts._render_attachment({
+        "media_type": "album",
+        "subattachments": {"data": [
+            {"media_type": "photo", "url": "https://www.facebook.com/photo/1",
+             "media": {"image": {"src": "https://scontent.xx.fbcdn.net/one.jpg"}}},
+            {"media_type": "photo", "url": "https://www.facebook.com/photo/2",
+             "media": {"image": {"src": "https://scontent.xx.fbcdn.net/two.jpg"}}},
+        ]},
+    })
+    assert "one.jpg" in rendered
+    assert "two.jpg" in rendered
