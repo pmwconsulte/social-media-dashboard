@@ -87,10 +87,17 @@ def _facebook_authorize_url(state):
     redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
     if not app_id or not redirect_uri:
         raise RuntimeError("Configure o App ID Meta e FACEBOOK_OAUTH_REDIRECT_URI.")
-    # Facebook Login: permissões necessárias para descobrir a conta
-    # Instagram profissional ligada à Página. Insights avançados serão
-    # solicitados apenas quando a permissão correspondente estiver validada.
-    scopes = ["pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_manage_insights"]
+    # Facebook Login: permissões para descobrir Páginas, ler o conteúdo
+    # publicado nelas e identificar contas Instagram profissionais ligadas.
+    # A Meta exige pages_read_user_content (ou Page Public Content Access)
+    # para consultar publicações através da Pages API.
+    scopes = [
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_read_user_content",
+        "instagram_basic",
+        "instagram_manage_insights",
+    ]
     params = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
