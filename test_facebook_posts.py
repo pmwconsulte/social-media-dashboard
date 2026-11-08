@@ -110,7 +110,7 @@ def test_page_selection_uses_page_id_and_decrypted_page_token(client, monkeypatc
     monkeypatch.setattr(facebook_posts.requests, "get", fake_get)
     response = test_client.get("/facebook/posts?page=page-row-2")
     assert response.status_code == 200
-    assert calls["url"].endswith("/789012/posts")
+    assert calls["url"].endswith("/789012/published_posts")
     assert "access_token" not in calls["params"]
     assert calls["headers"]["Authorization"] == "Bearer page-token"
     assert calls["params"]["limit"] == 25
@@ -127,7 +127,7 @@ def test_page_selection_cannot_select_an_unlisted_row(client, monkeypatch):
     )
     response = test_client.get("/facebook/posts?page=foreign-page-row")
     assert response.status_code == 200
-    assert calls[0].endswith("/123456/posts")
+    assert calls[0].endswith("/123456/published_posts")
 
 
 def test_empty_posts_are_reported_without_inventing_metrics(client, monkeypatch):
@@ -158,7 +158,7 @@ def test_meta_http_errors_are_handled_without_exposing_token(client, monkeypatch
     assert f"code={code}" in captured.out
 
 
-def test_optional_fields_are_shown_only_when_meta_returns_them(client, monkeypatch):
+def test_only_meta_fields_requested_by_dashboard_are_rendered(client, monkeypatch):
     test_client, _, _ = client
     login(test_client)
     payload = {
@@ -175,7 +175,9 @@ def test_optional_fields_are_shown_only_when_meta_returns_them(client, monkeypat
     page = response.get_data(as_text=True)
     assert response.status_code == 200
     assert "Publicação de teste" in page
-    assert "Reações: 4" in page
+    # The dashboard requests only the fields validated against Meta's API.
+    # Extra fields in a mocked payload must not be presented as dashboard metrics.
+    assert "Reações: 4" not in page
     assert "Comentários:" not in page
     assert "Partilhas:" not in page
     assert "Interações não disponibilizadas pela API" not in page

@@ -55,9 +55,11 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
             try:
                 token = token_cipher().decrypt(selected[3].encode("utf-8")).decode("utf-8")
                 response = requests.get(
-                    f"https://graph.facebook.com/{version}/{selected[1]}/posts",
+                    f"https://graph.facebook.com/{version}/{selected[1]}/published_posts",
                     params={
-                        "fields": "id,message,created_time,permalink_url,full_picture,shares,comments.limit(0).summary(true),reactions.limit(0).summary(true)",
+                        # These are the exact fields confirmed in the successful
+                        # Graph API Explorer test for this Page.
+                        "fields": "id,message,created_time",
                         "limit": 25,
                     },
                     headers={"Authorization": f"Bearer {token}"},
@@ -88,32 +90,9 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
                         for post in posts:
                             message = html.escape(str(post.get("message") or "Publicação sem texto"))
                             created = html.escape(str(post.get("created_time") or ""))
-                            permalink = html.escape(str(post.get("permalink_url") or ""), quote=True)
-                            comments = (post.get("comments") or {}).get("summary", {}).get("total_count")
-                            reactions = (post.get("reactions") or {}).get("summary", {}).get("total_count")
-                            shares = (post.get("shares") or {}).get("count")
-                            stats = []
-                            if isinstance(reactions, int):
-                                stats.append(f"Reações: {reactions}")
-                            if isinstance(comments, int):
-                                stats.append(f"Comentários: {comments}")
-                            if isinstance(shares, int):
-                                stats.append(f"Partilhas: {shares}")
-                            stats_text = html.escape(" · ".join(stats) if stats else "Interações não disponibilizadas pela API")
-                            picture = post.get("full_picture")
-                            image = (
-                                '<img src="' + html.escape(str(picture), quote=True) +
-                                '" alt="Imagem da publicação" loading="lazy">'
-                                if picture and str(picture).startswith("https://") else ""
-                            )
-                            link = (
-                                '<a href="' + permalink + '" target="_blank" rel="noopener noreferrer">Ver publicação no Facebook</a>'
-                                if permalink else ""
-                            )
                             cards.append(
-                                '<article class="post">' + image +
-                                '<p class="date">' + created + '</p><p>' + message +
-                                '</p><p class="stats">' + stats_text + '</p>' + link + '</article>'
+                                '<article class="post"><p class="date">' + created +
+                                '</p><p>' + message + '</p></article>'
                             )
                         body = "".join(cards)
             except Exception as exc:
@@ -135,7 +114,7 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
         .stats{color:#7dd3fc}.post a,a{color:#7dd3fc}
         </style></head><body><main><p><a href="/account">← Voltar à conta</a></p>
         <h1>Publicações do Facebook</h1>
-        <p class="muted">Publicações e contagens devolvidas pela API oficial. Campos não disponibilizados pela Meta não são estimados.</p>
+        <p class="muted">Publicações devolvidas pela API oficial. Apenas os campos confirmados pela Meta são apresentados.</p>
         <form method="get"><label for="page">Página: </label>
         <select id="page" name="page">""" + options + """</select>
         <button type="submit">Consultar</button></form>""" + body + """</main></body></html>"""
