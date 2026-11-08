@@ -154,7 +154,8 @@ def test_meta_http_errors_are_handled_without_exposing_token(client, monkeypatch
     assert response.status_code == 200
     assert "não disponibilizou as publicações" in response.get_data(as_text=True)
     assert "page-token" not in captured.out
-    assert "private detail" not in captured.out
+    assert "private detail" in captured.out
+    assert f"code={code}" in captured.out
 
 
 def test_optional_fields_are_shown_only_when_meta_returns_them(client, monkeypatch):
