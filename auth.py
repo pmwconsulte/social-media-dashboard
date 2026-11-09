@@ -1280,7 +1280,7 @@ def setup_auth(server: Flask):
         # de pesquisa; X-Robots-Tag também cobre respostas que não são HTML.
         noindex_paths = (
             "/login", "/signup", "/account", "/account/password", "/billing",
-            "/logout", "/oauth/instagram", "/oauth/instagram/callback", "/instagram/inbox",
+            "/logout", "/oauth/instagram", "/oauth/instagram/callback", "/instagram/inbox", "/instagram/publish",
             "/health", "/diagnostico-dados",
         )
         if request.path in noindex_paths or request.path.startswith("/social-accounts/"):
@@ -1322,6 +1322,7 @@ def setup_auth(server: Flask):
             "/oauth/instagram",
             "/oauth/instagram/callback",
             "/instagram/inbox",
+            "/instagram/publish",
             "/health",
         }
         if request.path in auth_paths:
