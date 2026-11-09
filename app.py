@@ -856,6 +856,43 @@ def carregar_insights_periodo(periodo_dias):
 
 
 
+
+def grafico_periodos_instagram(historico, metrica, titulo, eixo_y, taxa=False):
+    """Compara snapshots oficiais de janelas distintas; não os trata como série diária."""
+    linhas = []
+    for dias in (7, 14, 30, 60):
+        snapshot = historico.get(dias, {})
+        valor = snapshot.get(metrica)
+        if taxa:
+            alcance = snapshot.get("reach")
+            interacoes = snapshot.get("interactions")
+            valor = (
+                round(interacoes / alcance * 100, 2)
+                if alcance is not None and alcance > 0 and interacoes is not None
+                else None
+            )
+        if valor is not None:
+            linhas.append({
+                "periodo": f"Últimos {dias} dias",
+                "valor": float(valor),
+            })
+
+    if not linhas:
+        return grafico_sem_dados(titulo)
+
+    figura = px.bar(
+        pd.DataFrame(linhas),
+        x="periodo",
+        y="valor",
+        title=titulo,
+        labels={"periodo": "Período", "valor": eixo_y},
+        text_auto=".2f" if taxa else True,
+    )
+    figura.update_traces(textposition="outside")
+    configurar_grafico(figura)
+    figura.update_layout(uniformtext_minsize=8, uniformtext_mode="hide")
+    return figura
+
 def carregar_insights_facebook(periodo_dias=28):
     """Carrega totais Facebook reais: snapshot agregado de 28 dias ou agregação diária identificada."""
     conn = None
@@ -1970,10 +2007,29 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
     dias_periodo = int(periodo_insights or 7)
     is_instagram = plataforma_atual.lower().startswith("instagram")
     is_facebook = plataforma_atual.lower().startswith("facebook")
+    historico_periodos_instagram = (
+        {dias: carregar_insights_periodo(dias) for dias in (7, 14, 30, 60)}
+        if is_instagram else {}
+    )
     snapshot_periodo = (
-        carregar_insights_periodo(dias_periodo) if is_instagram
+        historico_periodos_instagram.get(dias_periodo, {"reach": None, "views": None, "interactions": None, "snapshot_date": None})
+        if is_instagram
         else carregar_insights_facebook(dias_periodo) if is_facebook
         else {"reach": None, "views": None, "interactions": None, "snapshot_date": None, "reach_label": "Alcance"}
+    )
+    graficos_periodo_instagram = (
+        (
+            grafico_periodos_instagram(
+                historico_periodos_instagram, "reach",
+                "📊 Alcance oficial por período — Instagram", "Contas alcançadas",
+            ),
+            grafico_periodos_instagram(
+                historico_periodos_instagram, "interactions",
+                "💬 Taxa de interação oficial por período — Instagram", "Taxa de interação (%)",
+                taxa=True,
+            ),
+        )
+        if is_instagram else (None, None)
     )
     titulo_28d = "📆 Instagram — resumo oficial dos últimos 28 dias" if is_instagram else "📆 Facebook — resumo oficial dos últimos 28 dias"
     descricao_28d = "Totais agregados oficiais do Instagram. O alcance é único para o período." if is_instagram else "Totais agregados consultados na API oficial da Página do Facebook. Métricas não disponibilizadas pela API permanecem N/D."
@@ -2133,7 +2189,10 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
             "⚠️ Existem Insights agregados, mas ainda não há histórico diário suficiente para avaliar tendências.",
             "💡 Continue a sincronizar diariamente para calcular crescimento e um Score IA fiável.",
             "Relatório indisponível: existem métricas agregadas dos últimos 28 dias, mas não há histórico diário suficiente para análise temporal.",
-            vazio, vazio, vazio, vazio,
+            vazio,
+            graficos_periodo_instagram[0] if is_instagram else vazio,
+            graficos_periodo_instagram[1] if is_instagram else vazio,
+            vazio,
         ), idioma)
 
     kpis = calcular_kpis(dados)
@@ -2233,24 +2292,27 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
     fig1.update_traces(line={"width": 3}, marker={"size": 7})
     configurar_grafico(fig1)
 
-    fig2 = px.bar(
-        dados,
-        x="data",
-        y="alcance",
-        title=f"📊 Alcance — {plataforma}",
-        labels={"data": "Data", "alcance": "Alcance"},
-    )
-    configurar_grafico(fig2)
+    if is_instagram:
+        fig2, fig3 = graficos_periodo_instagram
+    else:
+        fig2 = px.bar(
+            dados,
+            x="data",
+            y="alcance",
+            title=f"📊 Alcance — {plataforma}",
+            labels={"data": "Data", "alcance": "Alcance"},
+        )
+        configurar_grafico(fig2)
 
-    fig3 = px.area(
-        dados,
-        x="data",
-        y="engajamento",
-        markers=True,
-        title=f"💬 Engajamento — {plataforma}",
-        labels={"data": "Data", "engajamento": "Engajamento (%)"},
-    )
-    configurar_grafico(fig3)
+        fig3 = px.area(
+            dados,
+            x="data",
+            y="engajamento",
+            markers=True,
+            title=f"💬 Engajamento — {plataforma}",
+            labels={"data": "Data", "engajamento": "Engajamento (%)"},
+        )
+        configurar_grafico(fig3)
 
     try:
         previsao = prever_crescimento(dados, dias=7)
