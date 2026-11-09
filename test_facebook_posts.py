@@ -260,3 +260,36 @@ def test_attachment_renderer_supports_multiple_subattachments():
     })
     assert "one.jpg" in rendered
     assert "two.jpg" in rendered
+
+
+def test_video_attachment_embeds_only_facebook_cdn_mp4(client, monkeypatch):
+    test_client, _, _ = client
+    login(test_client)
+    payload = {"data": [{
+        "id": "reel-1",
+        "message": "Reel com vídeo",
+        "attachments": {"data": [{
+            "media_type": "video",
+            "type": "video_inline",
+            "target": {"url": "https://www.facebook.com/reel/456/"},
+            "media": {
+                "image": {"src": "https://scontent.xx.fbcdn.net/reel.jpg"},
+                "source": "https://video.xx.fbcdn.net/v/t42.1790-2/sample.mp4",
+            },
+        }]},
+    }]}
+    monkeypatch.setattr(facebook_posts.requests, "get", lambda *a, **k: api_response(payload))
+    response = test_client.get("/facebook/posts")
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "<video" in page
+    assert "controls playsinline" in page
+    assert "sample.mp4" in page
+    assert "reel.jpg" in page
+    assert "/reel/456/" in page
+
+
+def test_video_renderer_rejects_non_facebook_and_http_streams():
+    assert facebook_posts._safe_video_url("https://evil.example/video.mp4") == ""
+    assert facebook_posts._safe_video_url("http://video.xx.fbcdn.net/video.mp4") == ""
+    assert facebook_posts._safe_video_url("javascript:alert(1)") == ""
