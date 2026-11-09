@@ -1,8 +1,9 @@
 """Instagram single-photo publishing route for Instagram Login accounts."""
-import html
 import ipaddress
 import time
 from urllib.parse import urlsplit
+import secrets
+import os
 
 import requests
 from flask import redirect, render_template_string, request, session, url_for
@@ -38,7 +39,7 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
         if not session.get("authenticated"):
             return redirect(url_for("login"))
 
-        csrf = session.setdefault("instagram_publish_csrf", __import__("secrets").token_urlsafe(32))
+        csrf = session.setdefault("instagram_publish_csrf", secrets.token_urlsafe(32))
         workspace_slug = session.get("workspace_slug")
         conn = None
         try:
@@ -69,7 +70,10 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
             )
 
         selected_id = request.form.get("account_id", "") if request.method == "POST" else request.args.get("account", "")
-        selected = next((row for row in accounts if str(row[0]) == selected_id), accounts[0])
+        selected = next((row for row in accounts if str(row[0]) == selected_id), None)
+        if request.method == "POST" and not selected:
+            return "Conta Instagram inválida para este workspace. Actualize a página.", 400
+        selected = selected or accounts[0]
         account_id, username, encrypted_token = selected
         options = [{"id": str(row[0]), "username": str(row[1])} for row in accounts]
 
@@ -101,8 +105,10 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
 
         try:
             access_token = token_cipher().decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
-            version = __import__("os").getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
-            base = f"https://graph.instagram.com/{version}"
+                version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+            if not version.startswith("v") or not version[1:].replace(".", "").isdigit():
+                raise ValueError("Invalid Instagram Graph API version")
+            base = "https://graph.instagram.com/" + version
             me = requests.get(
                 f"{base}/me", params={"fields": "id,username", "access_token": access_token},
                 timeout=15
@@ -111,6 +117,23 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
             ig_id = str(me.json().get("id", ""))
             if not ig_id:
                 raise ValueError("Instagram account id missing")
+
+            quota = requests.get(
+                base + "/" + ig_id + "/content_publishing_limit",
+                params={"access_token": access_token}, timeout=15,
+            )
+            quota.raise_for_status()
+            quota_data = quota.json().get("data", [])
+            if quota_data:
+                quota_info = quota_data[0]
+                quota_total = (quota_info.get("config") or {}).get("quota_total")
+                quota_usage = quota_info.get("quota_usage")
+                if quota_total is not None and quota_usage is not None and int(quota_usage) >= int(quota_total):
+                    return render_template_string(
+                        _PAGE, message="A conta atingiu o limite de publicações permitido pela Meta. Tente novamente mais tarde.",
+                        accounts=options, csrf=csrf, selected=str(account_id),
+                        image_url=image_url, caption=caption
+                    ), 429
 
             container_params = {"image_url": image_url, "access_token": access_token}
             if caption:
@@ -135,7 +158,7 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
 
             container_id = str(created_payload["id"])
             status = ""
-            for _ in range(10):
+            for poll_index in range(5):
                 check = requests.get(
                     f"{base}/{container_id}",
                     params={"fields": "status_code", "access_token": access_token},
@@ -143,9 +166,16 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
                 )
                 check.raise_for_status()
                 status = str(check.json().get("status_code", ""))
-                if status in ("FINISHED", "ERROR", "EXPIRED"):
+                if status in ("FINISHED", "ERROR", "EXPIRED", "PUBLISHED"):
                     break
-                time.sleep(2)
+                if poll_index < 4:
+                    time.sleep(60)
+            if status == "PUBLISHED":
+                return render_template_string(
+                    _PAGE, message="A Meta indica que esta publicação já foi publicada. Não foi enviada novamente.",
+                    accounts=options, csrf=csrf, selected=str(account_id),
+                    image_url="", caption=""
+                )
             if status != "FINISHED":
                 print(f"[INSTAGRAM PUBLISH] container_not_ready status={status or 'unknown'}")
                 return render_template_string(
@@ -164,6 +194,22 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
             except ValueError:
                 published_payload = {}
             if not published.ok or not published_payload.get("id"):
+                try:
+                    reconcile = requests.get(
+                        base + "/" + container_id,
+                        params={"fields": "status_code", "access_token": access_token},
+                        timeout=15,
+                    )
+                    reconcile.raise_for_status()
+                    reconciled_status = str(reconcile.json().get("status_code", ""))
+                except requests.RequestException:
+                    reconciled_status = ""
+                if reconciled_status == "PUBLISHED":
+                    return render_template_string(
+                        _PAGE, message="A Meta confirmou que a fotografia foi publicada. Não repita o envio.",
+                        accounts=options, csrf=csrf, selected=str(account_id),
+                        image_url="", caption=""
+                    )
                 err = published_payload.get("error", {}) if isinstance(published_payload, dict) else {}
                 print(
                     f"[INSTAGRAM PUBLISH] publish_failed http={published.status_code} "
