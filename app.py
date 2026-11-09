@@ -63,6 +63,10 @@ from whatsapp_webhook import (
 )
 register_whatsapp_webhooks(server)
 
+# Instagram Platform webhook verification, isolated from OAuth and WhatsApp.
+from instagram_webhook import register_instagram_webhooks
+register_instagram_webhooks(server)
+
 
 @server.post("/whatsapp/send")
 def whatsapp_send():
