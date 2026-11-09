@@ -83,7 +83,6 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
                 image_url="", caption=""
             )
 
-        import secrets
         received = request.form.get("csrf_token", "")
         if not received or not secrets.compare_digest(csrf, received):
             return "Pedido inválido ou expirado. Actualize a página.", 400
@@ -105,7 +104,7 @@ def register_instagram_publish_route(server, get_connection, token_cipher):
 
         try:
             access_token = token_cipher().decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
-                version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
+            version = os.getenv("INSTAGRAM_GRAPH_API_VERSION", "v25.0").strip()
             if not version.startswith("v") or not version[1:].replace(".", "").isdigit():
                 raise ValueError("Invalid Instagram Graph API version")
             base = "https://graph.instagram.com/" + version
@@ -261,7 +260,7 @@ button,.back{display:inline-block;margin-top:18px;padding:12px 18px;border:0;bor
 <h1>📷 Publicar fotografia</h1>
 <p class="note">A publicação é feita directamente pela API oficial do Instagram. Use uma fotografia JPEG num endereço HTTPS público, acessível sem login. A Meta obtém a fotografia a partir desse endereço.</p>
 {% if message %}<div class="message">{{ message }}</div>{% endif %}
-{% if accounts %}<form method="post">
+{% if accounts %}<form method="post" onsubmit="return confirm(&quot;Confirma a publicação desta fotografia na conta Instagram seleccionada?&quot;);">
 <input type="hidden" name="csrf_token" value="{{ csrf }}">
 <label for="account_id">Conta Instagram</label><select id="account_id" name="account_id">{% for item in accounts %}
 <option value="{{ item.id }}" {% if item.id == selected %}selected{% endif %}>{{ item.username }}</option>{% endfor %}</select>
