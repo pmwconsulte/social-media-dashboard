@@ -1,9 +1,63 @@
 """Read-only Facebook Page posts view for connected PMW workspaces."""
 import html
 import os
+from urllib.parse import urlsplit
 
 import requests
 from flask import redirect, request, session, url_for
+
+
+
+def _safe_http_url(value):
+    """Return an HTTP(S) URL escaped for safe HTML attributes."""
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            return ""
+        return html.escape(value, quote=True)
+    except ValueError:
+        return ""
+
+
+def _safe_image_url(value):
+    """Only render images hosted by Facebook's CDN."""
+    safe_url = _safe_http_url(value)
+    if not safe_url:
+        return ""
+    host = (urlsplit(value).hostname or "").lower()
+    return safe_url if host == "fbcdn.net" or host.endswith(".fbcdn.net") else ""
+
+
+def _render_attachment(attachment):
+    """Render Meta-returned photo/video previews and original destinations."""
+    if not isinstance(attachment, dict):
+        return ""
+    media_type = str(attachment.get("media_type") or attachment.get("type") or "").lower()
+    target = attachment.get("target") or {}
+    destination = target.get("url") or attachment.get("url") or ""
+    safe_destination = _safe_http_url(destination)
+    media = attachment.get("media") or {}
+    image_data = media.get("image") or {}
+    image_url = _safe_image_url(image_data.get("src"))
+    parts = []
+    if image_url:
+        alt = "Pré-visualização de vídeo" if "video" in media_type else "Imagem da publicação"
+        image_html = '<img loading="lazy" src="' + image_url + '" alt="' + alt + '">'
+        if safe_destination:
+            image_html = '<a href="' + safe_destination + '" target="_blank" rel="noopener noreferrer">' + image_html + '</a>'
+        parts.append(image_html)
+    if safe_destination:
+        label = "Ver vídeo/Reel no Facebook" if "video" in media_type else "Abrir publicação"
+        parts.append('<p><a href="' + safe_destination + '" target="_blank" rel="noopener noreferrer">' + label + '</a></p>')
+    children = (attachment.get("subattachments") or {}).get("data") or []
+    for child in children:
+        rendered = _render_attachment(child)
+        if rendered:
+            parts.append(rendered)
+    return '<div class="attachment">' + "".join(parts) + '</div>' if parts else ""
 
 
 def register_facebook_posts_route(server, get_connection, token_cipher):
@@ -59,7 +113,7 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
                     params={
                         # These are the exact fields confirmed in the successful
                         # Graph API Explorer test for this Page.
-                        "fields": "id,message,created_time",
+                        "fields": "id,message,created_time,attachments{media_type,type,url,target,media,subattachments}",
                         "limit": 25,
                     },
                     headers={"Authorization": f"Bearer {token}"},
@@ -90,9 +144,11 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
                         for post in posts:
                             message = html.escape(str(post.get("message") or "Publicação sem texto"))
                             created = html.escape(str(post.get("created_time") or ""))
+                            attachments = (post.get("attachments") or {}).get("data") or []
+                            media_html = "".join(_render_attachment(item) for item in attachments)
                             cards.append(
                                 '<article class="post"><p class="date">' + created +
-                                '</p><p>' + message + '</p></article>'
+                                '</p><p>' + message + '</p>' + media_html + '</article>'
                             )
                         body = "".join(cards)
             except Exception as exc:
@@ -110,7 +166,7 @@ def register_facebook_posts_route(server, get_connection, token_cipher):
         select,button{padding:11px;border-radius:8px;border:1px solid #475569;background:#111827;color:#fff}
         button{background:#0284c7;border:0;font-weight:bold;cursor:pointer}
         .post{background:#111827;border:1px solid #334155;border-radius:12px;padding:18px;margin:14px 0}
-        .post img{max-width:100%;max-height:360px;object-fit:contain;border-radius:8px}
+        .post img{max-width:100%;max-height:420px;object-fit:contain;border-radius:8px}.attachment{margin-top:12px}.attachment img{display:block}.attachment a{display:inline-block;margin-top:6px}
         .stats{color:#7dd3fc}.post a,a{color:#7dd3fc}
         </style></head><body><main><p><a href="/account">← Voltar à conta</a></p>
         <h1>Publicações do Facebook</h1>
