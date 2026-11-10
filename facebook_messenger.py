@@ -147,6 +147,104 @@ def _api_error(response):
         return f"Meta Graph API HTTP {response.status_code}."
 
 
+
+def _ensure_contacts_table(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS facebook_messenger_contacts (
+            workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            social_account_id UUID NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
+            sender_psid VARCHAR(255) NOT NULL,
+            sender_name TEXT,
+            profile_pic TEXT,
+            profile_updated_at TIMESTAMPTZ,
+            PRIMARY KEY (workspace_id, social_account_id, sender_psid)
+        )
+    """)
+
+
+def _load_sender_profiles(account, workspace_id, account_id, rows):
+    """Load minimal Messenger profile fields, caching the expiring picture URL briefly."""
+    psids = list(dict.fromkeys(str(row[0] or "").strip() for row in rows if row and row[0]))
+    if not psids:
+        return {}
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            _ensure_contacts_table(cur)
+            cur.execute("""
+                SELECT sender_psid, sender_name, profile_pic, profile_updated_at
+                FROM facebook_messenger_contacts
+                WHERE workspace_id=%s AND social_account_id=%s
+                  AND sender_psid = ANY(%s)
+            """, (workspace_id, account_id, psids))
+            cached = {
+                str(psid): {"name": name, "picture": picture, "updated_at": updated}
+                for psid, name, picture, updated in cur.fetchall()
+            }
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    token = _decrypt_token(account[3])
+    now = datetime.now(timezone.utc)
+    result = {}
+    for psid in psids:
+        profile = cached.get(psid, {})
+        updated = profile.get("updated_at")
+        # Profile-picture URLs can expire; refresh the minimal profile at most hourly.
+        if not updated or updated < now - timedelta(hours=1):
+            try:
+                response = requests.get(
+                    f"https://graph.facebook.com/{_graph_version()}/{psid}",
+                    params={
+                        "fields": "first_name,last_name,profile_pic",
+                        "access_token": token,
+                    },
+                    timeout=10,
+                )
+                if response.ok:
+                    data = response.json()
+                    first = str(data.get("first_name") or "").strip()
+                    last = str(data.get("last_name") or "").strip()
+                    name = " ".join(part for part in (first, last) if part) or None
+                    picture = str(data.get("profile_pic") or "").strip() or None
+                    conn = get_connection()
+                    try:
+                        with conn.cursor() as cur:
+                            _ensure_contacts_table(cur)
+                            cur.execute("""
+                                INSERT INTO facebook_messenger_contacts
+                                    (workspace_id, social_account_id, sender_psid,
+                                     sender_name, profile_pic, profile_updated_at)
+                                VALUES (%s,%s,%s,%s,%s,NOW())
+                                ON CONFLICT (workspace_id, social_account_id, sender_psid)
+                                DO UPDATE SET
+                                    sender_name=COALESCE(EXCLUDED.sender_name, facebook_messenger_contacts.sender_name),
+                                    profile_pic=COALESCE(EXCLUDED.profile_pic, facebook_messenger_contacts.profile_pic),
+                                    profile_updated_at=NOW()
+                            """, (workspace_id, account_id, psid, name, picture))
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        raise
+                    finally:
+                        conn.close()
+                    profile = {"name": name or profile.get("name"),
+                               "picture": picture or profile.get("picture")}
+                else:
+                    print(f"[FACEBOOK MESSENGER PROFILE] HTTP {response.status_code}; perfil indisponível.")
+            except (requests.RequestException, ValueError) as exc:
+                print(f"[FACEBOOK MESSENGER PROFILE] {type(exc).__name__}; perfil indisponível.")
+        result[psid] = {
+            "name": profile.get("name"),
+            "picture": profile.get("picture"),
+        }
+    return result
+
 def _send_reply(account, psid, message_text):
     social_account_id, page_id, page_name, encrypted_token, workspace_id = account
     token = _decrypt_token(encrypted_token)
@@ -299,6 +397,7 @@ def register_facebook_messenger(server):
                         LIMIT 100
                     """, (workspace_id, account_id, term, f"%{term}%", f"%{term}%"))
                     rows = cur.fetchall()
+            profiles = _load_sender_profiles(account, workspace_id, account_id, rows)
             finally:
                 conn.close()
 
@@ -308,6 +407,16 @@ def register_facebook_messenger(server):
                 safe_body = escape(str(body or "Mensagem sem texto"))
                 date_label = escape(stamp.strftime("%d/%m/%Y %H:%M") if stamp else "Data indisponível")
                 direction_label = "Enviada" if direction == "outbound" else "Recebida"
+                profile = profiles.get(str(psid), {})
+                sender_name = escape(str(profile.get("name") or "Contacto Messenger"))
+                picture_url = str(profile.get("picture") or "").strip()
+                avatar = (
+                    f"<img src='{escape(picture_url, quote=True)}' alt='' referrerpolicy='no-referrer' "
+                    "style='width:42px;height:42px;border-radius:50%;object-fit:cover;background:#1e293b'>"
+                    if picture_url.startswith("https://") else
+                    "<span aria-hidden='true' style='display:inline-flex;width:42px;height:42px;border-radius:50%;"
+                    "align-items:center;justify-content:center;background:#1e293b;color:#cbd5e1'>👤</span>"
+                )
                 reply_form = ""
                 if direction == "inbound" and stamp and stamp >= datetime.now(timezone.utc) - timedelta(hours=24):
                     reply_form = (
@@ -321,7 +430,8 @@ def register_facebook_messenger(server):
                         "<small>Resposta livre disponível dentro das 24 horas após a última mensagem do cliente.</small>"
                     )
                 cards.append(
-                    "<article class='message'><div class='top'><strong>Contacto Messenger</strong>"
+                    "<article class='message'><div class='top'><div style='display:flex;align-items:center;gap:11px'>"
+                    f"{avatar}<strong>{sender_name}</strong></div>"
                     f"<span>{date_label}</span></div><div class='psid'>PSID: {safe_psid}</div>"
                     f"<p>{safe_body}</p><small>{direction_label} · {escape(str(kind))} · {escape(str(status))}</small>{reply_form}</article>"
                 )
