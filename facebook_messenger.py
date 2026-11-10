@@ -416,7 +416,7 @@ def register_facebook_messenger(server):
                         LIMIT 100
                     """, (workspace_id, account_id, term, f"%{term}%", f"%{term}%"))
                     rows = cur.fetchall()
-            profiles = _load_sender_profiles(account, workspace_id, account_id, rows)
+                profiles = _load_sender_profiles(account, workspace_id, account_id, rows)
             finally:
                 conn.close()
 
