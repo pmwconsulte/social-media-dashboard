@@ -164,7 +164,8 @@ def _ensure_contacts_table(cur):
 
 def _load_sender_profiles(account, workspace_id, account_id, rows):
     """Load minimal Messenger profile fields, caching the expiring picture URL briefly."""
-    psids = list(dict.fromkeys(str(row[0] or "").strip() for row in rows if row and row[0]))
+    # Keep profile lookups bounded on large inboxes; remaining contacts use the PSID fallback.
+    psids = list(dict.fromkeys(str(row[0] or "").strip() for row in rows if row and row[0]))[:20]
     if not psids:
         return {}
 
@@ -236,6 +237,24 @@ def _load_sender_profiles(account, workspace_id, account_id, rows):
                     profile = {"name": name or profile.get("name"),
                                "picture": picture or profile.get("picture")}
                 else:
+                    # Throttle denied/unavailable profiles too, avoiding an API retry on every page view.
+                    conn = get_connection()
+                    try:
+                        with conn.cursor() as cur:
+                            _ensure_contacts_table(cur)
+                            cur.execute("""
+                                INSERT INTO facebook_messenger_contacts
+                                    (workspace_id, social_account_id, sender_psid, profile_updated_at)
+                                VALUES (%s,%s,%s,NOW())
+                                ON CONFLICT (workspace_id, social_account_id, sender_psid)
+                                DO UPDATE SET profile_updated_at=NOW()
+                            """, (workspace_id, account_id, psid))
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        raise
+                    finally:
+                        conn.close()
                     print(f"[FACEBOOK MESSENGER PROFILE] HTTP {response.status_code}; perfil indisponível.")
             except (requests.RequestException, ValueError) as exc:
                 print(f"[FACEBOOK MESSENGER PROFILE] {type(exc).__name__}; perfil indisponível.")
