@@ -67,6 +67,10 @@ register_whatsapp_webhooks(server)
 from instagram_webhook import register_instagram_webhooks
 register_instagram_webhooks(server)
 
+# Facebook Messenger webhook and authenticated inbox.
+from facebook_messenger import register_facebook_messenger
+register_facebook_messenger(server)
+
 
 @server.post("/whatsapp/send")
 def whatsapp_send():
