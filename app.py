@@ -1508,6 +1508,26 @@ app.layout = html.Div(
                             },
                         ),
                         html.A(
+                            [
+                                html.Div("💬 Facebook Messenger", style={"fontWeight": "700"}),
+                                html.Div("Facebook · Caixa de Entrada", style={"fontSize": "11px", "opacity": "0.9", "marginTop": "3px"}),
+                            ],
+                            id="botao-facebook-messenger-inbox",
+                            href="/facebook/messenger/inbox",
+                            title="Abrir a caixa de entrada do Facebook Messenger",
+                            style={
+                                "display": "inline-block",
+                                "padding": "9px 14px",
+                                "borderRadius": "9px",
+                                "background": "#1877F2",
+                                "color": "white",
+                                "textDecoration": "none",
+                                "fontWeight": "700",
+                                "fontSize": "13px",
+                                "cursor": "pointer",
+                            },
+                        ),
+                        html.A(
                             "📊 WhatsApp Analytics",
                             id="botao-whatsapp-analytics",
                             href="/whatsapp/analytics",
