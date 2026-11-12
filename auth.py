@@ -81,28 +81,26 @@ def _facebook_oauth_configured():
 
 
 def _facebook_authorize_url(state):
+    """Inicia Facebook Login for Business usando a configuração criada na Meta."""
     from urllib.parse import urlencode
 
     app_id = os.getenv("FACEBOOK_APP_ID", "").strip() or os.getenv("INSTAGRAM_APP_ID", "").strip()
     redirect_uri = os.getenv("FACEBOOK_OAUTH_REDIRECT_URI", "").strip()
+    config_id = os.getenv("FACEBOOK_LOGIN_CONFIG_ID", "").strip()
     if not app_id or not redirect_uri:
         raise RuntimeError("Configure o App ID Meta e FACEBOOK_OAUTH_REDIRECT_URI.")
-    # Facebook Login: preservar publicação na Página e acrescentar leitura
-    # de Page Insights, além das permissões da conta Instagram profissional.
-    # Não remover pages_manage_posts: é necessária para publicar na Página.
-    scopes = [
-        "pages_show_list",
-        "pages_read_engagement",
-        "pages_manage_posts",
-        "read_insights",
-        "instagram_basic",
-        "instagram_manage_insights",
-    ]
+    if not config_id:
+        raise RuntimeError("Configure FACEBOOK_LOGIN_CONFIG_ID com o ID da configuração Facebook Login for Business.")
+
+    # No Facebook Login for Business, config_id identifica as permissões
+    # selecionadas no painel Meta. Não enviar scope em paralelo: a configuração
+    # é a fonte de verdade e evita Invalid Scopes no diálogo de autorização.
     params = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
+        "config_id": config_id,
         "response_type": "code",
-        "scope": ",".join(scopes),
+        "override_default_response_type": "true",
         "state": state,
     }
     return "https://www.facebook.com/v25.0/dialog/oauth?" + urlencode(params)
