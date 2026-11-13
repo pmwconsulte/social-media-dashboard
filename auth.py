@@ -266,6 +266,11 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
         key: metric_daily_series(metric)
         for metric, key in day_metrics.items()
     }
+    # page_follows devolve a série diária do total de seguidores da Página.
+    # Usar os pontos da Meta para reconstruir apenas as datas realmente fornecidas,
+    # sem replicar o total atual em dias históricos sem observação.
+    daily_followers_series = metric_daily_series("page_follows")
+
     # Os valores diários são séries: não reduzir a resposta ao último ponto.
     values["day_views"] = daily_series["daily_views"].get(until_date)
     values["day_unique_viewers"] = daily_series["daily_unique_viewers"].get(until_date)
@@ -279,17 +284,18 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     for metric, key in period_metrics.items():
         values[key] = metric_value(metric, "days_28")
 
-    # Métricas adicionais apenas para diagnóstico; não alimentam os cartões.
-    # A resposta permite perceber se a Página devolve alguma métrica Page Insights.
-    for probe_metric in ("page_views_total", "page_follows"):
-        metric_value(probe_metric, "day")
+    # Métrica adicional apenas para diagnóstico; não alimenta os cartões.
+    metric_value("page_views_total", "day")
 
-    insights_available = any(
-        values[key] is not None
-        for key in (
-            "day_views", "day_unique_viewers", "day_interactions",
-            "views_28d", "unique_viewers_28d", "interactions_28d",
+    insights_available = (
+        any(
+            values[key] is not None
+            for key in (
+                "day_views", "day_unique_viewers", "day_interactions",
+                "views_28d", "unique_viewers_28d", "interactions_28d",
+            )
         )
+        or bool(daily_followers_series)
     )
     if not insights_available:
         print(
@@ -312,9 +318,16 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
             # Gravar cada ponto diário da janela devolvida pela Meta na sua data.
             # Não substituir dias sem dados por zero nem somar alcance diário como pessoas únicas.
             all_daily_dates = sorted(
-                set().union(*(set(series) for series in daily_series.values())) | {report_date}
+                set().union(*(set(series) for series in daily_series.values()))
+                | set(daily_followers_series)
+                | {report_date}
             )
             for metric_date in all_daily_dates:
+                daily_followers = daily_followers_series.get(metric_date)
+                if metric_date == report_date and daily_followers is None:
+                    # Fallback apenas para hoje: followers_count é o total atual
+                    # devolvido pelo endpoint da Página, não um valor histórico.
+                    daily_followers = values["followers"]
                 daily_views = daily_series["daily_views"].get(metric_date)
                 daily_reach = daily_series["daily_unique_viewers"].get(metric_date)
                 daily_interactions = daily_series["daily_interactions"].get(metric_date)
@@ -329,9 +342,7 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
                             reach, engagement_rate, profile_views, website_clicks)
                        VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, NULL)
                        ON CONFLICT (social_account_id, report_date) DO UPDATE SET
-                           followers = CASE WHEN EXCLUDED.report_date = %s
-                                            THEN COALESCE(EXCLUDED.followers, daily_metrics.followers)
-                                            ELSE daily_metrics.followers END,
+                           followers = COALESCE(EXCLUDED.followers, daily_metrics.followers),
                            impressions = COALESCE(EXCLUDED.impressions, daily_metrics.impressions),
                            interactions_count = COALESCE(EXCLUDED.interactions_count, daily_metrics.interactions_count),
                            reach = COALESCE(EXCLUDED.reach, daily_metrics.reach),
@@ -339,9 +350,8 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
                            created_at = NOW()""",
                     (
                         social_account_id, metric_date,
-                        values["followers"] if metric_date == report_date else None,
+                        daily_followers,
                         daily_views, daily_interactions, daily_reach, daily_rate,
-                        report_date,
                     ),
                 )
             cur.execute("""
@@ -378,7 +388,8 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
         conn.commit()
         print(
             "[FACEBOOK INSIGHTS] Sincronização concluída: "
-            f"followers={values['followers']!r}, day_views={values['day_views']!r}, "
+            f"followers={values['followers']!r}, daily_follower_points={len(daily_followers_series)}, "
+            f"day_views={values['day_views']!r}, "
             f"day_unique_viewers={values['day_unique_viewers']!r}, "
             f"day_interactions={values['day_interactions']!r}, "
             f"views_28d={values['views_28d']!r}, "
