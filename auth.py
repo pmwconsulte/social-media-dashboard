@@ -186,8 +186,8 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
                 return value
         return None
 
-    def metric_daily_series(metric):
-        """Devolve todos os pontos diários indexados pela data reportada pela Meta."""
+    def metric_daily_series(metric, date_offset_days=0):
+        """Devolve pontos diários; permite alinhar end_time com o dia medido."""
         _payload, item, points = metric_response(metric, "day")
         series = {}
         for point in points:
@@ -200,7 +200,7 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
             try:
                 point_date = datetime.fromisoformat(
                     end_time[:10]
-                ).date()
+                ).date() + timedelta(days=date_offset_days)
             except ValueError:
                 continue
             if since_date <= point_date <= until_date:
@@ -269,7 +269,9 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     # page_follows devolve a série diária do total de seguidores da Página.
     # Usar os pontos da Meta para reconstruir apenas as datas realmente fornecidas,
     # sem replicar o total atual em dias históricos sem observação.
-    daily_followers_series = metric_daily_series("page_follows")
+    # Para métricas diárias da Meta, end_time marca o fim do intervalo:
+    # o valor do dia anterior vem com end_time no dia seguinte.
+    daily_followers_series = metric_daily_series("page_follows", date_offset_days=-1)
 
     # Os valores diários são séries: não reduzir a resposta ao último ponto.
     values["day_views"] = daily_series["daily_views"].get(until_date)
