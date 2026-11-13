@@ -124,7 +124,7 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     # Envia uma janela explícita para permitir comparar respostas com e sem
     # delimitação temporal. Datas em UTC, sem alterar os valores guardados.
     until_date = datetime.now(timezone.utc).date()
-    since_date = until_date - timedelta(days=27)
+    since_date = until_date - timedelta(days=59)
 
     def metric_response(metric, period):
         """Obtém a resposta da Meta sem converter séries temporais em totais."""
