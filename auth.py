@@ -312,7 +312,7 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
             # Gravar cada ponto diário da janela devolvida pela Meta na sua data.
             # Não substituir dias sem dados por zero nem somar alcance diário como pessoas únicas.
             all_daily_dates = sorted(
-                set().union(*(set(series) for series in daily_series.values()))
+                set().union(*(set(series) for series in daily_series.values())) | {report_date}
             )
             for metric_date in all_daily_dates:
                 daily_views = daily_series["daily_views"].get(metric_date)
