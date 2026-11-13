@@ -124,9 +124,10 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     # Envia uma janela explícita para permitir comparar respostas com e sem
     # delimitação temporal. Datas em UTC, sem alterar os valores guardados.
     until_date = datetime.now(timezone.utc).date()
-    since_date = until_date - timedelta(days=27)
+    since_date = until_date - timedelta(days=59)
 
-    def metric_value(metric, period):
+    def metric_response(metric, period):
+        """Obtém a resposta da Meta sem converter séries temporais em totais."""
         try:
             response = requests.get(
                 f"https://graph.facebook.com/{version}/{page_id}/insights",
@@ -148,34 +149,69 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
                     f"[FACEBOOK INSIGHTS] {metric} period={period} indisponível "
                     f"HTTP={response.status_code}: {str(detail)[:180]}"
                 )
-                return None
+                return None, None, []
             payload = response.json()
             items = payload.get("data", [])
             item = next((x for x in items if x.get("name") == metric), None)
             points = (item or {}).get("values") or []
-            for point in reversed(points):
-                value = point.get("value")
-                if isinstance(value, (int, float)):
-                    return int(value)
-                if isinstance(value, dict):
-                    total = value.get("total_value")
-                    if isinstance(total, (int, float)):
-                        return int(total)
-            # HTTP 200 does not guarantee that Meta returned usable metric values.
-            # Log the response shape (never the access token) to distinguish an
-            # empty result from an unsupported metric/period or changed API schema.
-            names = [str(x.get("name", "?")) for x in items[:8] if isinstance(x, dict)]
-            print(
-                f"[FACEBOOK INSIGHTS DEBUG] metric={metric} period={period} "
-                f"HTTP=200 data_items={len(items)} returned_names={names!r} "
-                f"matched_metric={item is not None} values_count={len(points)} "
-                f"item_keys={sorted(item.keys()) if isinstance(item, dict) else []} "
-                f"error_payload={bool(payload.get('error'))}."
-            )
-            return None
+            if not points:
+                names = [str(x.get("name", "?")) for x in items[:8] if isinstance(x, dict)]
+                print(
+                    f"[FACEBOOK INSIGHTS DEBUG] metric={metric} period={period} "
+                    f"HTTP=200 data_items={len(items)} returned_names={names!r} "
+                    f"matched_metric={item is not None} values_count=0 "
+                    f"item_keys={sorted(item.keys()) if isinstance(item, dict) else []} "
+                    f"error_payload={bool(payload.get('error'))}."
+                )
+            return payload, item, points
         except (requests.RequestException, ValueError, AttributeError, TypeError) as erro:
             print(f"[FACEBOOK INSIGHTS] Falha em {metric} period={period}: {type(erro).__name__}.")
-            return None
+            return None, None, []
+
+    def point_number(point):
+        value = point.get("value") if isinstance(point, dict) else None
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, dict):
+            total = value.get("total_value")
+            if isinstance(total, (int, float)):
+                return int(total)
+        return None
+
+    def metric_value(metric, period):
+        _payload, _item, points = metric_response(metric, period)
+        for point in reversed(points):
+            value = point_number(point)
+            if value is not None:
+                return value
+        return None
+
+    def metric_daily_series(metric):
+        """Devolve todos os pontos diários indexados pela data reportada pela Meta."""
+        _payload, item, points = metric_response(metric, "day")
+        series = {}
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            value = point_number(point)
+            end_time = point.get("end_time")
+            if value is None or not isinstance(end_time, str) or len(end_time) < 10:
+                continue
+            try:
+                point_date = datetime.fromisoformat(
+                    end_time[:10]
+                ).date()
+            except ValueError:
+                continue
+            if since_date <= point_date <= until_date:
+                series[point_date] = value
+        if points and not series:
+            print(
+                f"[FACEBOOK INSIGHTS DEBUG] metric={metric} period=day "
+                f"daily_points_without_usable_dates={len(points)} "
+                f"item_keys={sorted(item.keys()) if isinstance(item, dict) else []}."
+            )
+        return series
 
     try:
         # Confirma que o token guardado ainda consegue consultar a Página e
@@ -222,12 +258,18 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     # Métricas atuais da API v25: media views e viewers únicos substituem
     # os antigos nomes de impressões/alcance que a Meta retirou em 2026.
     day_metrics = {
-        "page_media_view": "day_views",
-        "page_total_media_view_unique": "day_unique_viewers",
-        "page_post_engagements": "day_interactions",
+        "page_media_view": "daily_views",
+        "page_total_media_view_unique": "daily_unique_viewers",
+        "page_post_engagements": "daily_interactions",
     }
-    for metric, key in day_metrics.items():
-        values[key] = metric_value(metric, "day")
+    daily_series = {
+        key: metric_daily_series(metric)
+        for metric, key in day_metrics.items()
+    }
+    # Os valores diários são séries: não reduzir a resposta ao último ponto.
+    values["day_views"] = daily_series["daily_views"].get(until_date)
+    values["day_unique_viewers"] = daily_series["daily_unique_viewers"].get(until_date)
+    values["day_interactions"] = daily_series["daily_interactions"].get(until_date)
 
     period_metrics = {
         "page_media_view": "views_28d",
@@ -267,24 +309,41 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
             else None
         )
         with conn.cursor() as cur:
-            # Uma linha por conta e dia; não escrever totais de 28 dias no histórico diário.
-            cur.execute(
-                """INSERT INTO daily_metrics
-                       (social_account_id, report_date, followers, impressions, interactions_count,
-                        reach, engagement_rate, profile_views, website_clicks)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, NULL)
-                   ON CONFLICT (social_account_id, report_date) DO UPDATE SET
-                       followers = COALESCE(EXCLUDED.followers, daily_metrics.followers),
-                       impressions = COALESCE(EXCLUDED.impressions, daily_metrics.impressions),
-                       interactions_count = COALESCE(EXCLUDED.interactions_count, daily_metrics.interactions_count),
-                       reach = COALESCE(EXCLUDED.reach, daily_metrics.reach),
-                       engagement_rate = COALESCE(EXCLUDED.engagement_rate, daily_metrics.engagement_rate),
-                       created_at = NOW()""",
-                (
-                    social_account_id, report_date, values["followers"], values["day_views"],
-                    values["day_interactions"], values["day_unique_viewers"], day_rate,
-                ),
+            # Gravar cada ponto diário da janela devolvida pela Meta na sua data.
+            # Não substituir dias sem dados por zero nem somar alcance diário como pessoas únicas.
+            all_daily_dates = sorted(
+                set().union(*(set(series) for series in daily_series.values())) | {report_date}
             )
+            for metric_date in all_daily_dates:
+                daily_views = daily_series["daily_views"].get(metric_date)
+                daily_reach = daily_series["daily_unique_viewers"].get(metric_date)
+                daily_interactions = daily_series["daily_interactions"].get(metric_date)
+                daily_rate = (
+                    round(daily_interactions / daily_reach * 100, 2)
+                    if daily_interactions is not None and daily_reach is not None and daily_reach > 0
+                    else None
+                )
+                cur.execute(
+                    """INSERT INTO daily_metrics
+                           (social_account_id, report_date, followers, impressions, interactions_count,
+                            reach, engagement_rate, profile_views, website_clicks)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, NULL)
+                       ON CONFLICT (social_account_id, report_date) DO UPDATE SET
+                           followers = CASE WHEN EXCLUDED.report_date = %s
+                                            THEN COALESCE(EXCLUDED.followers, daily_metrics.followers)
+                                            ELSE daily_metrics.followers END,
+                           impressions = COALESCE(EXCLUDED.impressions, daily_metrics.impressions),
+                           interactions_count = COALESCE(EXCLUDED.interactions_count, daily_metrics.interactions_count),
+                           reach = COALESCE(EXCLUDED.reach, daily_metrics.reach),
+                           engagement_rate = COALESCE(EXCLUDED.engagement_rate, daily_metrics.engagement_rate),
+                           created_at = NOW()""",
+                    (
+                        social_account_id, metric_date,
+                        values["followers"] if metric_date == report_date else None,
+                        daily_views, daily_interactions, daily_reach, daily_rate,
+                        report_date,
+                    ),
+                )
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS facebook_period_snapshots (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
