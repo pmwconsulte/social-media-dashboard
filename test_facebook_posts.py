@@ -73,6 +73,7 @@ def client(monkeypatch):
             pass
 
     monkeypatch.setattr(database, "get_connection", lambda: AdminWorkspaceConnection())
+    monkeypatch.setenv("ADMIN_USERNAME", "test-admin")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "admin-hash-test")
     app = Flask(__name__)
     app.secret_key = "test-only-secret"
@@ -88,6 +89,7 @@ def client(monkeypatch):
 def login(client):
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["username"] = "test-admin"
         sess["user_id"] = None
         sess["workspace_id"] = "workspace-test-id"
         sess["workspace_slug"] = "workspace-test"
