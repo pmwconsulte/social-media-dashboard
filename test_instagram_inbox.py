@@ -452,6 +452,25 @@ def test_messenger_webhook_rejects_missing_or_wrong_signature(monkeypatch):
         assert not facebook_messenger._verify_signature(b"payload")
 
 
+def test_facebook_instagram_link_lookup_requires_same_workspace_and_active_link():
+    import auth
+
+    class Cursor:
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return None
+
+    cursor = Cursor()
+    assert auth._linked_instagram_for_facebook(cursor, "facebook-account-a") is None
+    assert cursor.params == ("facebook-account-a",)
+    assert "fb.workspace_id=ig.workspace_id" in cursor.query
+    assert "ig.id=fil.instagram_social_account_id" in cursor.query
+    assert "COALESCE(fb.is_active, TRUE)=TRUE" in cursor.query
+    assert "COALESCE(ig.is_active, TRUE)=TRUE" in cursor.query
+
+
 def test_messenger_account_lookup_is_scoped_to_requested_workspace(monkeypatch):
     class Cursor:
         def __enter__(self):
