@@ -2632,10 +2632,32 @@ def setup_auth(server: Flask):
                         "DELETE FROM facebook_instagram_links WHERE social_account_id=%s",
                         (str(social_account_id),),
                     )
+            # A Página pode descobrir uma conta Instagram profissional sem
+            # reativar a integração Instagram que o workspace desativou.
+            instagram_enabled = False
+            if instagram_social_account_id:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT COALESCE(is_active, FALSE)
+                           FROM social_accounts
+                           WHERE id=%s AND workspace_id=%s
+                             AND LOWER(platform)='instagram'
+                             AND LOWER(COALESCE(connection_status, ''))='linked'
+                           LIMIT 1""",
+                        (instagram_social_account_id, workspace[0]),
+                    )
+                    active_row = cur.fetchone()
+                    instagram_enabled = bool(active_row and active_row[0])
+
             conn.commit()
             synced = _sync_facebook_metrics(social_account_id, page_id, page_token)
             instagram_synced = False
-            if linked_instagram and linked_instagram.get("id") and instagram_social_account_id:
+            if (
+                instagram_enabled
+                and linked_instagram
+                and linked_instagram.get("id")
+                and instagram_social_account_id
+            ):
                 instagram_synced = _sync_instagram_metrics(
                     instagram_social_account_id,
                     str(linked_instagram["id"]),
@@ -2646,6 +2668,11 @@ def setup_auth(server: Flask):
                 return redirect(url_for(
                     "account",
                     message="Facebook e conta Instagram profissional associada conectados; métricas disponíveis sincronizadas."
+                ))
+            if synced and linked_instagram and linked_instagram.get("id") and not instagram_enabled:
+                return redirect(url_for(
+                    "account",
+                    message="Facebook conectado e conta Instagram profissional identificada. A sincronização Instagram permanece desativada conforme a configuração do workspace."
                 ))
             if synced and linked_instagram and linked_instagram.get("id"):
                 return redirect(url_for(
