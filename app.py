@@ -61,7 +61,10 @@ from whatsapp_webhook import (
     send_whatsapp_template,
     get_whatsapp_template_status,
 )
-from whatsapp_tenant import resolve_workspace_phone_number
+from whatsapp_tenant import (
+    WhatsAppTenantConfigurationError,
+    resolve_workspace_phone_number,
+)
 register_whatsapp_webhooks(server)
 
 # Instagram Platform webhook verification, isolated from OAuth and WhatsApp.
@@ -139,6 +142,11 @@ def whatsapp_send():
             """, (workspace[0], api_message_id, phone_id, recipient, "PMW Dashboard", message_text))
         conn.commit()
         return Response("", status=303, headers={"Location": "/whatsapp/inbox?q=" + quote(recipient)})
+    except WhatsAppTenantConfigurationError as exc:
+        if conn:
+            conn.rollback()
+        print(f"[WHATSAPP SEND BLOCKED] {type(exc).__name__}: {str(exc)[:300]}")
+        return Response(str(exc), status=403, mimetype="text/plain")
     except Exception as exc:
         if conn:
             conn.rollback()
@@ -227,6 +235,11 @@ def whatsapp_send_template():
             """, (workspace[0], api_message_id, phone_id, recipient, "PMW Dashboard", "[Modelo: " + template_name + "]"))
         conn.commit()
         return Response("", status=303, headers={"Location": "/whatsapp/inbox?q=" + quote(recipient)})
+    except WhatsAppTenantConfigurationError as exc:
+        if conn:
+            conn.rollback()
+        print(f"[WHATSAPP TEMPLATE BLOCKED] {type(exc).__name__}: {str(exc)[:300]}")
+        return Response(str(exc), status=403, mimetype="text/plain")
     except Exception as exc:
         if conn:
             conn.rollback()
