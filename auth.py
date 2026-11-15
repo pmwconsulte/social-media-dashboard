@@ -23,7 +23,7 @@ from flask import (
 from billing import PLANS, evaluate_workspace_access
 from database import get_connection
 from facebook_posts import register_facebook_posts_route
-from security_rbac import normalize_role, require_permission
+from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token
 
 
 def _oauth_configured():
@@ -1004,7 +1004,7 @@ input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;
 <img class="brand-logo" src="/logo.png" alt="Símbolo PMW Consultoria">
 <p class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</p>
 <h1>🚀 Criar conta</h1><p>Comece o seu trial gratuito de 30 dias</p>
-<form method="post" action="/signup">
+<form method="post" action="/signup">\n<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label for="name">Nome / Empresa</label><input id="name" name="name" type="text" autocomplete="name" required>
 <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
@@ -1164,7 +1164,7 @@ LOGIN_PAGE = """
                 <p class="form-kicker" data-i18n="welcome">Bem-vindo de volta</p>
                 <h1 id="login-title" data-i18n="title">Entrar na plataforma</h1>
                 <p class="form-intro" data-i18n="intro">Introduza as suas credenciais para aceder ao seu dashboard.</p>
-                <form method="post" action="/login">
+                <form method="post" action="/login">\n                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="field">
                         <label for="username" data-i18n="usernameLabel">Email ou nome de utilizador</label>
                         <input id="username" name="username" type="text" autocomplete="username"
@@ -1255,13 +1255,13 @@ def _env_bool(name, default=True):
 ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Minha Conta — PMW Social Media Dashboard AI</title>
 <style>body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}.wrap{max-width:1050px;margin:35px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:24px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}label{display:block;margin:12px 0 7px;font-weight:600}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #334155;background:#020617;color:#fff;box-sizing:border-box}button,.btn{display:inline-block;padding:11px 16px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;text-decoration:none;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#172554;color:#7dd3fc;font-size:12px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #1e293b}</style></head><body><div class="wrap">
-<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p><a class="btn" href="/instagram/inbox" style="background:#7c3aed;color:#fff">💬 Instagram Direct</a> <a class="btn" href="/facebook/posts" style="background:#1877f2;color:#fff">📘 Publicações Facebook</a> <form method="post" action="/social-accounts/sync" style="display:inline-block;margin:8px 0 0"><button type="submit" style="background:#22c55e;color:#052e16">🔄 Sincronizar métricas agora</button></form>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
-<div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
-<div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
+<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p><a class="btn" href="/instagram/inbox" style="background:#7c3aed;color:#fff">💬 Instagram Direct</a> <a class="btn" href="/facebook/posts" style="background:#1877f2;color:#fff">📘 Publicações Facebook</a> <form method="post" action="/social-accounts/sync"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">\n<style="display:inline-block;margin:8px 0 0"><button type="submit" style="background:#22c55e;color:#052e16">🔄 Sincronizar métricas agora</button></form>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
+<div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
+<div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
 <div class="card" style="border:2px solid #a855f7;background:#111827">
 <h2>➕ Adicionar Rede Social</h2>
 <p class="muted">Selecione a plataforma. A autenticação será feita na plataforma oficial; não introduza passwords ou tokens neste dashboard.</p>
-<form method="post" action="/social-accounts/add" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
+<form method="post" action="/social-accounts/add"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">\n<style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
 <div><label>Rede Social</label>
 <select name="platform" required>
 <option value="">— Selecionar plataforma —</option>
@@ -1278,7 +1278,7 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 </div>
 <div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Ligue as suas redes sociais através de autenticação oficial. Não é necessário inserir tokens ou credenciais no dashboard.</p>
 <div style="background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:18px;margin:16px 0"><h3 style="margin-top:0">📷 Instagram</h3><p class="muted">O cliente será redirecionado para o Instagram, fará login e autorizará o acesso. O token é armazenado cifrado no servidor.</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div>
-{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
+{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
 
 def setup_auth(server: Flask):
     """Configure secure session authentication for the Dash server."""
@@ -1294,6 +1294,32 @@ def setup_auth(server: Flask):
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=3600,
     )
+
+    @server.context_processor
+    def inject_csrf_token():
+        return {"csrf_token": issue_csrf_token(session)}
+
+    @server.before_request
+    def enforce_csrf_for_state_changes():
+        """Protect browser state changes while preserving signed provider webhooks."""
+        if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+            return None
+        path = request.path
+        if path.startswith("/_dash-"):
+            return None
+        if path in {
+            "/webhooks/whatsapp",
+            "/webhooks/instagram",
+            "/webhooks/messenger",
+            "/webhooks/paypal",
+        }:
+            return None
+        # Login and signup are also protected against cross-site form submission.
+        if path in {"/login", "/signup"} or session.get("authenticated"):
+            supplied = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
+            if not valid_csrf_token(session, supplied):
+                return "Pedido inválido ou expirado. Atualize a página e tente novamente.", 400
+        return None
 
     @server.before_request
     def require_dashboard_login():
@@ -2357,7 +2383,7 @@ def setup_auth(server: Flask):
                     button{margin-top:18px;background:#38bdf8;color:#020617;border:0;font-weight:bold;cursor:pointer}
                     a{color:#7dd3fc}</style></head><body><main><h1>Escolher Página do Facebook</h1>
                     <p>Selecione a Página que pretende ligar ao seu workspace PMW. O token será guardado cifrado no servidor.</p>
-                    <form method="post" action="/oauth/facebook/select">
+                    <form method="post" action="/oauth/facebook/select">\n                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="selector" value="__SELECTOR__">
                     <label for="page_id">Página do Facebook</label><select id="page_id" name="page_id" required>__OPTIONS__</select>
                     <button type="submit">Conectar Página selecionada</button></form>
