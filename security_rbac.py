@@ -11,23 +11,23 @@ ROLE_PERMISSIONS = {
         "workspace.read", "workspace.manage", "users.read", "users.manage",
         "billing.read", "billing.manage", "accounts.read", "accounts.manage",
         "analytics.read", "reports.read", "messaging.read", "messaging.reply",
-        "publishing.create", "integrations.manage", "security.audit",
+        "publishing.read", "publishing.create", "integrations.manage", "security.audit",
     }),
     "owner": frozenset({
         "workspace.read", "workspace.manage", "users.read", "users.manage",
         "billing.read", "billing.manage", "accounts.read", "accounts.manage",
         "analytics.read", "reports.read", "messaging.read", "messaging.reply",
-        "publishing.create", "integrations.manage", "security.audit",
+        "publishing.read", "publishing.create", "integrations.manage", "security.audit",
     }),
     "admin": frozenset({
         "workspace.read", "users.read", "users.manage", "billing.read",
         "accounts.read", "accounts.manage", "analytics.read", "reports.read",
-        "messaging.read", "messaging.reply", "publishing.create",
+        "messaging.read", "messaging.reply", "publishing.read", "publishing.create",
         "integrations.manage", "security.audit",
     }),
     "editor": frozenset({
         "workspace.read", "accounts.read", "analytics.read", "reports.read",
-        "messaging.read", "messaging.reply", "publishing.create",
+        "messaging.read", "messaging.reply", "publishing.read", "publishing.create",
     }),
     "analyst": frozenset({
         "workspace.read", "accounts.read", "analytics.read", "reports.read",
