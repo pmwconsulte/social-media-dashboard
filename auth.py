@@ -2702,9 +2702,20 @@ def setup_auth(server: Flask):
                         link_conn = get_connection()
                         with link_conn.cursor() as link_cur:
                             link_cur.execute(
-                                """SELECT instagram_social_account_id, instagram_account_id
-                                   FROM facebook_instagram_links
-                                   WHERE social_account_id=%s
+                                """SELECT fil.instagram_social_account_id,
+                                          fil.instagram_account_id
+                                   FROM facebook_instagram_links fil
+                                   JOIN social_accounts fb
+                                     ON fb.id::text=fil.social_account_id
+                                   JOIN social_accounts ig
+                                     ON ig.id=fil.instagram_social_account_id
+                                   WHERE fil.social_account_id=%s
+                                     AND fb.workspace_id=ig.workspace_id
+                                     AND LOWER(fb.platform)='facebook'
+                                     AND LOWER(ig.platform)='instagram'
+                                     AND COALESCE(fb.is_active, TRUE)=TRUE
+                                     AND COALESCE(ig.is_active, TRUE)=TRUE
+                                     AND LOWER(COALESCE(ig.connection_status,''))='linked'
                                    LIMIT 1""",
                                 (str(account_id),),
                             )
