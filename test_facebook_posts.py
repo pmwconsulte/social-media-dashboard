@@ -5,6 +5,7 @@ from cryptography.fernet import Fernet
 from flask import Flask
 
 import facebook_posts
+from security_rbac import credential_fingerprint
 
 
 class FakeCursor:
@@ -72,6 +73,7 @@ def client(monkeypatch):
             pass
 
     monkeypatch.setattr(database, "get_connection", lambda: AdminWorkspaceConnection())
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "admin-hash-test")
     app = Flask(__name__)
     app.secret_key = "test-only-secret"
     app.add_url_rule("/login", "login", lambda: "login")
@@ -90,6 +92,7 @@ def login(client):
         sess["workspace_id"] = "workspace-test-id"
         sess["workspace_slug"] = "workspace-test"
         sess["role"] = "platform_admin"
+        sess["credential_fingerprint"] = credential_fingerprint("admin-hash-test", "test-only-secret")
 
 
 def api_response(payload, status=200):
