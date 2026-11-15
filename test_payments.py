@@ -1,5 +1,6 @@
 import pytest
 import payments
+from security_rbac import credential_fingerprint
 
 
 def test_paypal_sandbox_e_o_ambiente_por_omissao(monkeypatch):
@@ -463,7 +464,7 @@ def test_viewer_cannot_use_paypal_return_to_change_billing(monkeypatch):
         def execute(self, query, params):
             self.query = query
         def fetchone(self):
-            return ("viewer", "workspace-a-id", True, "workspace-a")
+            return ("viewer", "workspace-a-id", True, "workspace-a", "test-password-hash")
 
     class IdentityConnection:
         def cursor(self):
@@ -488,6 +489,7 @@ def test_viewer_cannot_use_paypal_return_to_change_billing(monkeypatch):
         sess["workspace_id"] = "workspace-a-id"
         sess["workspace_slug"] = "workspace-a"
         sess["role"] = "owner"
+        sess["credential_fingerprint"] = credential_fingerprint("test-password-hash", "test-paypal-rbac")
 
     response = client.get("/billing/paypal/return?subscription_id=SUB-TEST")
     assert response.status_code == 403
