@@ -2732,20 +2732,24 @@ def setup_auth(server: Flask):
                     cur.execute(
                         """UPDATE users
                            SET name=%s
-                           WHERE LOWER(email)=LOWER(%s)
-                             AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)""",
-                        (name, session.get("username"), slug),
+                           WHERE id=%s AND workspace_id=%s
+                             AND COALESCE(is_active, TRUE)=TRUE""",
+                        (name, session.get("user_id"), session.get("workspace_id")),
                     )
+                    if cur.rowcount != 1:
+                        session.clear()
+                        return redirect("/login")
                     conn.commit()
                     return redirect(url_for("account", message="Perfil atualizado com sucesso."))
 
                 cur.execute(
                     """SELECT u.name,u.email,w.name,w.subscription_plan,w.trial_ends_at
                        FROM users u
-                       LEFT JOIN workspaces w ON w.id=u.workspace_id
-                       WHERE LOWER(u.email)=LOWER(%s) AND w.slug=%s
+                       JOIN workspaces w ON w.id=u.workspace_id
+                       WHERE u.id=%s AND u.workspace_id=%s
+                         AND w.slug=%s AND COALESCE(u.is_active, TRUE)=TRUE
                        LIMIT 1""",
-                    (session.get("username"), slug),
+                    (session.get("user_id"), session.get("workspace_id"), slug),
                 )
                 user = cur.fetchone()
 
@@ -2826,9 +2830,26 @@ def setup_auth(server: Flask):
         try:
             conn=get_connection()
             with conn.cursor() as cur:
-                cur.execute("SELECT password_hash FROM users WHERE LOWER(email)=LOWER(%s) LIMIT 1",(session.get("username"),)); row=cur.fetchone()
-                if not row or not row[0] or not bcrypt.checkpw(current.encode(),row[0].encode()): return redirect(url_for("account",error="A password atual está incorreta."))
-                cur.execute("UPDATE users SET password_hash=%s WHERE LOWER(email)=LOWER(%s)",(bcrypt.hashpw(new.encode(),bcrypt.gensalt()).decode(),session.get("username")))
+                cur.execute(
+                    """SELECT password_hash FROM users
+                       WHERE id=%s AND workspace_id=%s
+                         AND COALESCE(is_active, TRUE)=TRUE
+                       LIMIT 1""",
+                    (session.get("user_id"), session.get("workspace_id")),
+                )
+                row=cur.fetchone()
+                if not row or not row[0] or not bcrypt.checkpw(current.encode(),row[0].encode()):
+                    return redirect(url_for("account",error="A password atual está incorreta."))
+                cur.execute(
+                    """UPDATE users SET password_hash=%s
+                       WHERE id=%s AND workspace_id=%s
+                         AND COALESCE(is_active, TRUE)=TRUE""",
+                    (bcrypt.hashpw(new.encode(),bcrypt.gensalt()).decode(),
+                     session.get("user_id"), session.get("workspace_id")),
+                )
+                if cur.rowcount != 1:
+                    session.clear()
+                    return redirect("/login")
             conn.commit(); return redirect(url_for("account",message="Password alterada com sucesso."))
         except Exception as erro:
             if conn: conn.rollback()
