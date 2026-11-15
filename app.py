@@ -130,6 +130,8 @@ def whatsapp_send():
                 mapped_workspace_id=mapped_workspace_id,
                 workspace_id=workspace[0],
                 inbound_phone_id=inbound_phone_id,
+                configured_workspace_slug=os.getenv("WHATSAPP_WORKSPACE_SLUG", "").strip(),
+                requested_workspace_slug=workspace_slug,
             )
             api_message_id = send_whatsapp_text(phone_id, recipient, message_text)
             cur.execute("""
@@ -202,6 +204,8 @@ def whatsapp_send_template():
                 mapped_phone_id=mapped_phone_id,
                 mapped_workspace_id=mapped_workspace_id,
                 workspace_id=workspace[0],
+                configured_workspace_slug=os.getenv("WHATSAPP_WORKSPACE_SLUG", "").strip(),
+                requested_workspace_slug=workspace_slug,
             )
 
             # Confirm template approval only after the workspace owns this number.
