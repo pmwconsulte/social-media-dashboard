@@ -61,14 +61,8 @@ def _save_messages(payload):
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
             """)
-            # Compatibilidade de instalação single-tenant: regista o número configurado.
-            configured_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
-            if configured_phone_id and slug:
-                cur.execute("""
-                    INSERT INTO whatsapp_phone_number_workspaces (phone_number_id, workspace_id)
-                    SELECT %s, id FROM workspaces WHERE slug=%s
-                    ON CONFLICT (phone_number_id) DO NOTHING
-                """, (configured_phone_id, slug))
+            # Ownership mappings must be provisioned explicitly by a trusted
+            # onboarding/admin flow; never infer a tenant from a global env var.
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS whatsapp_message_status_events (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
