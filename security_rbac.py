@@ -55,6 +55,7 @@ def require_permission(permission):
         @wraps(view)
         def wrapped(*args, **kwargs):
             from flask import abort, session
+            from werkzeug.exceptions import HTTPException
 
             if not session.get("authenticated"):
                 abort(401)
@@ -94,6 +95,8 @@ def require_permission(permission):
                         session.clear()
                         abort(401)
                     session["role"] = normalize_role(db_role)
+                except HTTPException:
+                    raise
                 except Exception:
                     # Fail closed when identity cannot be revalidated.
                     session.clear()
