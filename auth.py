@@ -2270,6 +2270,7 @@ def setup_auth(server: Flask):
         if not session.get("authenticated"):
             return redirect(url_for("login"))
         if request.args.get("error"):
+            session.pop("facebook_oauth_nonce", None)
             return redirect(url_for("account", error="A autorização do Facebook foi cancelada ou recusada."))
 
         state = request.args.get("state", "")
@@ -2279,6 +2280,7 @@ def setup_auth(server: Flask):
             state_data = serializer.loads(state, max_age=600)
         except Exception as erro:
             # Do not log the state value; it is a temporary security token.
+            session.pop("facebook_oauth_nonce", None)
             print(f"[FACEBOOK OAUTH STATE INVALID] {type(erro).__name__}")
             return redirect(url_for("account", error="A sessão de autorização do Facebook expirou ou não pôde ser validada. Inicie a ligação novamente."))
         if not _consume_facebook_oauth_state(state_data, session):
