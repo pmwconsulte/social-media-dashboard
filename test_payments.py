@@ -243,7 +243,7 @@ def test_set_inactive_mapeia_estado_corretamente(
     conn = FakeConnection()
     monkeypatch.setattr(payments, "get_connection", lambda: conn)
 
-    subscription = {"id": "SUB-INACTIVE-TEST", "status": provider_status}
+    subscription = {"id": "SUB-INACTIVE-TEST", "status": provider_status, "custom_id": "workspace-test"}
 
     result = payments._set_inactive(subscription, event_type)
 
@@ -258,7 +258,7 @@ def test_set_inactive_rejeita_evento_antigo_se_paypal_confirma_estado_ativo(monk
         pytest.fail("Evento antigo não deve alterar o estado confirmado como ACTIVE")
     monkeypatch.setattr(payments, "get_connection", connection_nao_esperada)
     assert payments._set_inactive(
-        {"id": "SUB-STALE", "status": "ACTIVE"},
+        {"id": "SUB-STALE", "status": "ACTIVE", "custom_id": "workspace-test"},
         "BILLING.SUBSCRIPTION.CANCELLED",
     ) is False
 
