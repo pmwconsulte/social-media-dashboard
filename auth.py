@@ -1004,7 +1004,8 @@ input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;
 <img class="brand-logo" src="/logo.png" alt="Símbolo PMW Consultoria">
 <p class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</p>
 <h1>🚀 Criar conta</h1><p>Comece o seu trial gratuito de 30 dias</p>
-<form method="post" action="/signup">\n<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<form method="post" action="/signup">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label for="name">Nome / Empresa</label><input id="name" name="name" type="text" autocomplete="name" required>
 <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
@@ -1164,7 +1165,8 @@ LOGIN_PAGE = """
                 <p class="form-kicker" data-i18n="welcome">Bem-vindo de volta</p>
                 <h1 id="login-title" data-i18n="title">Entrar na plataforma</h1>
                 <p class="form-intro" data-i18n="intro">Introduza as suas credenciais para aceder ao seu dashboard.</p>
-                <form method="post" action="/login">\n                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <form method="post" action="/login">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="field">
                         <label for="username" data-i18n="usernameLabel">Email ou nome de utilizador</label>
                         <input id="username" name="username" type="text" autocomplete="username"
@@ -2383,7 +2385,8 @@ def setup_auth(server: Flask):
                     button{margin-top:18px;background:#38bdf8;color:#020617;border:0;font-weight:bold;cursor:pointer}
                     a{color:#7dd3fc}</style></head><body><main><h1>Escolher Página do Facebook</h1>
                     <p>Selecione a Página que pretende ligar ao seu workspace PMW. O token será guardado cifrado no servidor.</p>
-                    <form method="post" action="/oauth/facebook/select">\n                    <input type="hidden" name="csrf_token" value="__CSRF__">
+                    <form method="post" action="/oauth/facebook/select">
+                    <input type="hidden" name="csrf_token" value="__CSRF__">
                     <input type="hidden" name="selector" value="__SELECTOR__">
                     <label for="page_id">Página do Facebook</label><select id="page_id" name="page_id" required>__OPTIONS__</select>
                     <button type="submit">Conectar Página selecionada</button></form>
