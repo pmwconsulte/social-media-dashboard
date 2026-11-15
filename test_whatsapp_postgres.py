@@ -72,6 +72,26 @@ def pg_schema(monkeypatch):
     cleanup.close()
 
 
+
+def test_legacy_orphan_records_are_reported_but_never_assigned_to_default_workspace():
+    import database
+
+    class Cursor:
+        def __init__(self):
+            self.statements = []
+            self.counts = iter([(2,), (1,)])
+        def execute(self, query, params=None):
+            self.statements.append(query)
+        def fetchone(self):
+            return next(self.counts)
+
+    cursor = Cursor()
+    assert database._report_orphaned_tenant_rows(cursor) == (2, 1)
+    assert len(cursor.statements) == 2
+    assert all("SELECT COUNT(*)" in statement for statement in cursor.statements)
+    assert not any(statement.lstrip().upper().startswith("UPDATE") for statement in cursor.statements)
+
+
 def webhook_payload(status, message_id="wamid.pg-test", timestamp="1790000000", phone_id="phone-test"):
     return {
         "entry": [{
