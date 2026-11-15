@@ -687,4 +687,4 @@ def initialize_database():
 try:
     initialize_database()
 except Exception as erro:
-    print(f"[DATABASE WARNING] Inicialização automática ignorada: {erro}")
+    print(f"[DATABASE WARNING] Inicialização automática ignorada: {type(erro).__name__}.")
