@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from html import escape
 
 import requests
+from security_rbac import has_permission, require_permission
 from flask import Response, redirect, request, session, url_for
 
 from database import get_connection
@@ -408,6 +409,7 @@ def register_facebook_messenger(server):
         return Response("EVENT_RECEIVED", status=200, mimetype="text/plain")
 
     @server.route("/facebook/messenger/inbox", methods=["GET", "POST"])
+    @require_permission("messaging.read")
     def facebook_messenger_inbox():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -430,11 +432,15 @@ def register_facebook_messenger(server):
                     return Response("Pedido inválido ou expirado. Actualize a página.", status=400)
                 action = request.form.get("action", "")
                 if action == "subscribe":
+                    if not has_permission(session.get("role"), "integrations.manage"):
+                        return Response("Permissão insuficiente para gerir a integração.", status=403)
                     result = _subscribe_page(account)
                     if result.get("success") is not True:
                         raise RuntimeError("A Meta não confirmou a subscrição da Página ao webhook.")
                     return redirect(url_for("facebook_messenger_inbox", account=str(account_id), message="Webhook da Página activado."))
                 if action == "reply":
+                    if not has_permission(session.get("role"), "messaging.reply"):
+                        return Response("Permissão insuficiente para responder a mensagens.", status=403)
                     psid = "".join(ch for ch in (request.form.get("recipient") or "") if ch.isdigit())
                     message_text = (request.form.get("message") or "").strip()
                     if not psid or not message_text or len(message_text) > 2000:
