@@ -9,6 +9,7 @@ import plotly.express as px
 import dash
 
 from dash import html, dcc
+from security_rbac import require_permission
 from flask import Response, has_request_context, request, session, send_from_directory
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -77,6 +78,7 @@ register_facebook_messenger(server)
 
 
 @server.post("/whatsapp/send")
+@require_permission("messaging.reply")
 def whatsapp_send():
     if not session.get("authenticated"):
         return Response("", status=302, headers={"Location": "/login"})
@@ -167,6 +169,7 @@ def whatsapp_send():
 
 
 @server.post("/whatsapp/send-template")
+@require_permission("messaging.reply")
 def whatsapp_send_template():
     """Start a new WhatsApp conversation using a Meta-approved template only."""
     if not session.get("authenticated"):
@@ -256,6 +259,7 @@ def whatsapp_send_template():
 
 
 @server.get("/whatsapp/analytics")
+@require_permission("analytics.read")
 def whatsapp_analytics():
     """Resumo de atendimento WhatsApp baseado exclusivamente em mensagens guardadas."""
     if not session.get("authenticated"):
@@ -323,6 +327,7 @@ a{color:#38bdf8;text-decoration:none;font-weight:700}.muted{color:#94a3b8;margin
 
 
 @server.get("/whatsapp/inbox")
+@require_permission("messaging.read")
 def whatsapp_inbox():
     """Caixa de entrada WhatsApp isolada por workspace autenticado."""
     if not session.get("authenticated"):
