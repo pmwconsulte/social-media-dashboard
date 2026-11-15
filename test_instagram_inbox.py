@@ -408,6 +408,52 @@ def test_dashboard_logout_link_requires_confirmation_and_post_csrf(inbox_client)
         assert not sess.get("authenticated")
 
 
+def test_login_fails_closed_when_case_insensitive_email_is_ambiguous(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "ambiguous-login-secret")
+    monkeypatch.delenv("ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
+
+    class Cursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchall(self):
+            return [
+                ("user-a", "Pedro@example.com", "hash-a", "workspace-a-id", "owner"),
+                ("user-b", "pedro@example.com", "hash-b", "workspace-b-id", "owner"),
+            ]
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(auth, "get_connection", lambda: Connection())
+    app = Flask("ambiguous-login-test")
+    app.secret_key = "ambiguous-login-secret"
+    auth.setup_auth(app)
+    client = app.test_client()
+    page = client.get("/login").get_data(as_text=True)
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    response = client.post(
+        "/login",
+        data={
+            "csrf_token": token,
+            "username": "PEDRO@example.com",
+            "password": "any-password",
+        },
+    )
+    assert response.status_code == 200
+    assert "Email/username ou password inválido." in response.get_data(as_text=True)
+    with client.session_transaction() as sess:
+        assert not sess.get("authenticated")
+
+
 def test_login_post_requires_global_csrf_token(inbox_client):
     response = inbox_client.post(
         "/login",
