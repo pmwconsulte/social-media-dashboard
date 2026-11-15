@@ -139,7 +139,14 @@ def refresh_session_identity(session):
             ):
                 session.clear()
                 return False
-            session["role"] = normalize_role(db_role)
+            # platform_admin is reserved exclusively for the environment
+            # administrator authenticated through ADMIN_USERNAME/ADMIN_PASSWORD_HASH.
+            # A database user must never gain platform-wide privileges by a role row.
+            normalized_db_role = normalize_role(db_role)
+            if normalized_db_role == "platform_admin":
+                session.clear()
+                return False
+            session["role"] = normalized_db_role
             return True
         finally:
             if conn:
@@ -149,11 +156,14 @@ def refresh_session_identity(session):
         # Environment-admin sessions are bound to both the exact workspace and
         # the current ADMIN_PASSWORD_HASH, so credential rotation revokes them.
         admin_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
+        admin_username = os.getenv("ADMIN_USERNAME", "").strip()
         from flask import current_app
         expected_fingerprint = credential_fingerprint(admin_hash, current_app.secret_key)
         supplied_fingerprint = session.get("credential_fingerprint", "")
         if (
-            not expected_fingerprint
+            not admin_username
+            or session.get("username") != admin_username
+            or not expected_fingerprint
             or not isinstance(supplied_fingerprint, str)
             or not hmac.compare_digest(expected_fingerprint, supplied_fingerprint)
         ):
