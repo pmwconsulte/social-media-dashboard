@@ -6,6 +6,7 @@ from flask import Flask
 import auth
 from security_rbac import issue_csrf_token, valid_csrf_token, has_permission
 from waitlist import register_waitlist
+from security_rbac import require_permission
 
 
 class FakeCursor:
@@ -98,6 +99,47 @@ def post_data(**overrides):
     data.update(overrides)
     return data
 
+
+
+
+def test_protected_route_refreshes_role_and_blocks_revoked_permission(monkeypatch):
+    import database
+    from flask import session
+    from werkzeug.exceptions import Forbidden
+
+    class IdentityCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.params = params
+        def fetchone(self):
+            return ("viewer", "workspace-id", True, "workspace-test")
+
+    class IdentityConnection:
+        def cursor(self):
+            return IdentityCursor()
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(database, "get_connection", lambda: IdentityConnection())
+    app = Flask("rbac-refresh-test")
+    app.secret_key = "rbac-test-secret"
+
+    @require_permission("messaging.reply")
+    def protected_action():
+        return "allowed"
+
+    with app.test_request_context("/protected"):
+        session["authenticated"] = True
+        session["user_id"] = "user-id"
+        session["workspace_id"] = "workspace-id"
+        session["workspace_slug"] = "workspace-test"
+        session["role"] = "owner"
+        with pytest.raises(Forbidden):
+            protected_action()
+        assert session["role"] == "viewer"
 
 
 def test_csrf_helpers_accept_only_current_session_tokens():
