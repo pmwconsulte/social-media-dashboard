@@ -1663,6 +1663,10 @@ def setup_auth(server: Flask):
                                         workspace_id = str(row[3])
                                         user_workspace_slug = workspace_row[0]
                                         user_role = normalize_role(row[4])
+                                        if user_role == "platform_admin":
+                                            # Reserved for the environment administrator;
+                                            # tenant users cannot self-assign platform scope.
+                                            valid = False
                                         credential_hash = row[2]
                                     else:
                                         valid = False
