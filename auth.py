@@ -2586,7 +2586,7 @@ def setup_auth(server: Flask):
 
 
     @server.post("/social-accounts/sync")
-    @require_permission("analytics.read")
+    @require_permission("accounts.manage")
     def sync_social_accounts():
         """Sincroniza manualmente as contas ligadas ao workspace autenticado."""
         if not session.get("authenticated"):
@@ -2711,6 +2711,7 @@ def setup_auth(server: Flask):
 
 
     @server.route("/account", methods=["GET", "POST"])
+    @require_permission("workspace.read")
     def account():
         if not session.get("authenticated"):
             return redirect("/login")
@@ -2821,6 +2822,7 @@ def setup_auth(server: Flask):
             ), 200
 
     @server.post("/account/password")
+    @require_permission("workspace.read")
     def change_password():
         if not session.get("authenticated"): return redirect(url_for("login"))
         current=request.form.get("current_password",""); new=request.form.get("new_password",""); confirm=request.form.get("confirm_password","")
