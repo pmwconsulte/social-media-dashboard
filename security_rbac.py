@@ -78,8 +78,57 @@ def has_permission(role, permission):
     return permission in ROLE_PERMISSIONS[normalize_role(role)]
 
 
+def refresh_session_identity(session):
+    """Refresh a logged-in identity and fail closed on stale tenant membership."""
+    if not session.get("authenticated"):
+        return False
+
+    user_id = session.get("user_id")
+    workspace_id = session.get("workspace_id")
+    workspace_slug = session.get("workspace_slug")
+
+    if user_id:
+        conn = None
+        try:
+            from database import get_connection
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT u.role, u.workspace_id, COALESCE(u.is_active, TRUE),
+                              w.slug
+                       FROM users u
+                       JOIN workspaces w ON w.id = u.workspace_id
+                       WHERE u.id = %s
+                       LIMIT 1""",
+                    (user_id,),
+                )
+                identity = cur.fetchone()
+            if not identity:
+                session.clear()
+                return False
+            db_role, db_workspace_id, is_active, db_workspace_slug = identity
+            if (
+                not is_active
+                or str(db_workspace_id) != str(workspace_id)
+                or str(db_workspace_slug) != str(workspace_slug)
+            ):
+                session.clear()
+                return False
+            session["role"] = normalize_role(db_role)
+            return True
+        finally:
+            if conn:
+                conn.close()
+
+    if session.get("role") == "platform_admin" and workspace_id and workspace_slug:
+        return True
+
+    session.clear()
+    return False
+
+
 def require_permission(permission):
-    """Flask view decorator; authentication remains centrally enforced too."""
+    """Flask view decorator; refreshes identity and enforces the requested permission."""
     def decorate(view):
         @wraps(view)
         def wrapped(*args, **kwargs):
@@ -89,53 +138,14 @@ def require_permission(permission):
             if not session.get("authenticated"):
                 return redirect(url_for("login"))
 
-            # Revalidate database-backed identities on every protected request.
-            # This makes role changes, workspace reassignment and deactivation
-            # effective without waiting for the browser session to expire.
-            user_id = session.get("user_id")
-            workspace_id = session.get("workspace_id")
-            workspace_slug = session.get("workspace_slug")
-
-            if user_id:
-                conn = None
-                try:
-                    from database import get_connection
-                    conn = get_connection()
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            """SELECT u.role, u.workspace_id, COALESCE(u.is_active, TRUE),
-                                      w.slug
-                               FROM users u
-                               JOIN workspaces w ON w.id = u.workspace_id
-                               WHERE u.id = %s
-                               LIMIT 1""",
-                            (user_id,),
-                        )
-                        identity = cur.fetchone()
-                    if not identity:
-                        session.clear()
-                        abort(401)
-                    db_role, db_workspace_id, is_active, db_workspace_slug = identity
-                    if (
-                        not is_active
-                        or str(db_workspace_id) != str(workspace_id)
-                        or str(db_workspace_slug) != str(workspace_slug)
-                    ):
-                        session.clear()
-                        abort(401)
-                    session["role"] = normalize_role(db_role)
-                except HTTPException:
-                    raise
-                except Exception:
-                    # Fail closed when identity cannot be revalidated.
-                    session.clear()
-                    abort(503)
-                finally:
-                    if conn:
-                        conn.close()
-            elif session.get("role") != "platform_admin" or not workspace_id or not workspace_slug:
+            try:
+                if not refresh_session_identity(session):
+                    abort(401)
+            except HTTPException:
+                raise
+            except Exception:
                 session.clear()
-                abort(401)
+                abort(503)
 
             if not has_permission(session.get("role"), permission):
                 abort(403)
