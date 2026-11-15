@@ -83,6 +83,7 @@ def inbox_client(monkeypatch):
             pass
 
     monkeypatch.setenv("SECRET_KEY", "test-secret-key")
+    monkeypatch.setenv("ADMIN_USERNAME", "test-admin")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "admin-hash-test")
     monkeypatch.setattr(auth, "get_connection", lambda: FakeConnection())
     monkeypatch.setattr(database, "get_connection", lambda: AdminWorkspaceConnection())
@@ -94,6 +95,7 @@ def inbox_client(monkeypatch):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["username"] = "test-admin"
         sess["user_id"] = None
         sess["workspace_id"] = "workspace-test-id"
         sess["workspace_slug"] = "workspace-test"
