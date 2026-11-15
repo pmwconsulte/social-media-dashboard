@@ -472,7 +472,7 @@ def test_postgres_paypal_cancellation_changes_only_owning_workspace(billing_pg_s
     }
     assert payments._set_active(subscription, "workspace-a") is True
     assert payments._set_inactive(
-        {"id": "SUB-CANCEL-A", "status": "CANCELLED"},
+        {"id": "SUB-CANCEL-A", "status": "CANCELLED", "custom_id": "workspace-a"},
         "BILLING.SUBSCRIPTION.CANCELLED",
     ) is True
 
