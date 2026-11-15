@@ -454,6 +454,17 @@ def test_messenger_webhook_rejects_missing_or_wrong_signature(monkeypatch):
         assert not facebook_messenger._verify_signature(b"payload")
 
 
+def test_facebook_page_selector_is_bound_to_initiating_session():
+    import auth
+
+    session_a = {"facebook_oauth_selector": "selector-session-a"}
+    assert auth._facebook_oauth_selector_matches("selector-session-a", session_a)
+    assert not auth._facebook_oauth_selector_matches("selector-session-b", session_a)
+    assert not auth._facebook_oauth_selector_matches("", session_a)
+    session_b = {"facebook_oauth_selector": "selector-session-b"}
+    assert not auth._facebook_oauth_selector_matches("selector-session-a", session_b)
+
+
 def test_facebook_oauth_state_requires_same_session_nonce_and_workspace():
     import auth
 
