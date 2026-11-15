@@ -829,7 +829,6 @@ def testar_database():
             conn.close()
     except Exception as erro:
         print(f"[DATABASE ERROR] {type(erro).__name__}.")
-        traceback.print_exc()
         return False
 
 
@@ -841,7 +840,6 @@ def inicializar_database():
         return resultado
     except Exception as erro:
         print(f"[DATABASE WARNING] {type(erro).__name__}.")
-        traceback.print_exc()
         return False
 
 
@@ -876,7 +874,6 @@ def carregar_dados():
         return dados
     except Exception as erro:
         print(f"[DATABASE ERROR] Erro ao carregar dados: {type(erro).__name__}.")
-        traceback.print_exc()
         return pd.DataFrame()
     finally:
         if conn:
@@ -1109,9 +1106,8 @@ def carregar_insights_28d():
     except Exception as erro:
         print(
             "[DATABASE] Não foi possível carregar Insights de 28 dias: "
-            f"{type(erro).__name__}: {erro}"
+            f"{type(erro).__name__}."
         )
-        traceback.print_exc()
         return {"reach": None, "views": None, "interactions": None}
     finally:
         if conn:
