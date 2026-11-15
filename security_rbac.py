@@ -4,6 +4,9 @@ Permissions are additive and workspace-scoped. This module has no Flask or
 database side effects at import time.
 """
 from functools import wraps
+import hashlib
+import hmac
+import os
 import secrets
 
 ROLE_PERMISSIONS = {
@@ -74,6 +77,20 @@ def normalize_role(role):
     return value if value in VALID_ROLES else "viewer"
 
 
+def credential_fingerprint(password_hash, secret_key):
+    """Bind a browser session to the current credential without exposing its hash."""
+    if not password_hash or not secret_key:
+        return None
+    key = secret_key.encode("utf-8") if isinstance(secret_key, str) else secret_key
+    return hmac.new(
+        key,
+        str(password_hash).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+
+
 def has_permission(role, permission):
     return permission in ROLE_PERMISSIONS[normalize_role(role)]
 
@@ -95,7 +112,7 @@ def refresh_session_identity(session):
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT u.role, u.workspace_id, COALESCE(u.is_active, TRUE),
-                              w.slug
+                              w.slug, u.password_hash
                        FROM users u
                        JOIN workspaces w ON w.id = u.workspace_id
                        WHERE u.id = %s
@@ -106,11 +123,19 @@ def refresh_session_identity(session):
             if not identity:
                 session.clear()
                 return False
-            db_role, db_workspace_id, is_active, db_workspace_slug = identity
+            db_role, db_workspace_id, is_active, db_workspace_slug, db_password_hash = identity
+            from flask import current_app
+            expected_fingerprint = credential_fingerprint(
+                db_password_hash, current_app.secret_key
+            )
+            supplied_fingerprint = session.get("credential_fingerprint", "")
             if (
                 not is_active
                 or str(db_workspace_id) != str(workspace_id)
                 or str(db_workspace_slug) != str(workspace_slug)
+                or not expected_fingerprint
+                or not isinstance(supplied_fingerprint, str)
+                or not hmac.compare_digest(expected_fingerprint, supplied_fingerprint)
             ):
                 session.clear()
                 return False
@@ -121,8 +146,19 @@ def refresh_session_identity(session):
                 conn.close()
 
     if session.get("role") == "platform_admin" and workspace_id and workspace_slug:
-        # Environment-admin sessions are not backed by a users row, but must
-        # still remain bound to the exact workspace ID and slug issued at login.
+        # Environment-admin sessions are bound to both the exact workspace and
+        # the current ADMIN_PASSWORD_HASH, so credential rotation revokes them.
+        admin_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
+        from flask import current_app
+        expected_fingerprint = credential_fingerprint(admin_hash, current_app.secret_key)
+        supplied_fingerprint = session.get("credential_fingerprint", "")
+        if (
+            not expected_fingerprint
+            or not isinstance(supplied_fingerprint, str)
+            or not hmac.compare_digest(expected_fingerprint, supplied_fingerprint)
+        ):
+            session.clear()
+            return False
         conn = None
         try:
             from database import get_connection
