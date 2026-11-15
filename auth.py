@@ -1643,11 +1643,14 @@ def setup_auth(server: Flask):
                                 """SELECT id, email, password_hash, workspace_id, role
                                    FROM users
                                    WHERE LOWER(email) = LOWER(%s)
-                                     AND COALESCE(is_active, TRUE) = TRUE
-                                   LIMIT 1;""",
+                                     AND COALESCE(is_active, TRUE) = TRUE;""",
                                 (username,),
                             )
-                            row = cur.fetchone()
+                            matching_users = cur.fetchall()
+                            # Email matching is case-insensitive. If legacy data
+                            # contains duplicate case variants, fail closed rather
+                            # than authenticating an arbitrary row with LIMIT 1.
+                            row = matching_users[0] if len(matching_users) == 1 else None
                             if row and row[2] and row[3]:
                                 valid = bcrypt.checkpw(password.encode("utf-8"), row[2].encode("utf-8"))
                                 if valid:
