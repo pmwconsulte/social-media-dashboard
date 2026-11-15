@@ -7,7 +7,7 @@ import auth
 import facebook_messenger
 from security_rbac import issue_csrf_token, valid_csrf_token, has_permission
 from waitlist import register_waitlist
-from security_rbac import require_permission
+from security_rbac import require_permission, refresh_session_identity
 
 
 class FakeCursor:
@@ -189,6 +189,38 @@ def test_dashboard_and_dash_callbacks_reject_deactivated_database_user(monkeypat
     assert dashboard_response.headers["Location"].endswith("/login")
     callback_response = client.post("/_dash-update-component")
     assert callback_response.status_code == 401
+
+
+def test_environment_admin_session_is_bound_to_existing_workspace_id(monkeypatch):
+    import database
+
+    class Cursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return None
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: Connection())
+    identity = {
+        "authenticated": True,
+        "user_id": None,
+        "workspace_id": "deleted-workspace-id",
+        "workspace_slug": "pmw-default",
+        "role": "platform_admin",
+    }
+    assert refresh_session_identity(identity) is False
+    assert identity == {}
 
 
 def test_csrf_helpers_accept_only_current_session_tokens():
