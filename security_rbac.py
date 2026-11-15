@@ -83,11 +83,11 @@ def require_permission(permission):
     def decorate(view):
         @wraps(view)
         def wrapped(*args, **kwargs):
-            from flask import abort, session
+            from flask import abort, redirect, session, url_for
             from werkzeug.exceptions import HTTPException
 
             if not session.get("authenticated"):
-                abort(401)
+                return redirect(url_for("login"))
 
             # Revalidate database-backed identities on every protected request.
             # This makes role changes, workspace reassignment and deactivation
