@@ -1604,6 +1604,7 @@ def setup_auth(server: Flask):
             user_id = None
             workspace_id = None
             user_role = "viewer"
+            credential_hash = None
 
             configured_username = os.getenv("ADMIN_USERNAME", "").strip()
             password_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
@@ -1621,6 +1622,7 @@ def setup_auth(server: Flask):
                 # The environment administrator is explicitly privileged but
                 # remains bound to the configured default workspace.
                 user_role = "platform_admin"
+                credential_hash = password_hash
                 user_workspace_slug = os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
                 try:
                     conn = get_connection()
@@ -1661,6 +1663,7 @@ def setup_auth(server: Flask):
                                         workspace_id = str(row[3])
                                         user_workspace_slug = workspace_row[0]
                                         user_role = normalize_role(row[4])
+                                        credential_hash = row[2]
                                     else:
                                         valid = False
                     finally:
@@ -1677,10 +1680,9 @@ def setup_auth(server: Flask):
                 session["workspace_id"] = workspace_id
                 session["workspace_slug"] = user_workspace_slug
                 session["role"] = normalize_role(user_role)
-                current_hash = password_hash if user_id is None else None
-                if current_hash:
+                if credential_hash:
                     session["credential_fingerprint"] = credential_fingerprint(
-                        current_hash, server.secret_key
+                        credential_hash, server.secret_key
                     )
                 session.permanent = True
                 return redirect("/")
