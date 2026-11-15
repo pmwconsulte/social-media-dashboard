@@ -51,6 +51,27 @@ def client(monkeypatch):
         ("page-row-foreign", "999999", "Página de outro workspace", encrypted, "workspace-alheio"),
     ]
     connection = FakeConnection(pages)
+
+    import database
+
+    class AdminWorkspaceCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return ("workspace-test-id",)
+
+    class AdminWorkspaceConnection:
+        def cursor(self):
+            return AdminWorkspaceCursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: AdminWorkspaceConnection())
     app = Flask(__name__)
     app.secret_key = "test-only-secret"
     app.add_url_rule("/login", "login", lambda: "login")
