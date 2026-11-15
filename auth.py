@@ -1761,6 +1761,7 @@ def setup_auth(server: Flask):
             )
 
     @server.get("/oauth/instagram/callback")
+    @require_permission("integrations.manage")
     def instagram_oauth_callback():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -2183,6 +2184,7 @@ def setup_auth(server: Flask):
             return redirect(url_for("account", error="Não foi possível iniciar a ligação ao Facebook."))
 
     @server.get("/oauth/facebook/callback")
+    @require_permission("integrations.manage")
     def facebook_oauth_callback():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
