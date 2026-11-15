@@ -2503,24 +2503,21 @@ def setup_auth(server: Flask):
                     ))
 
                 encrypted_token = selected[2]
-                if existing:
-                    social_account_id = existing[0]
-                    cur.execute(
-                        """UPDATE social_accounts SET access_token=%s, display_name=%s,
-                               connection_status='connected', is_active=TRUE, last_sync_at=NOW()
-                           WHERE id=%s AND workspace_id=%s""",
-                        (encrypted_token, selected[1], social_account_id, workspace[0]),
+                try:
+                    social_account_id = upsert_social_account(
+                        cur,
+                        workspace_id=workspace[0],
+                        platform="Facebook",
+                        external_account_id=page_id,
+                        username=page_id,
+                        display_name=selected[1],
+                        encrypted_token=encrypted_token,
                     )
-                else:
-                    cur.execute(
-                        """INSERT INTO social_accounts
-                           (workspace_id, platform, username, display_name, access_token,
-                            connection_status, is_active, last_sync_at)
-                           VALUES (%s, 'Facebook', %s, %s, %s, 'connected', TRUE, NOW())
-                           RETURNING id""",
-                        (workspace[0], page_id, selected[1], encrypted_token),
-                    )
-                    social_account_id = cur.fetchone()[0]
+                except SocialIdentityConflict as conflict:
+                    raise RuntimeError(
+                        "A identidade Facebook existente é ambígua. É necessária reconciliação "
+                        "antes de voltar a ligar esta Página."
+                    ) from conflict
                 cur.execute(
                     "DELETE FROM facebook_oauth_pending_pages WHERE selector=%s AND workspace_slug=%s",
                     (selector, workspace_slug),
@@ -2605,7 +2602,7 @@ def setup_auth(server: Flask):
                                (workspace_id, platform, username, display_name,
                                 external_account_id, access_token, connection_status,
                                 is_active, last_sync_at)
-                               VALUES (%s, 'Instagram', %s, %s, %s, NULL, 'linked', TRUE, NOW())
+                               VALUES (%s, 'Instagram', %s, %s, %s, NULL, 'linked', FALSE, NOW())
                                RETURNING id""",
                             (workspace[0], ig_username, ig_username, str(linked_instagram["id"])),
                         )
