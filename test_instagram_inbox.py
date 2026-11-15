@@ -7,7 +7,7 @@ import auth
 import facebook_messenger
 from security_rbac import issue_csrf_token, valid_csrf_token, has_permission
 from waitlist import register_waitlist
-from security_rbac import require_permission, refresh_session_identity
+from security_rbac import require_permission, refresh_session_identity, credential_fingerprint
 
 
 class FakeCursor:
@@ -81,6 +81,7 @@ def inbox_client(monkeypatch):
             pass
 
     monkeypatch.setenv("SECRET_KEY", "test-secret-key")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "admin-hash-test")
     monkeypatch.setattr(auth, "get_connection", lambda: FakeConnection())
     monkeypatch.setattr(database, "get_connection", lambda: AdminWorkspaceConnection())
     monkeypatch.setattr(auth, "_token_cipher", lambda: FakeCipher())
@@ -95,6 +96,7 @@ def inbox_client(monkeypatch):
         sess["workspace_id"] = "workspace-test-id"
         sess["workspace_slug"] = "workspace-test"
         sess["role"] = "platform_admin"
+        sess["credential_fingerprint"] = credential_fingerprint("admin-hash-test", "test-secret-key")
         sess["instagram_inbox_csrf"] = "csrf-test"
     return client
 
@@ -136,7 +138,7 @@ def test_protected_route_refreshes_role_and_blocks_revoked_permission(monkeypatc
         def execute(self, query, params):
             self.params = params
         def fetchone(self):
-            return ("viewer", "workspace-id", True, "workspace-test")
+            return ("viewer", "workspace-id", True, "workspace-test", "test-password-hash")
 
     class IdentityConnection:
         def cursor(self):
@@ -158,6 +160,7 @@ def test_protected_route_refreshes_role_and_blocks_revoked_permission(monkeypatc
         session["workspace_id"] = "workspace-id"
         session["workspace_slug"] = "workspace-test"
         session["role"] = "owner"
+        session["credential_fingerprint"] = credential_fingerprint("test-password-hash", "rbac-test-secret")
         with pytest.raises(Forbidden):
             protected_action()
         assert session["role"] == "viewer"
@@ -174,7 +177,7 @@ def test_dashboard_and_dash_callbacks_reject_deactivated_database_user(monkeypat
         def execute(self, query, params):
             self.params = params
         def fetchone(self):
-            return ("owner", "workspace-id", False, "workspace-test")
+            return ("owner", "workspace-id", False, "workspace-test", "test-password-hash")
 
     class InactiveConnection:
         def cursor(self):
@@ -203,6 +206,7 @@ def test_dashboard_and_dash_callbacks_reject_deactivated_database_user(monkeypat
         sess["workspace_id"] = "workspace-id"
         sess["workspace_slug"] = "workspace-test"
         sess["role"] = "owner"
+        sess["credential_fingerprint"] = credential_fingerprint("test-password-hash", "dashboard-auth-test")
 
     dashboard_response = client.get("/")
     assert dashboard_response.status_code == 302
@@ -223,7 +227,7 @@ def test_database_user_reassignment_to_another_workspace_invalidates_session(mon
             self.query = query
             self.params = params
         def fetchone(self):
-            return ("owner", "workspace-b-id", True, "workspace-b")
+            return ("owner", "workspace-b-id", True, "workspace-b", "test-password-hash")
 
     class Connection:
         def cursor(self):
@@ -238,8 +242,12 @@ def test_database_user_reassignment_to_another_workspace_invalidates_session(mon
         "workspace_id": "workspace-a-id",
         "workspace_slug": "workspace-a",
         "role": "owner",
+        "credential_fingerprint": credential_fingerprint("test-password-hash", "test-secret"),
     }
-    assert refresh_session_identity(identity) is False
+    app = Flask("workspace-reassignment-test")
+    app.secret_key = "test-secret"
+    with app.app_context():
+        assert refresh_session_identity(identity) is False
     assert identity == {}
 
 
@@ -264,14 +272,19 @@ def test_environment_admin_session_is_bound_to_existing_workspace_id(monkeypatch
             pass
 
     monkeypatch.setattr(database, "get_connection", lambda: Connection())
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "admin-hash-test")
     identity = {
         "authenticated": True,
         "user_id": None,
         "workspace_id": "deleted-workspace-id",
         "workspace_slug": "pmw-default",
         "role": "platform_admin",
+        "credential_fingerprint": credential_fingerprint("admin-hash-test", "environment-admin-secret"),
     }
-    assert refresh_session_identity(identity) is False
+    app = Flask("environment-admin-binding-test")
+    app.secret_key = "environment-admin-secret"
+    with app.app_context():
+        assert refresh_session_identity(identity) is False
     assert identity == {}
 
 
@@ -355,7 +368,7 @@ def test_messenger_viewer_cannot_reply_to_inbound_message(monkeypatch):
         def execute(self, query, params):
             self.query = query
         def fetchone(self):
-            return ("viewer", "workspace-a-id", True, "workspace-a")
+            return ("viewer", "workspace-a-id", True, "workspace-a", "test-password-hash")
 
     class IdentityConnection:
         def cursor(self):
@@ -404,6 +417,7 @@ def test_messenger_viewer_cannot_reply_to_inbound_message(monkeypatch):
         sess["workspace_id"] = "workspace-a-id"
         sess["workspace_slug"] = "workspace-a"
         sess["role"] = "owner"
+        sess["credential_fingerprint"] = credential_fingerprint("test-password-hash", "messenger-rbac-secret")
         sess["facebook_messenger_csrf"] = "m" * 64
 
     response = client.post(
@@ -534,7 +548,7 @@ def test_viewer_cannot_send_instagram_direct_even_with_valid_csrf(inbox_client, 
         def execute(self, query, params):
             self.params = params
         def fetchone(self):
-            return ("viewer", "workspace-test-id", True, "workspace-test")
+            return ("viewer", "workspace-test-id", True, "workspace-test", "test-password-hash")
 
     class ViewerConnection:
         def cursor(self):
@@ -548,6 +562,7 @@ def test_viewer_cannot_send_instagram_direct_even_with_valid_csrf(inbox_client, 
         sess["workspace_id"] = "workspace-test-id"
         sess["workspace_slug"] = "workspace-test"
         sess["role"] = "owner"
+        sess["credential_fingerprint"] = credential_fingerprint("test-password-hash", "test-secret-key")
 
     calls = []
     def fake_get(*args, **kwargs):
