@@ -130,7 +130,7 @@ def whatsapp_send():
                 mapped_workspace_id=mapped_workspace_id,
                 workspace_id=workspace[0],
                 inbound_phone_id=inbound_phone_id,
-                configured_workspace_slug=os.getenv("WHATSAPP_WORKSPACE_SLUG", "").strip(),
+                configured_workspace_slug=os.getenv("WHATSAPP_WORKSPACE_SLUG", "pmw-consultoria-98fdcf3f").strip(),
                 requested_workspace_slug=workspace_slug,
             )
             api_message_id = send_whatsapp_text(phone_id, recipient, message_text)
@@ -204,7 +204,7 @@ def whatsapp_send_template():
                 mapped_phone_id=mapped_phone_id,
                 mapped_workspace_id=mapped_workspace_id,
                 workspace_id=workspace[0],
-                configured_workspace_slug=os.getenv("WHATSAPP_WORKSPACE_SLUG", "").strip(),
+                configured_workspace_slug=os.getenv("WHATSAPP_WORKSPACE_SLUG", "pmw-consultoria-98fdcf3f").strip(),
                 requested_workspace_slug=workspace_slug,
             )
 
@@ -333,7 +333,18 @@ def whatsapp_inbox():
     csrf_token = session.setdefault("whatsapp_csrf", secrets.token_urlsafe(32))
     template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto").strip()
     language_code = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT").strip()
-    template_info = get_whatsapp_template_status(template_name, language_code)
+    configured_workspace_slug = os.getenv(
+        "WHATSAPP_WORKSPACE_SLUG", "pmw-consultoria-98fdcf3f"
+    ).strip()
+    if workspace_slug and workspace_slug == configured_workspace_slug:
+        template_info = get_whatsapp_template_status(template_name, language_code)
+    else:
+        # Do not query the global Cloud API credential for another tenant.
+        template_info = {
+            "status": "UNKNOWN",
+            "quality_score": None,
+            "error": "WhatsApp ainda não está provisionado para este workspace.",
+        }
     template_approved = template_info.get("status") == "APPROVED"
     conn = None
     try:
