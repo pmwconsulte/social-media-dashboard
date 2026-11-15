@@ -6,6 +6,7 @@ import psycopg2
 import pytest
 
 import whatsapp_webhook
+import facebook_messenger
 
 
 DSN = os.getenv("TEST_DATABASE_URL")
@@ -220,3 +221,134 @@ def test_postgres_rejeita_phone_number_id_sem_mapeamento(pg_schema):
         whatsapp_webhook._save_messages(
             webhook_payload("read", "wamid-unmapped", phone_id="unknown-phone")
         )
+
+
+@pytest.fixture
+def messenger_pg_schema(monkeypatch):
+    schema = "msg_test_" + uuid.uuid4().hex
+    workspace_a = str(uuid.uuid4())
+    workspace_b = str(uuid.uuid4())
+    account_a = str(uuid.uuid4())
+    account_b = str(uuid.uuid4())
+    admin = psycopg2.connect(DSN)
+    admin.autocommit = True
+    with admin.cursor() as cur:
+        cur.execute(f'CREATE SCHEMA "{schema}"')
+        cur.execute(f'''
+            CREATE TABLE "{schema}".workspaces (
+                id UUID PRIMARY KEY,
+                slug VARCHAR(120) UNIQUE NOT NULL
+            )
+        ''')
+        cur.execute(f'''
+            CREATE TABLE "{schema}".social_accounts (
+                id UUID PRIMARY KEY,
+                workspace_id UUID NOT NULL REFERENCES "{schema}".workspaces(id),
+                username VARCHAR(255) NOT NULL,
+                platform VARCHAR(40) NOT NULL,
+                display_name VARCHAR(255),
+                access_token TEXT,
+                is_active BOOLEAN DEFAULT TRUE,
+                connection_status VARCHAR(40) DEFAULT 'connected',
+                last_sync_at TIMESTAMPTZ
+            )
+        ''')
+        cur.execute(
+            f'INSERT INTO "{schema}".workspaces (id, slug) VALUES (%s, %s), (%s, %s)',
+            (workspace_a, "workspace-a", workspace_b, "workspace-b"),
+        )
+        cur.execute(
+            f'''INSERT INTO "{schema}".social_accounts
+                (id, workspace_id, username, platform, display_name, access_token,
+                 is_active, connection_status)
+                VALUES (%s, %s, 'page-a', 'Facebook', 'Page A', 'encrypted-a', TRUE, 'connected'),
+                       (%s, %s, 'page-b', 'Facebook', 'Page B', 'encrypted-b', TRUE, 'connected')''',
+            (account_a, workspace_a, account_b, workspace_b),
+        )
+    admin.close()
+
+    def connect():
+        conn = psycopg2.connect(DSN)
+        with conn.cursor() as cur:
+            cur.execute(f'SET search_path TO "{schema}"')
+        return conn
+
+    monkeypatch.setattr(facebook_messenger, "get_connection", connect)
+    yield connect, workspace_a, workspace_b, account_a, account_b
+    cleanup = psycopg2.connect(DSN)
+    cleanup.autocommit = True
+    with cleanup.cursor() as cur:
+        cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+    cleanup.close()
+
+
+def messenger_payload(page_id, message_id):
+    return {
+        "object": "page",
+        "entry": [{
+            "id": page_id,
+            "messaging": [{
+                "sender": {"id": "psid-customer"},
+                "message": {"mid": message_id, "text": "Mensagem de teste"},
+                "timestamp": 1790000000000,
+            }],
+        }],
+    }
+
+
+def test_postgres_messenger_lookup_blocks_account_from_another_workspace(messenger_pg_schema):
+    connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
+    assert facebook_messenger._workspace_account("workspace-a", account_b) is None
+    account = facebook_messenger._workspace_account("workspace-b", account_b)
+    assert account is not None
+    assert str(account[0]) == account_b
+    assert str(account[4]) == workspace_b
+
+
+def test_postgres_messenger_webhook_routes_page_to_its_workspace(messenger_pg_schema):
+    connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
+    saved = facebook_messenger._save_webhook(messenger_payload("page-b", "mid-page-b"))
+    assert saved == 1
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT w.slug FROM facebook_messenger_messages m
+                   JOIN workspaces w ON w.id=m.workspace_id
+                   WHERE m.message_id=%s""",
+                ("mid-page-b",),
+            )
+            assert cur.fetchone() == ("workspace-b",)
+    finally:
+        conn.close()
+
+
+def test_postgres_messenger_webhook_ignores_ambiguous_page_ownership(messenger_pg_schema):
+    connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO social_accounts
+                   (id, workspace_id, username, platform, display_name, access_token,
+                    is_active, connection_status)
+                   VALUES (%s, %s, 'page-shared', 'Facebook', 'Shared A', 'encrypted-a', TRUE, 'connected'),
+                          (%s, %s, 'page-shared', 'Facebook', 'Shared B', 'encrypted-b', TRUE, 'connected')""",
+                (str(uuid.uuid4()), workspace_a, str(uuid.uuid4()), workspace_b),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    saved = facebook_messenger._save_webhook(messenger_payload("page-shared", "mid-shared"))
+    assert saved == 0
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM facebook_messenger_messages WHERE message_id=%s",
+                ("mid-shared",),
+            )
+            assert cur.fetchone()[0] == 0
+    finally:
+        conn.close()
