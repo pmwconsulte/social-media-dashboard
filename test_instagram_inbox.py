@@ -153,6 +153,14 @@ def test_csrf_helpers_accept_only_current_session_tokens():
     assert valid_csrf_token(session, "w" * 43)
 
 
+def test_messenger_role_permissions_separate_reply_from_integration_management():
+    assert has_permission("editor", "messaging.read")
+    assert has_permission("editor", "messaging.reply")
+    assert not has_permission("editor", "integrations.manage")
+    assert has_permission("viewer", "messaging.read")
+    assert not has_permission("viewer", "messaging.reply")
+
+
 def test_read_only_roles_can_view_posts_but_not_publish():
     assert has_permission("viewer", "publishing.read")
     assert has_permission("analyst", "publishing.read")
