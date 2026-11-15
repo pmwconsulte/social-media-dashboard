@@ -24,6 +24,7 @@ from billing import PLANS, evaluate_workspace_access
 from database import get_connection
 from facebook_posts import register_facebook_posts_route
 from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token, has_permission, refresh_session_identity, credential_fingerprint
+from social_identity import upsert_social_account, SocialIdentityConflict
 
 
 def _linked_instagram_for_facebook(cur, facebook_account_id):
@@ -1926,43 +1927,22 @@ def setup_auth(server: Flask):
                     (workspace[0],),
                 )
                 active_accounts = cur.fetchone()[0]
-                cur.execute(
-                    """SELECT id FROM social_accounts
-                       WHERE workspace_id=%s AND platform='Instagram'
-                         AND LOWER(username)=LOWER(%s) LIMIT 1""",
-                    (workspace[0], username),
-                )
-                existing = cur.fetchone()
-
-                # A renovação de uma conta já conectada não consome novo limite.
-                # Uma nova conta só pode ser criada dentro do limite do plano.
-                if not existing and isinstance(account_limit, int) and active_accounts >= account_limit:
-                    raise RuntimeError(
-                        f"O plano {PLANS.get(plan_key, PLANS['trial'])['name']} permite no máximo "
-                        f"{account_limit} contas sociais ativas."
-                    )
-
                 encrypted = _encrypt_token(access_token)
-                if existing:
-                    social_account_id = existing[0]
-                    cur.execute(
-                        """UPDATE social_accounts
-                           SET access_token=%s, display_name=%s,
-                               connection_status='connected', is_active=TRUE,
-                               last_sync_at=NOW()
-                           WHERE id=%s AND workspace_id=%s""",
-                        (encrypted, username, social_account_id, workspace[0]),
+                try:
+                    social_account_id = upsert_social_account(
+                        cur,
+                        workspace_id=workspace[0],
+                        platform="Instagram",
+                        external_account_id=ig_id,
+                        username=username,
+                        display_name=username,
+                        encrypted_token=encrypted,
                     )
-                else:
-                    cur.execute(
-                        """INSERT INTO social_accounts
-                           (workspace_id, platform, username, display_name,
-                            access_token, connection_status, is_active, last_sync_at)
-                           VALUES (%s,'Instagram',%s,%s,%s,'connected',TRUE,NOW())
-                           RETURNING id""",
-                        (workspace[0], username, username, encrypted),
-                    )
-                    social_account_id = cur.fetchone()[0]
+                except SocialIdentityConflict as conflict:
+                    raise RuntimeError(
+                        "A identidade Instagram existente é ambígua. É necessária reconciliação "
+                        "antes de voltar a ligar esta conta."
+                    ) from conflict
             conn.commit()
             synced = _sync_instagram_metrics(social_account_id, ig_id, access_token)
             if synced:
