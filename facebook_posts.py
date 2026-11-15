@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 
 import requests
 from flask import redirect, request, session, url_for
+from security_rbac import require_permission
 
 
 
@@ -86,6 +87,7 @@ def _render_attachment(attachment):
 
 def register_facebook_posts_route(server, get_connection, token_cipher):
     @server.get("/facebook/posts")
+    @require_permission("publishing.read")
     def facebook_posts():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
