@@ -1,5 +1,6 @@
 import unittest
-from security_rbac import (VALID_ROLES, has_permission, normalize_role,\n                           issue_csrf_token, valid_csrf_token)
+from security_rbac import (VALID_ROLES, has_permission, normalize_role,
+                           issue_csrf_token, valid_csrf_token)
 
 
 class RolePermissionTests(unittest.TestCase):
