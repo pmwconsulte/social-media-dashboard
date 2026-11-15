@@ -2,7 +2,8 @@
 import html
 import re
 
-from flask import Response, request
+from flask import Response, request, session
+from security_rbac import issue_csrf_token, valid_csrf_token
 
 from database import get_connection
 
@@ -10,7 +11,8 @@ from database import get_connection
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
-def _page(message="", success=False, email=""):
+def _page(message="", success=False, email="", csrf_token=None):
+    csrf_token = csrf_token or issue_csrf_token(session)
     safe_message = html.escape(message)
     alert = ""
     if message:
@@ -18,7 +20,7 @@ def _page(message="", success=False, email=""):
             '<div class="notice ' + ("success" if success else "error") +
             '" role="status">' + safe_message + "</div>"
         )
-    return """<!doctype html>
+    return ("""<!doctype html>
 <html lang="pt">
 <head>
 <meta charset="utf-8">
@@ -50,6 +52,7 @@ a{color:var(--blue)}button:focus-visible,input:focus-visible,a:focus-visible{out
 <p>Entre na lista de espera para receber novidades sobre o acesso antecipado e um convite quando a sua participação estiver disponível.</p>
 """ + alert + """
 <form method="post" action="/waitlist">
+<input type="hidden" name="csrf_token" value="__CSRF_TOKEN__">
 <label for="email">Email</label>
 <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
 <div class="hp" aria-hidden="true"><label for="website">Não preencher</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
@@ -59,7 +62,7 @@ a{color:var(--blue)}button:focus-visible,input:focus-visible,a:focus-visible{out
 </form>
 <p class="small">A inscrição não garante acesso imediato. As integrações e métricas dependem das aprovações, permissões e disponibilidade das APIs da Meta. O email será usado para gerir esta lista e as comunicações autorizadas.</p>
 <a class="back" href="/home">Voltar ao site da PMW</a>
-</main></body></html>"""
+</main></body></html>""").replace("__CSRF_TOKEN__", html.escape(csrf_token, quote=True))
 
 
 def register_waitlist(server):
@@ -67,6 +70,13 @@ def register_waitlist(server):
     def public_waitlist():
         if request.method == "GET":
             return Response(_page(), mimetype="text/html")
+
+        if not valid_csrf_token(session, request.form.get("csrf_token", "")):
+            return Response(
+                _page("Pedido inválido ou expirado. Actualize a página."),
+                status=400,
+                mimetype="text/html",
+            )
 
         # Honeypot to reject basic automated submissions.
         if request.form.get("website", "").strip():
