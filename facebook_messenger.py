@@ -546,5 +546,5 @@ button{{border:0;border-radius:8px;padding:11px 16px;background:#2563eb;color:#f
             print(f"[FACEBOOK MESSENGER API] {type(exc).__name__}.")
             return Response("Não foi possível comunicar com a Meta. Confirme as permissões pages_messaging e pages_manage_metadata.", status=502)
         except Exception as exc:
-            print(f"[FACEBOOK MESSENGER INBOX] {type(exc).__name__}: {str(exc)[:300]}")
+            print(f"[FACEBOOK MESSENGER INBOX] {type(exc).__name__}.")
             return Response("Não foi possível abrir a Inbox Facebook Messenger. Verifique a configuração e os logs.", status=500)
