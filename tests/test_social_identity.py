@@ -56,7 +56,7 @@ class SocialIdentityTests(unittest.TestCase):
         cur = FakeCursor(legacy_rows=[("legacy-id", None)])
         result = upsert_social_account(cur, **self.kwargs())
         self.assertEqual(result, "legacy-id")
-        self.assertTrue(any("set external_account_id=%s" in q for q, _ in cur.calls))
+        self.assertTrue(any("set external_account_id=%s" in q.lower() for q, _ in cur.calls))
 
     def test_ambiguous_legacy_username_fails_closed(self):
         cur = FakeCursor(legacy_rows=[("old-1", None), ("old-2", None)])
@@ -72,7 +72,7 @@ class SocialIdentityTests(unittest.TestCase):
         cur = FakeCursor(inserted_id="created-id")
         result = upsert_social_account(cur, **self.kwargs())
         self.assertEqual(result, "created-id")
-        self.assertTrue(any("insert into social_accounts" in q for q, _ in cur.calls))
+        self.assertTrue(any("insert into social_accounts" in q.lower() for q, _ in cur.calls))
 
     def test_missing_external_identity_is_rejected(self):
         cur = FakeCursor()
