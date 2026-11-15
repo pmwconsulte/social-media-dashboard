@@ -23,7 +23,7 @@ from flask import (
 from billing import PLANS, evaluate_workspace_access
 from database import get_connection
 from facebook_posts import register_facebook_posts_route
-from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token
+from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token, has_permission
 
 
 def _oauth_configured():
@@ -1993,6 +1993,8 @@ def setup_auth(server: Flask):
                 csrf_received = request.form.get("csrf_token", "")
                 if not csrf_expected or not csrf_received or not secrets.compare_digest(csrf_expected, csrf_received):
                     return "Pedido inválido ou expirado. Actualize a página e tente novamente.", 400
+                if not has_permission(session.get("role"), "messaging.reply"):
+                    return "Permissão insuficiente para responder a mensagens.", 403
                 reply_text = (request.form.get("message") or "").strip()
                 if not selected_conversation or not any(str(item.get("id")) == selected_conversation for item in conversations):
                     return redirect(url_for("instagram_inbox", account=str(account_id)))
