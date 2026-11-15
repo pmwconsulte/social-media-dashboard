@@ -2851,9 +2851,7 @@ def setup_auth(server: Flask):
                 except Exception:
                     pass
 
-            import traceback
             print(f"[ACCOUNT ERROR] {type(erro).__name__}.")
-            traceback.print_exc()
 
             return render_template_string(
                 ACCOUNT_PAGE,
