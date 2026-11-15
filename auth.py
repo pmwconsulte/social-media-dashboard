@@ -23,7 +23,7 @@ from flask import (
 from billing import PLANS, evaluate_workspace_access
 from database import get_connection
 from facebook_posts import register_facebook_posts_route
-from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token, has_permission, refresh_session_identity
+from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token, has_permission, refresh_session_identity, credential_fingerprint
 
 
 def _oauth_configured():
@@ -1677,6 +1677,11 @@ def setup_auth(server: Flask):
                 session["workspace_id"] = workspace_id
                 session["workspace_slug"] = user_workspace_slug
                 session["role"] = normalize_role(user_role)
+                current_hash = password_hash if user_id is None else None
+                if current_hash:
+                    session["credential_fingerprint"] = credential_fingerprint(
+                        current_hash, server.secret_key
+                    )
                 session.permanent = True
                 return redirect("/")
 
@@ -1739,6 +1744,9 @@ def setup_auth(server: Flask):
                             session["workspace_id"] = str(workspace_id)
                             session["workspace_slug"] = workspace_slug
                             session["role"] = "owner"
+                            session["credential_fingerprint"] = credential_fingerprint(
+                                password_hash, server.secret_key
+                            )
                             session.permanent = True
                             return redirect("/")
                 except Exception as erro:
@@ -2878,17 +2886,23 @@ def setup_auth(server: Flask):
                 row=cur.fetchone()
                 if not row or not row[0] or not bcrypt.checkpw(current.encode(),row[0].encode()):
                     return redirect(url_for("account",error="A password atual está incorreta."))
+                new_password_hash = bcrypt.hashpw(
+                    new.encode(), bcrypt.gensalt()
+                ).decode()
                 cur.execute(
                     """UPDATE users SET password_hash=%s
                        WHERE id=%s AND workspace_id=%s
                          AND COALESCE(is_active, TRUE)=TRUE""",
-                    (bcrypt.hashpw(new.encode(),bcrypt.gensalt()).decode(),
-                     session.get("user_id"), session.get("workspace_id")),
+                    (new_password_hash, session.get("user_id"), session.get("workspace_id")),
                 )
                 if cur.rowcount != 1:
                     session.clear()
                     return redirect("/login")
-            conn.commit(); return redirect(url_for("account",message="Password alterada com sucesso."))
+            conn.commit()
+            session["credential_fingerprint"] = credential_fingerprint(
+                new_password_hash, server.secret_key
+            )
+            return redirect(url_for("account",message="Password alterada com sucesso."))
         except Exception as erro:
             if conn: conn.rollback()
             print(f"[PASSWORD ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível alterar a password."))
