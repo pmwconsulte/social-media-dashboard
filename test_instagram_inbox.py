@@ -5,6 +5,7 @@ from flask import Flask
 
 import auth
 import facebook_messenger
+import instagram_webhook
 from security_rbac import issue_csrf_token, valid_csrf_token, has_permission
 from waitlist import register_waitlist
 from security_rbac import require_permission, refresh_session_identity, credential_fingerprint
@@ -333,6 +334,32 @@ def test_csrf_helpers_accept_only_current_session_tokens():
     assert not valid_csrf_token(session, "wrong-token")
     session["whatsapp_csrf"] = "w" * 43
     assert valid_csrf_token(session, "w" * 43)
+
+
+def test_instagram_webhook_validates_hmac_with_instagram_app_secret(monkeypatch):
+    import hashlib
+    import hmac
+
+    secret = "instagram-webhook-test-secret"
+    raw = b'{"object":"instagram","entry":[]}'
+    signature = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    monkeypatch.setenv("INSTAGRAM_APP_SECRET", secret)
+    app = Flask("instagram-signature-test")
+    with app.test_request_context(
+        "/webhooks/instagram",
+        headers={"X-Hub-Signature-256": signature},
+    ):
+        assert instagram_webhook._signature_is_valid(raw)
+
+
+def test_instagram_webhook_rejects_invalid_signature(monkeypatch):
+    monkeypatch.setenv("INSTAGRAM_APP_SECRET", "instagram-webhook-test-secret")
+    app = Flask("instagram-invalid-signature-test")
+    with app.test_request_context(
+        "/webhooks/instagram",
+        headers={"X-Hub-Signature-256": "sha256=" + ("0" * 64)},
+    ):
+        assert not instagram_webhook._signature_is_valid(b"payload")
 
 
 def test_messenger_webhook_accepts_only_facebook_app_hmac(monkeypatch):
