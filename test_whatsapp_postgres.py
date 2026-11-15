@@ -7,6 +7,7 @@ import pytest
 
 import whatsapp_webhook
 import facebook_messenger
+import payments
 
 
 DSN = os.getenv("TEST_DATABASE_URL")
@@ -350,5 +351,106 @@ def test_postgres_messenger_webhook_ignores_ambiguous_page_ownership(messenger_p
                 ("mid-shared",),
             )
             assert cur.fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def billing_pg_schema(monkeypatch):
+    schema = "bill_test_" + uuid.uuid4().hex
+    workspace_a = str(uuid.uuid4())
+    workspace_b = str(uuid.uuid4())
+    admin = psycopg2.connect(DSN)
+    admin.autocommit = True
+    with admin.cursor() as cur:
+        cur.execute(f'CREATE SCHEMA "{schema}"')
+        cur.execute(f'''
+            CREATE TABLE "{schema}".workspaces (
+                id UUID PRIMARY KEY,
+                slug VARCHAR(120) UNIQUE NOT NULL,
+                subscription_id VARCHAR(255),
+                subscription_status VARCHAR(40) DEFAULT 'trialing',
+                subscription_plan VARCHAR(40) DEFAULT 'trial',
+                payment_provider VARCHAR(40)
+            )
+        ''')
+        cur.execute(
+            f'INSERT INTO "{schema}".workspaces (id, slug) VALUES (%s, %s), (%s, %s)',
+            (workspace_a, "workspace-a", workspace_b, "workspace-b"),
+        )
+    admin.close()
+
+    def connect():
+        conn = psycopg2.connect(DSN)
+        with conn.cursor() as cur:
+            cur.execute(f'SET search_path TO "{schema}"')
+        return conn
+
+    monkeypatch.setattr(payments, "get_connection", connect)
+    monkeypatch.setenv("PAYPAL_PLAN_STARTER_ID", "PLAN-STARTER-TEST")
+    yield connect
+    cleanup = psycopg2.connect(DSN)
+    cleanup.autocommit = True
+    with cleanup.cursor() as cur:
+        cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+    cleanup.close()
+
+
+def test_postgres_paypal_subscription_cannot_be_claimed_by_another_workspace(billing_pg_schema):
+    connect = billing_pg_schema
+    subscription = {
+        "id": "SUB-TENANT-ISOLATION",
+        "custom_id": "workspace-a",
+        "status": "ACTIVE",
+        "plan_id": "PLAN-STARTER-TEST",
+    }
+    assert payments._set_active(subscription, "workspace-a") is True
+    assert payments._set_active(
+        {**subscription, "custom_id": "workspace-b"},
+        "workspace-b",
+    ) is False
+
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT slug, subscription_id, subscription_status
+                   FROM workspaces ORDER BY slug"""
+            )
+            rows = cur.fetchall()
+        assert rows == [
+            ("workspace-a", "SUB-TENANT-ISOLATION", "active"),
+            ("workspace-b", None, "trialing"),
+        ]
+    finally:
+        conn.close()
+
+
+def test_postgres_paypal_cancellation_changes_only_owning_workspace(billing_pg_schema):
+    connect = billing_pg_schema
+    subscription = {
+        "id": "SUB-CANCEL-A",
+        "custom_id": "workspace-a",
+        "status": "ACTIVE",
+        "plan_id": "PLAN-STARTER-TEST",
+    }
+    assert payments._set_active(subscription, "workspace-a") is True
+    assert payments._set_inactive(
+        {"id": "SUB-CANCEL-A"},
+        "BILLING.SUBSCRIPTION.CANCELLED",
+    ) is True
+
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT slug, subscription_status
+                   FROM workspaces ORDER BY slug"""
+            )
+            rows = cur.fetchall()
+        assert rows == [
+            ("workspace-a", "cancelled"),
+            ("workspace-b", "trialing"),
+        ]
     finally:
         conn.close()
