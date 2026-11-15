@@ -326,6 +326,49 @@ def test_postgres_messenger_lookup_blocks_account_from_another_workspace(messeng
     assert str(account[4]) == workspace_b
 
 
+def test_postgres_messenger_inbox_cannot_open_foreign_workspace_account(messenger_pg_schema, monkeypatch):
+    import database
+    from flask import Flask
+    from security_rbac import credential_fingerprint
+
+    connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
+
+    class IdentityCursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def execute(self, query, params): self.query, self.params = query, params
+        def fetchone(self):
+            return ("owner", workspace_a, True, "workspace-a", "test-password-hash")
+
+    class IdentityConnection:
+        def cursor(self): return IdentityCursor()
+        def close(self): pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: IdentityConnection())
+    app = Flask("messenger-foreign-account-test")
+    app.secret_key = "messenger-foreign-account-secret"
+    app.add_url_rule("/login", "login", lambda: "login")
+    facebook_messenger.register_facebook_messenger(app)
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess.update({
+            "authenticated": True, "user_id": "user-a",
+            "workspace_id": workspace_a, "workspace_slug": "workspace-a",
+            "role": "owner",
+            "credential_fingerprint": credential_fingerprint(
+                "test-password-hash", "messenger-foreign-account-secret"
+            ),
+        })
+
+    response = client.get(
+        "/facebook/messenger/inbox?account=" + account_b
+    )
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Não existe uma Página Facebook ligada neste workspace" in page
+    assert "Page B" not in page
+
+
 def test_postgres_messenger_webhook_routes_page_to_its_workspace(messenger_pg_schema):
     connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
     saved = facebook_messenger._save_webhook(messenger_payload("page-b", "mid-page-b"))
