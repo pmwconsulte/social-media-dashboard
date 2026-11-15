@@ -211,6 +211,38 @@ def test_dashboard_and_dash_callbacks_reject_deactivated_database_user(monkeypat
     assert callback_response.status_code == 401
 
 
+def test_database_user_reassignment_to_another_workspace_invalidates_session(monkeypatch):
+    import database
+
+    class Cursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return ("owner", "workspace-b-id", True, "workspace-b")
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: Connection())
+    identity = {
+        "authenticated": True,
+        "user_id": "user-a",
+        "workspace_id": "workspace-a-id",
+        "workspace_slug": "workspace-a",
+        "role": "owner",
+    }
+    assert refresh_session_identity(identity) is False
+    assert identity == {}
+
+
 def test_environment_admin_session_is_bound_to_existing_workspace_id(monkeypatch):
     import database
 
