@@ -140,6 +140,9 @@ def _set_inactive(subscription, event_type, conn=None):
     # A delayed webhook must not overwrite a newer state confirmed by PayPal.
     if str(subscription.get("status") or "").upper() != provider_status:
         return False
+    expected_workspace = str(subscription.get("custom_id") or "").strip()
+    if not expected_workspace:
+        return False
 
     owns_connection = conn is None
     if owns_connection:
@@ -150,10 +153,15 @@ def _set_inactive(subscription, event_type, conn=None):
             cur.execute(
                 """UPDATE workspaces
                    SET subscription_status=%s
-                   WHERE subscription_id=%s AND payment_provider='paypal'""",
-                (target_status, sub_id),
+                   WHERE subscription_id=%s
+                     AND payment_provider='paypal'
+                     AND slug=%s
+                     AND (SELECT COUNT(*) FROM workspaces
+                          WHERE subscription_id=%s
+                            AND payment_provider='paypal')=1""",
+                (target_status, sub_id, expected_workspace, sub_id),
             )
-            changed = cur.rowcount > 0
+            changed = cur.rowcount == 1
 
         if owns_connection:
             conn.commit()
