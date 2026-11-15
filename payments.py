@@ -83,6 +83,13 @@ def _set_active(subscription, expected_workspace, conn=None):
 
     try:
         with conn.cursor() as cur:
+            # Serialize claims of the same PayPal subscription across tenants.
+            # The advisory transaction lock closes the check-then-update race
+            # without requiring an immediate production schema migration.
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (sub_id,),
+            )
             cur.execute(
                 "SELECT id FROM workspaces WHERE slug=%s LIMIT 1",
                 (expected_workspace,),
