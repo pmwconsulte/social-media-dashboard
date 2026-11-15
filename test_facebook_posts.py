@@ -65,7 +65,10 @@ def client(monkeypatch):
 def login(client):
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["user_id"] = None
+        sess["workspace_id"] = "workspace-test-id"
         sess["workspace_slug"] = "workspace-test"
+        sess["role"] = "platform_admin"
 
 
 def api_response(payload, status=200):
