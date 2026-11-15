@@ -828,7 +828,7 @@ def testar_database():
         finally:
             conn.close()
     except Exception as erro:
-        print(f"[DATABASE ERROR] {erro}")
+        print(f"[DATABASE ERROR] {type(erro).__name__}.")
         traceback.print_exc()
         return False
 
@@ -840,7 +840,7 @@ def inicializar_database():
             print("[DATABASE] Inicialização confirmada.")
         return resultado
     except Exception as erro:
-        print(f"[DATABASE WARNING] {erro}")
+        print(f"[DATABASE WARNING] {type(erro).__name__}.")
         traceback.print_exc()
         return False
 
@@ -875,7 +875,7 @@ def carregar_dados():
         print(f"[DATABASE] {len(dados)} registos carregados.")
         return dados
     except Exception as erro:
-        print(f"[DATABASE ERROR] Erro ao carregar dados: {erro}")
+        print(f"[DATABASE ERROR] Erro ao carregar dados: {type(erro).__name__}.")
         traceback.print_exc()
         return pd.DataFrame()
     finally:
@@ -919,7 +919,7 @@ def carregar_insights_periodo(periodo_dias):
             "snapshot_date": row[3].isoformat() if row and row[3] else None,
         }
     except Exception as erro:
-        print(f"[DATABASE] Totais oficiais do período indisponíveis: {type(erro).__name__}: {erro}")
+        print(f"[DATABASE] Totais oficiais do período indisponíveis: {type(erro).__name__}.")
         return {"reach": None, "views": None, "interactions": None, "snapshot_date": None}
     finally:
         if conn:
@@ -1021,7 +1021,7 @@ def carregar_insights_facebook(periodo_dias=28):
             "reach_label": "Soma do alcance diário",
         }
     except Exception as erro:
-        print(f"[DATABASE] Insights Facebook indisponíveis: {type(erro).__name__}: {erro}")
+        print(f"[DATABASE] Insights Facebook indisponíveis: {type(erro).__name__}.")
         return {"views": None, "reach": None, "interactions": None, "snapshot_date": None,
                 "reach_label": "Alcance"}
     finally:
@@ -1064,7 +1064,7 @@ def carregar_insights_reels(periodo_dias):
             "snapshot_date": row[3].isoformat() if row and row[3] else None,
         }
     except Exception as erro:
-        print(f"[DATABASE] Insights de Reels indisponíveis: {type(erro).__name__}: {erro}")
+        print(f"[DATABASE] Insights de Reels indisponíveis: {type(erro).__name__}.")
         return {"views": None, "reach": None, "interactions": None, "snapshot_date": None}
     finally:
         if conn:
@@ -2333,13 +2333,13 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
         if avisos_qualidade:
             alerta = "\n".join(avisos_qualidade + [str(alerta)])
     except Exception as erro:
-        print(f"[AI ALERT ERROR] {erro}")
+        print(f"[AI ALERT ERROR] {type(erro).__name__}.")
         alerta = "⚠️ Não foi possível gerar o alerta."
 
     try:
         recomendacao = gerar_recomendacao(dados)
     except Exception as erro:
-        print(f"[AI RECOMMENDATION ERROR] {erro}")
+        print(f"[AI RECOMMENDATION ERROR] {type(erro).__name__}.")
         recomendacao = "💡 Não foi possível gerar a recomendação."
 
     try:
@@ -2369,7 +2369,7 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
                 "que interações e alcance usam o mesmo período de referência.\n"
             )
     except Exception as erro:
-        print(f"[AI REPORT ERROR] {erro}")
+        print(f"[AI REPORT ERROR] {type(erro).__name__}.")
         relatorio = "Relatório executivo indisponível."
 
     fig1 = px.line(
@@ -2425,7 +2425,7 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
         )
         configurar_grafico(fig4)
     except Exception as erro:
-        print(f"[AI FORECAST ERROR] {erro}")
+        print(f"[AI FORECAST ERROR] {type(erro).__name__}.")
         fig4 = grafico_sem_dados("🤖 Previsão IA")
 
     cards_28d = [
