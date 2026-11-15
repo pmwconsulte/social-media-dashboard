@@ -1,4 +1,9 @@
 """Tests for WhatsApp delivery status webhook persistence and reconciliation."""
+import hashlib
+import hmac
+
+from flask import Flask
+
 import whatsapp_webhook
 
 
@@ -75,6 +80,31 @@ def _run(monkeypatch, payload):
 
 def _queries(conn):
     return [query for query, _ in conn.fake_cursor.statements]
+
+
+def test_whatsapp_webhook_validates_hmac_with_whatsapp_app_secret(monkeypatch):
+    secret = "whatsapp-webhook-test-secret"
+    raw = b'{"object":"whatsapp_business_account","entry":[]}'
+    signature = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", secret)
+    app = Flask("whatsapp-signature-test")
+    with app.test_request_context(
+        "/webhooks/whatsapp",
+        headers={"X-Hub-Signature-256": signature},
+    ):
+        assert whatsapp_webhook._signature_ok(raw)
+
+
+def test_whatsapp_webhook_rejects_invalid_or_missing_signature(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "whatsapp-webhook-test-secret")
+    app = Flask("whatsapp-invalid-signature-test")
+    with app.test_request_context("/webhooks/whatsapp"):
+        assert not whatsapp_webhook._signature_ok(b"payload")
+    with app.test_request_context(
+        "/webhooks/whatsapp",
+        headers={"X-Hub-Signature-256": "sha256=" + ("0" * 64)},
+    ):
+        assert not whatsapp_webhook._signature_ok(b"payload")
 
 
 def test_persiste_os_quatro_estados_e_eventos_idempotentes(monkeypatch):

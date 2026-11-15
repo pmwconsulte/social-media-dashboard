@@ -5,6 +5,7 @@ from cryptography.fernet import Fernet
 from flask import Flask
 
 import facebook_posts
+from security_rbac import credential_fingerprint
 
 
 class FakeCursor:
@@ -51,6 +52,29 @@ def client(monkeypatch):
         ("page-row-foreign", "999999", "Página de outro workspace", encrypted, "workspace-alheio"),
     ]
     connection = FakeConnection(pages)
+
+    import database
+
+    class AdminWorkspaceCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return ("workspace-test-id",)
+
+    class AdminWorkspaceConnection:
+        def cursor(self):
+            return AdminWorkspaceCursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: AdminWorkspaceConnection())
+    monkeypatch.setenv("ADMIN_USERNAME", "test-admin")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "admin-hash-test")
     app = Flask(__name__)
     app.secret_key = "test-only-secret"
     app.add_url_rule("/login", "login", lambda: "login")
@@ -65,7 +89,12 @@ def client(monkeypatch):
 def login(client):
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["username"] = "test-admin"
+        sess["user_id"] = None
+        sess["workspace_id"] = "workspace-test-id"
         sess["workspace_slug"] = "workspace-test"
+        sess["role"] = "platform_admin"
+        sess["credential_fingerprint"] = credential_fingerprint("admin-hash-test", "test-only-secret")
 
 
 def api_response(payload, status=200):

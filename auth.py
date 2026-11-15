@@ -23,6 +23,51 @@ from flask import (
 from billing import PLANS, evaluate_workspace_access
 from database import get_connection
 from facebook_posts import register_facebook_posts_route
+from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token, has_permission, refresh_session_identity, credential_fingerprint
+from social_identity import upsert_social_account, SocialIdentityConflict
+
+
+def _linked_instagram_for_facebook(cur, facebook_account_id):
+    """Return only an active, linked Instagram identity in the Facebook Page's workspace."""
+    cur.execute(
+        """SELECT fil.instagram_social_account_id, fil.instagram_account_id
+           FROM facebook_instagram_links fil
+           JOIN social_accounts fb ON fb.id::text=fil.social_account_id
+           JOIN social_accounts ig ON ig.id=fil.instagram_social_account_id
+           WHERE fil.social_account_id=%s
+             AND fb.workspace_id=ig.workspace_id
+             AND LOWER(fb.platform)='facebook'
+             AND LOWER(ig.platform)='instagram'
+             AND COALESCE(fb.is_active, TRUE)=TRUE
+             AND COALESCE(ig.is_active, TRUE)=TRUE
+             AND LOWER(COALESCE(ig.connection_status,''))='linked'
+           LIMIT 1""",
+        (str(facebook_account_id),),
+    )
+    return cur.fetchone()
+
+
+def _consume_facebook_oauth_state(state_data, session):
+    """Consume a one-time OAuth nonce bound to the initiating browser session."""
+    expected_nonce = session.pop("facebook_oauth_nonce", None)
+    nonce = state_data.get("nonce") if isinstance(state_data, dict) else None
+    workspace_slug = state_data.get("workspace_slug") if isinstance(state_data, dict) else None
+    return bool(
+        isinstance(expected_nonce, str)
+        and isinstance(nonce, str)
+        and secrets.compare_digest(expected_nonce, nonce)
+        and workspace_slug
+        and workspace_slug == session.get("workspace_slug")
+    )
+
+
+def _facebook_oauth_selector_matches(selector, session):
+    expected = session.get("facebook_oauth_selector")
+    return bool(
+        isinstance(selector, str)
+        and isinstance(expected, str)
+        and secrets.compare_digest(selector, expected)
+    )
 
 
 def _oauth_configured():
@@ -402,7 +447,7 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[FACEBOOK INSIGHTS ERROR] {type(erro).__name__}: {erro}")
+        print(f"[FACEBOOK INSIGHTS ERROR] {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -571,7 +616,7 @@ def _sync_instagram_period_snapshots(social_account_id, ig_id, access_token):
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[INSTAGRAM PERÍODO ERROR] Falha ao guardar totais oficiais: {type(erro).__name__}: {erro}")
+        print(f"[INSTAGRAM PERÍODO ERROR] Falha ao guardar totais oficiais: {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -671,7 +716,7 @@ def _sync_instagram_reels_periods(social_account_id, ig_id, access_token):
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[INSTAGRAM REELS ERROR] Não foi possível guardar snapshots: {type(erro).__name__}: {erro}")
+        print(f"[INSTAGRAM REELS ERROR] Não foi possível guardar snapshots: {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -904,7 +949,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token, graph_host="
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[INSTAGRAM INSIGHTS ERROR] Falha ao guardar métricas: {type(erro).__name__}: {erro}")
+        print(f"[INSTAGRAM INSIGHTS ERROR] Falha ao guardar métricas: {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -949,7 +994,7 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 <p>O período de teste está ativo. Escolha um plano para consultar as opções de pagamento quando estiver pronto para continuar.</p>
 {% endif %}
 <a class="btn" href="#plans">Ver planos e opções de pagamento</a>
-<a class="btn logout" href="/logout">Sair</a>
+<form method="post" action="/logout" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn logout" type="submit">Sair</button></form>
 </div>
 <div class="plans" id="plans">
 {% for key, item in plans.items() %}
@@ -963,7 +1008,7 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 </ul>
 <div class="payment">
 <strong>Escolha um método de pagamento</strong>
-{% if paypal_ready and key != "trial" %}<div class="actions"><a class="btn" href="/billing/paypal/subscribe/{{ key }}">Subscrever com PayPal (Sandbox)</a></div>{% elif key != "trial" %}<p class="muted">Checkout PayPal automático desativado enquanto decorrem os testes de segurança.</p>{% endif %}
+{% if paypal_ready and key != "trial" %}<div class="actions"><form method="post" action="/billing/paypal/subscribe/{{ key }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn" type="submit">Subscrever com PayPal (Sandbox)</button></form></div>{% elif key != "trial" %}<p class="muted">Checkout PayPal automático desativado enquanto decorrem os testes de segurança.</p>{% endif %}
 <p><strong>PayPal:</strong> pmwconsulte@gmail.com</p>
 <div class="actions">
 <a class="btn" href="https://www.paypal.com/" target="_blank" rel="noopener noreferrer">Abrir PayPal</a>
@@ -1004,6 +1049,7 @@ input:focus{border-color:#38bdf8}button{width:100%;margin-top:22px;padding:13px;
 <p class="brand-slogan">Transforme os Seus Dados em Oportunidades de Negócio</p>
 <h1>🚀 Criar conta</h1><p>Comece o seu trial gratuito de 30 dias</p>
 <form method="post" action="/signup">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label for="name">Nome / Empresa</label><input id="name" name="name" type="text" autocomplete="name" required>
 <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
@@ -1164,6 +1210,7 @@ LOGIN_PAGE = """
                 <h1 id="login-title" data-i18n="title">Entrar na plataforma</h1>
                 <p class="form-intro" data-i18n="intro">Introduza as suas credenciais para aceder ao seu dashboard.</p>
                 <form method="post" action="/login">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="field">
                         <label for="username" data-i18n="usernameLabel">Email ou nome de utilizador</label>
                         <input id="username" name="username" type="text" autocomplete="username"
@@ -1254,13 +1301,13 @@ def _env_bool(name, default=True):
 ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Minha Conta — PMW Social Media Dashboard AI</title>
 <style>body{margin:0;background:#020617;color:#f8fafc;font-family:Arial,sans-serif}.wrap{max-width:1050px;margin:35px auto;padding:20px}.card{background:#111827;border:1px solid #1e293b;border-radius:18px;padding:24px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}label{display:block;margin:12px 0 7px;font-weight:600}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #334155;background:#020617;color:#fff;box-sizing:border-box}button,.btn{display:inline-block;padding:11px 16px;border:0;border-radius:9px;background:#38bdf8;color:#020617;font-weight:700;text-decoration:none;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#172554;color:#7dd3fc;font-size:12px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #1e293b}</style></head><body><div class="wrap">
-<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <a class="btn danger" href="/logout">Sair</a><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p><a class="btn" href="/instagram/inbox" style="background:#7c3aed;color:#fff">💬 Instagram Direct</a> <a class="btn" href="/facebook/posts" style="background:#1877f2;color:#fff">📘 Publicações Facebook</a> <form method="post" action="/social-accounts/sync" style="display:inline-block;margin:8px 0 0"><button type="submit" style="background:#22c55e;color:#052e16">🔄 Sincronizar métricas agora</button></form>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
-<div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
-<div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
+<div class="card"><a class="btn" href="/">← Dashboard</a> <a class="btn" href="/account#social-connections" style="background:#a855f7;color:#fff">🔗 Conectar Redes Sociais</a> <a class="btn" href="/billing">💳 Plano</a> <form method="post" action="/logout" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn danger" type="submit">Sair</button></form><h1>👤 Minha Conta</h1><p class="muted">Gerencie o seu perfil, password e contas sociais.</p><a class="btn" href="/instagram/inbox" style="background:#7c3aed;color:#fff">💬 Instagram Direct</a> <a class="btn" href="/facebook/posts" style="background:#1877f2;color:#fff">📘 Publicações Facebook</a> <form method="post" action="/social-accounts/sync" style="display:inline-block;margin:8px 0 0"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" style="background:#22c55e;color:#052e16">🔄 Sincronizar métricas agora</button></form>{% if message %}<p class="ok">{{ message }}</p>{% endif %}{% if error %}<p class="err">{{ error }}</p>{% endif %}</div><div id="social-connections" class="card" style="border:2px solid #38bdf8;background:linear-gradient(135deg,#0f172a,#082f49)"><h2 style="margin-top:0">🔗 Conectar Redes Sociais</h2><p class="muted">Ligue as suas redes sociais através da autenticação oficial. O cliente será redirecionado para cada plataforma, fará login e autorizará o acesso. Nunca introduza password, token, App ID ou App Secret neste dashboard.</p><div class="grid"><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📷 Instagram</h3><p class="muted">Instagram Business / Creator</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>📘 Facebook</h3><p class="muted">Facebook Pages</p><a class="btn" href="/oauth/facebook">📘 Conectar Facebook</a></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💬 WhatsApp</h3><p class="muted">WhatsApp Business Platform</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🎵 TikTok</h3><p class="muted">TikTok for Business</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>▶️ YouTube</h3><p class="muted">YouTube / Google</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>💼 LinkedIn</h3><p class="muted">LinkedIn Pages</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div><div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:18px"><h3>🐦 X</h3><p class="muted">X / Twitter</p><button class="btn" disabled style="opacity:.55;cursor:not-allowed">Em breve</button></div></div></div>
+<div class="grid"><div class="card"><h2>Perfil</h2><form method="post" action="/account"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Nome</label><input name="name" value="{{ user_name }}" required><label>Email</label><input value="{{ email }}" disabled><label>Workspace</label><input value="{{ workspace_name }}" disabled><label>Plano</label><p><span class="tag">{{ plan_name }}</span> {% if days_left %}<span class="muted">{{ days_left }} dias de trial</span>{% endif %}</p><button type="submit">Guardar perfil</button></form></div>
+<div class="card"><h2>Alterar password</h2><form method="post" action="/account/password"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Password atual</label><input name="current_password" type="password" required><label>Nova password</label><input name="new_password" type="password" minlength="8" required><label>Confirmar nova password</label><input name="confirm_password" type="password" minlength="8" required><button type="submit">Alterar password</button></form></div></div>
 <div class="card" style="border:2px solid #a855f7;background:#111827">
 <h2>➕ Adicionar Rede Social</h2>
 <p class="muted">Selecione a plataforma. A autenticação será feita na plataforma oficial; não introduza passwords ou tokens neste dashboard.</p>
-<form method="post" action="/social-accounts/add" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
+<form method="post" action="/social-accounts/add" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <div><label>Rede Social</label>
 <select name="platform" required>
 <option value="">— Selecionar plataforma —</option>
@@ -1277,7 +1324,7 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 </div>
 <div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Ligue as suas redes sociais através de autenticação oficial. Não é necessário inserir tokens ou credenciais no dashboard.</p>
 <div style="background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:18px;margin:16px 0"><h3 style="margin-top:0">📷 Instagram</h3><p class="muted">O cliente será redirecionado para o Instagram, fará login e autorizará o acesso. O token é armazenado cifrado no servidor.</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div>
-{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
+{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
 
 def setup_auth(server: Flask):
     """Configure secure session authentication for the Dash server."""
@@ -1294,23 +1341,60 @@ def setup_auth(server: Flask):
         PERMANENT_SESSION_LIFETIME=3600,
     )
 
+    @server.context_processor
+    def inject_csrf_token():
+        return {"csrf_token": issue_csrf_token(session)}
+
+    @server.before_request
+    def enforce_csrf_for_state_changes():
+        """Protect browser state changes while preserving signed provider webhooks."""
+        if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+            return None
+        path = request.path
+        if path.startswith("/_dash-"):
+            return None
+        if path in {
+            "/webhooks/whatsapp",
+            "/webhooks/instagram",
+            "/webhooks/messenger",
+            "/webhooks/paypal",
+        }:
+            return None
+        # Login and signup are also protected against cross-site form submission.
+        if path in {"/login", "/signup"} or session.get("authenticated"):
+            supplied = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
+            if not valid_csrf_token(session, supplied):
+                return "Pedido inválido ou expirado. Atualize a página e tente novamente.", 400
+        return None
+
     @server.before_request
     def require_dashboard_login():
-        """Protect the dashboard UI and Dash data/callback endpoints."""
+        """Protect dashboard and callbacks; revalidate active tenant membership."""
         path = request.path
         is_dash_endpoint = path.startswith("/_dash-") and not path.startswith(
             "/_dash-component-suites/"
         )
-        if (path == "/" or is_dash_endpoint) and not session.get("authenticated"):
-            if path == "/":
-                return redirect(url_for("login"))
-            return "Authentication required", 401
+        if path == "/" or is_dash_endpoint:
+            if not session.get("authenticated"):
+                if path == "/":
+                    return redirect(url_for("login"))
+                return "Authentication required", 401
+            try:
+                if not refresh_session_identity(session):
+                    if path == "/":
+                        return redirect(url_for("login"))
+                    return "Authentication required", 401
+            except Exception as erro:
+                session.clear()
+                print(f"[DASHBOARD IDENTITY CHECK] {type(erro).__name__}")
+                return "Authentication service temporarily unavailable", 503
 
     @server.get("/health")
     def health():
         return "OK", 200
 
     @server.get("/billing")
+    @require_permission("billing.read")
     def billing():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -1322,7 +1406,7 @@ def setup_auth(server: Flask):
             finally:
                 conn.close()
         except Exception as erro:
-            print(f"[BILLING ERROR] {erro}")
+            print(f"[BILLING ERROR] {type(erro).__name__}.")
             return "Serviço de faturação temporariamente indisponível.", 503
 
         workspace = access.get("workspace") or {}
@@ -1419,6 +1503,7 @@ def setup_auth(server: Flask):
         return response
 
     @server.get("/diagnostico-dados")
+    @require_permission("analytics.read")
     def diagnostico_dados():
         """Diagnóstico privado e limitado ao workspace da sessão; nunca expõe tokens."""
         if not session.get("authenticated"):
@@ -1501,8 +1586,24 @@ def setup_auth(server: Flask):
             if conn:
                 conn.close()
 
-    @server.get("/logout")
+    @server.route("/logout", methods=["GET", "POST"])
     def logout():
+        if request.method == "GET":
+            # Keep the dashboard logout link working without allowing a
+            # cross-site GET to destroy an authenticated session.
+            return render_template_string(
+                """<!doctype html><html lang="pt"><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <title>Terminar sessão | PMW Dashboard</title>
+                <body style="font-family:Arial;background:#020617;color:#f8fafc;min-height:100vh;display:grid;place-items:center">
+                <main style="background:#111827;padding:28px;border-radius:14px;max-width:420px">
+                <h1>Terminar sessão?</h1><p>Confirme para sair da sua conta PMW.</p>
+                <form method="post" action="/logout">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Terminar sessão</button>
+                <a href="/" style="margin-left:12px;color:#7dd3fc">Cancelar</a>
+                </form></main></body></html>"""
+            )
         # Invalida completamente a sessão atual e remove o cookie no browser.
         session.clear()
         response = redirect(url_for("login", logged_out="1"))
@@ -1534,7 +1635,7 @@ def setup_auth(server: Flask):
                     return redirect("/")
                 return redirect(url_for("billing"))
             except Exception as erro:
-                print(f"[BILLING LOGIN ERROR] {erro}")
+                print(f"[BILLING LOGIN ERROR] {type(erro).__name__}.")
                 return redirect(url_for("billing"))
 
         error = None
@@ -1544,6 +1645,10 @@ def setup_auth(server: Flask):
             password = request.form.get("password", "")
             valid = False
             user_workspace_slug = None
+            user_id = None
+            workspace_id = None
+            user_role = "viewer"
+            credential_hash = None
 
             configured_username = os.getenv("ADMIN_USERNAME", "").strip()
             password_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
@@ -1558,39 +1663,75 @@ def setup_auth(server: Flask):
                     valid = False
 
             if valid:
+                # The environment administrator is explicitly privileged but
+                # remains bound to the configured default workspace.
+                user_role = "platform_admin"
+                credential_hash = password_hash
                 user_workspace_slug = os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+                try:
+                    conn = get_connection()
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT id FROM workspaces WHERE slug=%s LIMIT 1;", (user_workspace_slug,))
+                            workspace_row = cur.fetchone()
+                            workspace_id = str(workspace_row[0]) if workspace_row else None
+                    finally:
+                        conn.close()
+                except Exception as erro:
+                    print(f"[LOGIN WORKSPACE ERROR] {type(erro).__name__}")
+                    valid = False
             else:
                 try:
                     conn = get_connection()
                     try:
                         with conn.cursor() as cur:
                             cur.execute(
-                                """SELECT email, password_hash, workspace_id
+                                """SELECT id, email, password_hash, workspace_id, role
                                    FROM users
                                    WHERE LOWER(email) = LOWER(%s)
-                                     AND COALESCE(is_active, TRUE) = TRUE
-                                   LIMIT 1;""",
+                                     AND COALESCE(is_active, TRUE) = TRUE;""",
                                 (username,),
                             )
-                            row = cur.fetchone()
-                            if row and row[1]:
-                                valid = bcrypt.checkpw(password.encode("utf-8"), row[1].encode("utf-8"))
-                                if valid and row[2]:
-                                    cur.execute("SELECT slug FROM workspaces WHERE id = %s LIMIT 1;", (row[2],))
+                            matching_users = cur.fetchall()
+                            # Email matching is case-insensitive. If legacy data
+                            # contains duplicate case variants, fail closed rather
+                            # than authenticating an arbitrary row with LIMIT 1.
+                            row = matching_users[0] if len(matching_users) == 1 else None
+                            if row and row[2] and row[3]:
+                                valid = bcrypt.checkpw(password.encode("utf-8"), row[2].encode("utf-8"))
+                                if valid:
+                                    cur.execute("SELECT slug FROM workspaces WHERE id = %s LIMIT 1;", (row[3],))
                                     workspace_row = cur.fetchone()
                                     if workspace_row:
+                                        user_id = str(row[0])
+                                        workspace_id = str(row[3])
                                         user_workspace_slug = workspace_row[0]
+                                        user_role = normalize_role(row[4])
+                                        if user_role == "platform_admin":
+                                            # Reserved for the environment administrator;
+                                            # tenant users cannot self-assign platform scope.
+                                            valid = False
+                                        credential_hash = row[2]
+                                    else:
+                                        valid = False
                     finally:
                         conn.close()
                 except Exception as erro:
-                    print(f"[LOGIN DATABASE ERROR] {erro}")
+                    print(f"[LOGIN DATABASE ERROR] {type(erro).__name__}")
                     valid = False
 
-            if valid:
+            if valid and user_workspace_slug and workspace_id:
                 session.clear()
                 session["authenticated"] = True
                 session["username"] = username
-                session["workspace_slug"] = user_workspace_slug or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+                session["user_id"] = user_id
+                session["workspace_id"] = workspace_id
+                session["workspace_slug"] = user_workspace_slug
+                session["role"] = normalize_role(user_role)
+                if credential_hash:
+                    session["credential_fingerprint"] = credential_fingerprint(
+                        credential_hash, server.secret_key
+                    )
                 session.permanent = True
                 return redirect("/")
 
@@ -1640,20 +1781,28 @@ def setup_auth(server: Flask):
                             cur.execute(
                                 """INSERT INTO users
                                    (name, email, password_hash, plan_type, workspace_id, role, is_active)
-                                   VALUES (%s, %s, %s, 'free', %s, 'owner', TRUE);""",
+                                   VALUES (%s, %s, %s, 'free', %s, 'owner', TRUE)
+                                   RETURNING id;""",
                                 (name, email, password_hash, workspace_id),
                             )
+                            user_id = cur.fetchone()[0]
                             conn.commit()
                             session.clear()
                             session["authenticated"] = True
                             session["username"] = email
+                            session["user_id"] = str(user_id)
+                            session["workspace_id"] = str(workspace_id)
                             session["workspace_slug"] = workspace_slug
+                            session["role"] = "owner"
+                            session["credential_fingerprint"] = credential_fingerprint(
+                                password_hash, server.secret_key
+                            )
                             session.permanent = True
                             return redirect("/")
                 except Exception as erro:
                     if conn:
                         conn.rollback()
-                    print(f"[SIGNUP ERROR] {erro}")
+                    print(f"[SIGNUP ERROR] {type(erro).__name__}.")
                     error = "Não foi possível criar a conta. Tente novamente."
                 finally:
                     if conn:
@@ -1662,6 +1811,7 @@ def setup_auth(server: Flask):
         return render_template_string(SIGNUP_PAGE, error=error)
 
     @server.get("/oauth/instagram")
+    @require_permission("integrations.manage")
     def instagram_oauth():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -1689,7 +1839,7 @@ def setup_auth(server: Flask):
             return redirect(authorize_url)
 
         except Exception as erro:
-            print(f"[INSTAGRAM OAUTH START ERROR] {type(erro).__name__}: {erro}")
+            print(f"[INSTAGRAM OAUTH START ERROR] {type(erro).__name__}.")
             return redirect(
                 url_for(
                     "account",
@@ -1698,6 +1848,7 @@ def setup_auth(server: Flask):
             )
 
     @server.get("/oauth/instagram/callback")
+    @require_permission("integrations.manage")
     def instagram_oauth_callback():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -1776,43 +1927,22 @@ def setup_auth(server: Flask):
                     (workspace[0],),
                 )
                 active_accounts = cur.fetchone()[0]
-                cur.execute(
-                    """SELECT id FROM social_accounts
-                       WHERE workspace_id=%s AND platform='Instagram'
-                         AND LOWER(username)=LOWER(%s) LIMIT 1""",
-                    (workspace[0], username),
-                )
-                existing = cur.fetchone()
-
-                # A renovação de uma conta já conectada não consome novo limite.
-                # Uma nova conta só pode ser criada dentro do limite do plano.
-                if not existing and isinstance(account_limit, int) and active_accounts >= account_limit:
-                    raise RuntimeError(
-                        f"O plano {PLANS.get(plan_key, PLANS['trial'])['name']} permite no máximo "
-                        f"{account_limit} contas sociais ativas."
-                    )
-
                 encrypted = _encrypt_token(access_token)
-                if existing:
-                    social_account_id = existing[0]
-                    cur.execute(
-                        """UPDATE social_accounts
-                           SET access_token=%s, display_name=%s,
-                               connection_status='connected', is_active=TRUE,
-                               last_sync_at=NOW()
-                           WHERE id=%s AND workspace_id=%s""",
-                        (encrypted, username, social_account_id, workspace[0]),
+                try:
+                    social_account_id = upsert_social_account(
+                        cur,
+                        workspace_id=workspace[0],
+                        platform="Instagram",
+                        external_account_id=ig_id,
+                        username=username,
+                        display_name=username,
+                        encrypted_token=encrypted,
                     )
-                else:
-                    cur.execute(
-                        """INSERT INTO social_accounts
-                           (workspace_id, platform, username, display_name,
-                            access_token, connection_status, is_active, last_sync_at)
-                           VALUES (%s,'Instagram',%s,%s,%s,'connected',TRUE,NOW())
-                           RETURNING id""",
-                        (workspace[0], username, username, encrypted),
-                    )
-                    social_account_id = cur.fetchone()[0]
+                except SocialIdentityConflict as conflict:
+                    raise RuntimeError(
+                        "A identidade Instagram existente é ambígua. É necessária reconciliação "
+                        "antes de voltar a ligar esta conta."
+                    ) from conflict
             conn.commit()
             synced = _sync_instagram_metrics(social_account_id, ig_id, access_token)
             if synced:
@@ -1820,17 +1950,18 @@ def setup_auth(server: Flask):
             return redirect(url_for("account", message="Instagram conectado. Algumas métricas ainda não estão disponíveis; verifique as permissões e os logs."))
         except (requests.RequestException, ValueError, InvalidToken) as erro:
             if conn: conn.rollback()
-            print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}: {erro}")
+            print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível concluir a ligação ao Instagram."))
         except Exception as erro:
             if conn: conn.rollback()
-            print(f"[INSTAGRAM OAUTH ERROR] {erro}")
+            print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Erro ao configurar a conta Instagram."))
         finally:
             if conn: conn.close()
 
 
     @server.route("/instagram/inbox", methods=["GET", "POST"])
+    @require_permission("messaging.read")
     def instagram_inbox():
         """Inbox Instagram isolada por workspace; tokens nunca são enviados ao browser."""
         if not session.get("authenticated"):
@@ -1928,6 +2059,8 @@ def setup_auth(server: Flask):
                 csrf_received = request.form.get("csrf_token", "")
                 if not csrf_expected or not csrf_received or not secrets.compare_digest(csrf_expected, csrf_received):
                     return "Pedido inválido ou expirado. Actualize a página e tente novamente.", 400
+                if not has_permission(session.get("role"), "messaging.reply"):
+                    return "Permissão insuficiente para responder a mensagens.", 403
                 reply_text = (request.form.get("message") or "").strip()
                 if not selected_conversation or not any(str(item.get("id")) == selected_conversation for item in conversations):
                     return redirect(url_for("instagram_inbox", account=str(account_id)))
@@ -2095,6 +2228,7 @@ def setup_auth(server: Flask):
 
 
     @server.get("/oauth/facebook")
+    @require_permission("integrations.manage")
     def facebook_oauth():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -2108,20 +2242,24 @@ def setup_auth(server: Flask):
             # the session cookie surviving the round trip through Facebook.
             from itsdangerous import URLSafeTimedSerializer
             serializer = URLSafeTimedSerializer(server.secret_key, salt="pmw-facebook-oauth-state-v1")
+            nonce = secrets.token_urlsafe(32)
+            session["facebook_oauth_nonce"] = nonce
             state = serializer.dumps({
-                "nonce": secrets.token_urlsafe(32),
+                "nonce": nonce,
                 "workspace_slug": session.get("workspace_slug"),
             })
             return redirect(_facebook_authorize_url(state))
         except Exception as erro:
-            print(f"[FACEBOOK OAUTH START ERROR] {type(erro).__name__}: {erro}")
+            print(f"[FACEBOOK OAUTH START ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível iniciar a ligação ao Facebook."))
 
     @server.get("/oauth/facebook/callback")
+    @require_permission("integrations.manage")
     def facebook_oauth_callback():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
         if request.args.get("error"):
+            session.pop("facebook_oauth_nonce", None)
             return redirect(url_for("account", error="A autorização do Facebook foi cancelada ou recusada."))
 
         state = request.args.get("state", "")
@@ -2131,11 +2269,12 @@ def setup_auth(server: Flask):
             state_data = serializer.loads(state, max_age=600)
         except Exception as erro:
             # Do not log the state value; it is a temporary security token.
+            session.pop("facebook_oauth_nonce", None)
             print(f"[FACEBOOK OAUTH STATE INVALID] {type(erro).__name__}")
             return redirect(url_for("account", error="A sessão de autorização do Facebook expirou ou não pôde ser validada. Inicie a ligação novamente."))
+        if not _consume_facebook_oauth_state(state_data, session):
+            return redirect(url_for("account", error="A sessão de autorização do Facebook não corresponde à sessão que iniciou a ligação. Inicie novamente.")) 
         workspace_slug = state_data.get("workspace_slug")
-        if not state_data.get("nonce") or workspace_slug != session.get("workspace_slug"):
-            return redirect(url_for("account", error="A sessão de autorização do Facebook não corresponde à conta atual. Inicie a ligação novamente."))
         code = request.args.get("code", "")
         if not code:
             return redirect(url_for("account", error="Código OAuth inválido ou sessão expirada."))
@@ -2217,6 +2356,7 @@ def setup_auth(server: Flask):
                 ))
 
             selector = secrets.token_urlsafe(32)
+            session["facebook_oauth_selector"] = selector
             conn = get_connection()
             try:
                 with conn.cursor() as cur:
@@ -2272,20 +2412,21 @@ def setup_auth(server: Flask):
                 return redirect(url_for("account", error="Não foi possível obter tokens válidos para as Páginas selecionáveis."))
             return redirect(url_for("facebook_select_page", selector=selector))
         except (requests.RequestException, ValueError, InvalidToken) as erro:
-            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}: {erro}")
+            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível concluir a autorização do Facebook. Verifique as permissões da aplicação Meta."))
         except Exception as erro:
-            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}: {erro}")
+            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Ocorreu um erro ao preparar as Páginas do Facebook."))
     
     @server.route("/oauth/facebook/select", methods=["GET", "POST"])
+    @require_permission("integrations.manage")
     def facebook_select_page():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
         selector = request.values.get("selector", "").strip()
         workspace_slug = session.get("workspace_slug")
-        if not selector:
-            return redirect(url_for("account", error="Seleção de Página inválida. Inicie a ligação novamente."))
+        if not _facebook_oauth_selector_matches(selector, session):
+            return redirect(url_for("account", error="Seleção de Página inválida ou pertencente a outra sessão. Inicie a ligação novamente."))
 
         conn = None
         try:
@@ -2320,10 +2461,12 @@ def setup_auth(server: Flask):
                     a{color:#7dd3fc}</style></head><body><main><h1>Escolher Página do Facebook</h1>
                     <p>Selecione a Página que pretende ligar ao seu workspace PMW. O token será guardado cifrado no servidor.</p>
                     <form method="post" action="/oauth/facebook/select">
+                    <input type="hidden" name="csrf_token" value="__CSRF__">
                     <input type="hidden" name="selector" value="__SELECTOR__">
                     <label for="page_id">Página do Facebook</label><select id="page_id" name="page_id" required>__OPTIONS__</select>
                     <button type="submit">Conectar Página selecionada</button></form>
                     <p><a href="/account">Cancelar e voltar à conta</a></p></main></body></html>"""
+                    html = html.replace("__CSRF__", issue_csrf_token(session))
                     html = html.replace("__SELECTOR__", selector.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;"))
                     html = html.replace("__OPTIONS__", options)
                     return html
@@ -2360,28 +2503,26 @@ def setup_auth(server: Flask):
                     ))
 
                 encrypted_token = selected[2]
-                if existing:
-                    social_account_id = existing[0]
-                    cur.execute(
-                        """UPDATE social_accounts SET access_token=%s, display_name=%s,
-                               connection_status='connected', is_active=TRUE, last_sync_at=NOW()
-                           WHERE id=%s AND workspace_id=%s""",
-                        (encrypted_token, selected[1], social_account_id, workspace[0]),
+                try:
+                    social_account_id = upsert_social_account(
+                        cur,
+                        workspace_id=workspace[0],
+                        platform="Facebook",
+                        external_account_id=page_id,
+                        username=page_id,
+                        display_name=selected[1],
+                        encrypted_token=encrypted_token,
                     )
-                else:
-                    cur.execute(
-                        """INSERT INTO social_accounts
-                           (workspace_id, platform, username, display_name, access_token,
-                            connection_status, is_active, last_sync_at)
-                           VALUES (%s, 'Facebook', %s, %s, %s, 'connected', TRUE, NOW())
-                           RETURNING id""",
-                        (workspace[0], page_id, selected[1], encrypted_token),
-                    )
-                    social_account_id = cur.fetchone()[0]
+                except SocialIdentityConflict as conflict:
+                    raise RuntimeError(
+                        "A identidade Facebook existente é ambígua. É necessária reconciliação "
+                        "antes de voltar a ligar esta Página."
+                    ) from conflict
                 cur.execute(
                     "DELETE FROM facebook_oauth_pending_pages WHERE selector=%s AND workspace_slug=%s",
                     (selector, workspace_slug),
                 )
+                session.pop("facebook_oauth_selector", None)
                 page_token = _token_cipher().decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
 
                 # Descobrir a conta Instagram profissional associada à Página.
@@ -2433,33 +2574,35 @@ def setup_auth(server: Flask):
                 if linked_instagram and linked_instagram.get("id"):
                     ig_username = (linked_instagram.get("username") or
                                    "instagram_" + str(linked_instagram["id"]))
-                    # Reutilizar apenas a identidade já criada para esta mesma Página
-                    # e este mesmo Instagram ligado pelo Facebook Login. Nunca reutilizar
-                    # uma conta Instagram Login, mesmo que o username coincida.
+                    # Reutilizar qualquer identidade do mesmo Instagram externo,
+                    # incluindo uma ligação Instagram Login já existente. A associação
+                    # Facebook não altera o estado activo nem as credenciais dessa conta.
+                    # Resolver pelo ID imutável da Meta; nunca pelo username.
                     cur.execute(
-                        """SELECT fil.instagram_social_account_id
-                           FROM facebook_instagram_links fil
-                           JOIN social_accounts ig ON ig.id=fil.instagram_social_account_id
-                           WHERE fil.social_account_id=%s AND fil.page_id=%s
-                             AND fil.instagram_account_id=%s
-                             AND ig.workspace_id=%s AND ig.platform='Instagram'
-                             AND LOWER(COALESCE(ig.connection_status, ''))='linked'
-                           LIMIT 1""",
-                        (str(social_account_id), page_id, str(linked_instagram["id"]), workspace[0]),
+                        """SELECT id FROM social_accounts
+                           WHERE workspace_id=%s AND LOWER(platform)='instagram'
+                             AND external_account_id=%s
+                           ORDER BY created_at, id LIMIT 2 FOR UPDATE""",
+                        (workspace[0], str(linked_instagram["id"])),
                     )
-                    linked_row = cur.fetchone()
-                    if linked_row and linked_row[0]:
-                        instagram_social_account_id = linked_row[0]
+                    linked_rows = cur.fetchall()
+                    if len(linked_rows) > 1:
+                        raise RuntimeError(
+                            "Existem identidades Instagram ligadas duplicadas; reconciliação necessária."
+                        )
+                    if linked_rows:
+                        instagram_social_account_id = linked_rows[0][0]
                     else:
-                        # Identidade complementar da Página: não consome uma vaga
-                        # adicional do plano, pois é parte da mesma ligação social.
+                        # A identidade complementar guarda o ID externo oficial.
+                        # Não consome uma vaga adicional do plano.
                         cur.execute(
                             """INSERT INTO social_accounts
-                               (workspace_id, platform, username, display_name, access_token,
-                                connection_status, is_active, last_sync_at)
-                               VALUES (%s, 'Instagram', %s, %s, NULL, 'linked', TRUE, NOW())
+                               (workspace_id, platform, username, display_name,
+                                external_account_id, access_token, connection_status,
+                                is_active, last_sync_at)
+                               VALUES (%s, 'Instagram', %s, %s, %s, NULL, 'linked', FALSE, NOW())
                                RETURNING id""",
-                            (workspace[0], ig_username, ig_username),
+                            (workspace[0], ig_username, ig_username, str(linked_instagram["id"])),
                         )
                         instagram_social_account_id = cur.fetchone()[0]
                     cur.execute(
@@ -2484,10 +2627,32 @@ def setup_auth(server: Flask):
                         "DELETE FROM facebook_instagram_links WHERE social_account_id=%s",
                         (str(social_account_id),),
                     )
+            # A Página pode descobrir uma conta Instagram profissional sem
+            # reativar a integração Instagram que o workspace desativou.
+            instagram_enabled = False
+            if instagram_social_account_id:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT COALESCE(is_active, FALSE)
+                           FROM social_accounts
+                           WHERE id=%s AND workspace_id=%s
+                             AND LOWER(platform)='instagram'
+                             AND LOWER(COALESCE(connection_status, ''))='linked'
+                           LIMIT 1""",
+                        (instagram_social_account_id, workspace[0]),
+                    )
+                    active_row = cur.fetchone()
+                    instagram_enabled = bool(active_row and active_row[0])
+
             conn.commit()
             synced = _sync_facebook_metrics(social_account_id, page_id, page_token)
             instagram_synced = False
-            if linked_instagram and linked_instagram.get("id") and instagram_social_account_id:
+            if (
+                instagram_enabled
+                and linked_instagram
+                and linked_instagram.get("id")
+                and instagram_social_account_id
+            ):
                 instagram_synced = _sync_instagram_metrics(
                     instagram_social_account_id,
                     str(linked_instagram["id"]),
@@ -2498,6 +2663,11 @@ def setup_auth(server: Flask):
                 return redirect(url_for(
                     "account",
                     message="Facebook e conta Instagram profissional associada conectados; métricas disponíveis sincronizadas."
+                ))
+            if synced and linked_instagram and linked_instagram.get("id") and not instagram_enabled:
+                return redirect(url_for(
+                    "account",
+                    message="Facebook conectado e conta Instagram profissional identificada. A sincronização Instagram permanece desativada conforme a configuração do workspace."
                 ))
             if synced and linked_instagram and linked_instagram.get("id"):
                 return redirect(url_for(
@@ -2513,7 +2683,7 @@ def setup_auth(server: Flask):
         except Exception as erro:
             if conn:
                 conn.rollback()
-            print(f"[FACEBOOK PAGE SELECT ERROR] {type(erro).__name__}: {erro}")
+            print(f"[FACEBOOK PAGE SELECT ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível guardar a Página do Facebook. Tente novamente."))
         finally:
             if conn:
@@ -2521,6 +2691,7 @@ def setup_auth(server: Flask):
 
 
     @server.post("/social-accounts/sync")
+    @require_permission("accounts.manage")
     def sync_social_accounts():
         """Sincroniza manualmente as contas ligadas ao workspace autenticado."""
         if not session.get("authenticated"):
@@ -2589,14 +2760,9 @@ def setup_auth(server: Flask):
                     try:
                         link_conn = get_connection()
                         with link_conn.cursor() as link_cur:
-                            link_cur.execute(
-                                """SELECT instagram_social_account_id, instagram_account_id
-                                   FROM facebook_instagram_links
-                                   WHERE social_account_id=%s
-                                   LIMIT 1""",
-                                (str(account_id),),
+                            ig_link = _linked_instagram_for_facebook(
+                                link_cur, account_id
                             )
-                            ig_link = link_cur.fetchone()
                         if ig_link and ig_link[0] and ig_link[1]:
                             ig_synced = _sync_instagram_metrics(
                                 ig_link[0], str(ig_link[1]), access_token,
@@ -2645,6 +2811,7 @@ def setup_auth(server: Flask):
 
 
     @server.route("/account", methods=["GET", "POST"])
+    @require_permission("workspace.read")
     def account():
         if not session.get("authenticated"):
             return redirect("/login")
@@ -2666,20 +2833,24 @@ def setup_auth(server: Flask):
                     cur.execute(
                         """UPDATE users
                            SET name=%s
-                           WHERE LOWER(email)=LOWER(%s)
-                             AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)""",
-                        (name, session.get("username"), slug),
+                           WHERE id=%s AND workspace_id=%s
+                             AND COALESCE(is_active, TRUE)=TRUE""",
+                        (name, session.get("user_id"), session.get("workspace_id")),
                     )
+                    if cur.rowcount != 1:
+                        session.clear()
+                        return redirect("/login")
                     conn.commit()
                     return redirect(url_for("account", message="Perfil atualizado com sucesso."))
 
                 cur.execute(
                     """SELECT u.name,u.email,w.name,w.subscription_plan,w.trial_ends_at
                        FROM users u
-                       LEFT JOIN workspaces w ON w.id=u.workspace_id
-                       WHERE LOWER(u.email)=LOWER(%s) AND w.slug=%s
+                       JOIN workspaces w ON w.id=u.workspace_id
+                       WHERE u.id=%s AND u.workspace_id=%s
+                         AND w.slug=%s AND COALESCE(u.is_active, TRUE)=TRUE
                        LIMIT 1""",
-                    (session.get("username"), slug),
+                    (session.get("user_id"), session.get("workspace_id"), slug),
                 )
                 user = cur.fetchone()
 
@@ -2734,9 +2905,7 @@ def setup_auth(server: Flask):
                 except Exception:
                     pass
 
-            import traceback
-            print(f"[ACCOUNT ERROR] {type(erro).__name__}: {erro}")
-            traceback.print_exc()
+            print(f"[ACCOUNT ERROR] {type(erro).__name__}.")
 
             return render_template_string(
                 ACCOUNT_PAGE,
@@ -2751,6 +2920,7 @@ def setup_auth(server: Flask):
             ), 200
 
     @server.post("/account/password")
+    @require_permission("workspace.read")
     def change_password():
         if not session.get("authenticated"): return redirect(url_for("login"))
         current=request.form.get("current_password",""); new=request.form.get("new_password",""); confirm=request.form.get("confirm_password","")
@@ -2760,17 +2930,41 @@ def setup_auth(server: Flask):
         try:
             conn=get_connection()
             with conn.cursor() as cur:
-                cur.execute("SELECT password_hash FROM users WHERE LOWER(email)=LOWER(%s) LIMIT 1",(session.get("username"),)); row=cur.fetchone()
-                if not row or not row[0] or not bcrypt.checkpw(current.encode(),row[0].encode()): return redirect(url_for("account",error="A password atual está incorreta."))
-                cur.execute("UPDATE users SET password_hash=%s WHERE LOWER(email)=LOWER(%s)",(bcrypt.hashpw(new.encode(),bcrypt.gensalt()).decode(),session.get("username")))
-            conn.commit(); return redirect(url_for("account",message="Password alterada com sucesso."))
+                cur.execute(
+                    """SELECT password_hash FROM users
+                       WHERE id=%s AND workspace_id=%s
+                         AND COALESCE(is_active, TRUE)=TRUE
+                       LIMIT 1""",
+                    (session.get("user_id"), session.get("workspace_id")),
+                )
+                row=cur.fetchone()
+                if not row or not row[0] or not bcrypt.checkpw(current.encode(),row[0].encode()):
+                    return redirect(url_for("account",error="A password atual está incorreta."))
+                new_password_hash = bcrypt.hashpw(
+                    new.encode(), bcrypt.gensalt()
+                ).decode()
+                cur.execute(
+                    """UPDATE users SET password_hash=%s
+                       WHERE id=%s AND workspace_id=%s
+                         AND COALESCE(is_active, TRUE)=TRUE""",
+                    (new_password_hash, session.get("user_id"), session.get("workspace_id")),
+                )
+                if cur.rowcount != 1:
+                    session.clear()
+                    return redirect("/login")
+            conn.commit()
+            session["credential_fingerprint"] = credential_fingerprint(
+                new_password_hash, server.secret_key
+            )
+            return redirect(url_for("account",message="Password alterada com sucesso."))
         except Exception as erro:
             if conn: conn.rollback()
-            print(f"[PASSWORD ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível alterar a password."))
+            print(f"[PASSWORD ERROR] {type(erro).__name__}."); return redirect(url_for("account",error="Não foi possível alterar a password."))
         finally:
             if conn: conn.close()
 
     @server.post("/social-accounts/add")
+    @require_permission("integrations.manage")
     def add_social_account():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -2852,13 +3046,14 @@ def setup_auth(server: Flask):
         except Exception as erro:
             if conn:
                 conn.rollback()
-            print(f"[SOCIAL ACCOUNT ERROR] {type(erro).__name__}: {erro}")
+            print(f"[SOCIAL ACCOUNT ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível adicionar a conta social."))
         finally:
             if conn:
                 conn.close()
 
     @server.post("/social-accounts/<account_id>/toggle")
+    @require_permission("accounts.manage")
     def toggle_social_account(account_id):
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -2879,7 +3074,7 @@ def setup_auth(server: Flask):
         except Exception as erro:
             if conn:
                 conn.rollback()
-            print(f"[SOCIAL TOGGLE ERROR] {type(erro).__name__}: {erro}")
+            print(f"[SOCIAL TOGGLE ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível alterar o estado da conta."))
         finally:
             if conn:

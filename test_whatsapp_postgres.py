@@ -6,6 +6,8 @@ import psycopg2
 import pytest
 
 import whatsapp_webhook
+import facebook_messenger
+import payments
 
 
 DSN = os.getenv("TEST_DATABASE_URL")
@@ -68,6 +70,26 @@ def pg_schema(monkeypatch):
     with cleanup.cursor() as cur:
         cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
     cleanup.close()
+
+
+
+def test_legacy_orphan_records_are_reported_but_never_assigned_to_default_workspace():
+    import database
+
+    class Cursor:
+        def __init__(self):
+            self.statements = []
+            self.counts = iter([(2,), (1,)])
+        def execute(self, query, params=None):
+            self.statements.append(query)
+        def fetchone(self):
+            return next(self.counts)
+
+    cursor = Cursor()
+    assert database._report_orphaned_tenant_rows(cursor) == (2, 1)
+    assert len(cursor.statements) == 2
+    assert all("SELECT COUNT(*)" in statement for statement in cursor.statements)
+    assert not any(statement.lstrip().upper().startswith("UPDATE") for statement in cursor.statements)
 
 
 def webhook_payload(status, message_id="wamid.pg-test", timestamp="1790000000", phone_id="phone-test"):
@@ -220,3 +242,314 @@ def test_postgres_rejeita_phone_number_id_sem_mapeamento(pg_schema):
         whatsapp_webhook._save_messages(
             webhook_payload("read", "wamid-unmapped", phone_id="unknown-phone")
         )
+
+
+@pytest.fixture
+def messenger_pg_schema(monkeypatch):
+    schema = "msg_test_" + uuid.uuid4().hex
+    workspace_a = str(uuid.uuid4())
+    workspace_b = str(uuid.uuid4())
+    account_a = str(uuid.uuid4())
+    account_b = str(uuid.uuid4())
+    admin = psycopg2.connect(DSN)
+    admin.autocommit = True
+    with admin.cursor() as cur:
+        cur.execute(f'CREATE SCHEMA "{schema}"')
+        cur.execute(f'''
+            CREATE TABLE "{schema}".workspaces (
+                id UUID PRIMARY KEY,
+                slug VARCHAR(120) UNIQUE NOT NULL
+            )
+        ''')
+        cur.execute(f'''
+            CREATE TABLE "{schema}".social_accounts (
+                id UUID PRIMARY KEY,
+                workspace_id UUID NOT NULL REFERENCES "{schema}".workspaces(id),
+                username VARCHAR(255) NOT NULL,
+                platform VARCHAR(40) NOT NULL,
+                display_name VARCHAR(255),
+                access_token TEXT,
+                is_active BOOLEAN DEFAULT TRUE,
+                connection_status VARCHAR(40) DEFAULT 'connected',
+                last_sync_at TIMESTAMPTZ
+            )
+        ''')
+        cur.execute(
+            f'INSERT INTO "{schema}".workspaces (id, slug) VALUES (%s, %s), (%s, %s)',
+            (workspace_a, "workspace-a", workspace_b, "workspace-b"),
+        )
+        cur.execute(
+            f'''INSERT INTO "{schema}".social_accounts
+                (id, workspace_id, username, platform, display_name, access_token,
+                 is_active, connection_status)
+                VALUES (%s, %s, 'page-a', 'Facebook', 'Page A', 'encrypted-a', TRUE, 'connected'),
+                       (%s, %s, 'page-b', 'Facebook', 'Page B', 'encrypted-b', TRUE, 'connected')''',
+            (account_a, workspace_a, account_b, workspace_b),
+        )
+    admin.close()
+
+    def connect():
+        conn = psycopg2.connect(DSN)
+        with conn.cursor() as cur:
+            cur.execute(f'SET search_path TO "{schema}"')
+        return conn
+
+    monkeypatch.setattr(facebook_messenger, "get_connection", connect)
+    yield connect, workspace_a, workspace_b, account_a, account_b
+    cleanup = psycopg2.connect(DSN)
+    cleanup.autocommit = True
+    with cleanup.cursor() as cur:
+        cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+    cleanup.close()
+
+
+def messenger_payload(page_id, message_id):
+    return {
+        "object": "page",
+        "entry": [{
+            "id": page_id,
+            "messaging": [{
+                "sender": {"id": "psid-customer"},
+                "message": {"mid": message_id, "text": "Mensagem de teste"},
+                "timestamp": 1790000000000,
+            }],
+        }],
+    }
+
+
+def test_postgres_messenger_lookup_blocks_account_from_another_workspace(messenger_pg_schema):
+    connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
+    assert facebook_messenger._workspace_account("workspace-a", account_b) is None
+    account = facebook_messenger._workspace_account("workspace-b", account_b)
+    assert account is not None
+    assert str(account[0]) == account_b
+    assert str(account[4]) == workspace_b
+
+
+def test_postgres_messenger_inbox_cannot_open_foreign_workspace_account(messenger_pg_schema, monkeypatch):
+    import database
+    from flask import Flask
+    from security_rbac import credential_fingerprint
+
+    connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
+
+    class IdentityCursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def execute(self, query, params): self.query, self.params = query, params
+        def fetchone(self):
+            return ("owner", workspace_a, True, "workspace-a", "test-password-hash")
+
+    class IdentityConnection:
+        def cursor(self): return IdentityCursor()
+        def close(self): pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: IdentityConnection())
+    app = Flask("messenger-foreign-account-test")
+    app.secret_key = "messenger-foreign-account-secret"
+    app.add_url_rule("/login", "login", lambda: "login")
+    facebook_messenger.register_facebook_messenger(app)
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess.update({
+            "authenticated": True, "user_id": "user-a",
+            "workspace_id": workspace_a, "workspace_slug": "workspace-a",
+            "role": "owner",
+            "credential_fingerprint": credential_fingerprint(
+                "test-password-hash", "messenger-foreign-account-secret"
+            ),
+        })
+
+    response = client.get(
+        "/facebook/messenger/inbox?account=" + account_b
+    )
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Não existe uma Página Facebook ligada neste workspace" in page
+    assert "Page B" not in page
+
+
+def test_postgres_messenger_webhook_routes_page_to_its_workspace(messenger_pg_schema):
+    connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
+    saved = facebook_messenger._save_webhook(messenger_payload("page-b", "mid-page-b"))
+    assert saved == 1
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT w.slug FROM facebook_messenger_messages m
+                   JOIN workspaces w ON w.id=m.workspace_id
+                   WHERE m.message_id=%s""",
+                ("mid-page-b",),
+            )
+            assert cur.fetchone() == ("workspace-b",)
+    finally:
+        conn.close()
+
+
+def test_postgres_messenger_webhook_ignores_ambiguous_page_ownership(messenger_pg_schema):
+    connect, workspace_a, workspace_b, account_a, account_b = messenger_pg_schema
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO social_accounts
+                   (id, workspace_id, username, platform, display_name, access_token,
+                    is_active, connection_status)
+                   VALUES (%s, %s, 'page-shared', 'Facebook', 'Shared A', 'encrypted-a', TRUE, 'connected'),
+                          (%s, %s, 'page-shared', 'Facebook', 'Shared B', 'encrypted-b', TRUE, 'connected')""",
+                (str(uuid.uuid4()), workspace_a, str(uuid.uuid4()), workspace_b),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    saved = facebook_messenger._save_webhook(messenger_payload("page-shared", "mid-shared"))
+    assert saved == 0
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM facebook_messenger_messages WHERE message_id=%s",
+                ("mid-shared",),
+            )
+            assert cur.fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def billing_pg_schema(monkeypatch):
+    schema = "bill_test_" + uuid.uuid4().hex
+    workspace_a = str(uuid.uuid4())
+    workspace_b = str(uuid.uuid4())
+    admin = psycopg2.connect(DSN)
+    admin.autocommit = True
+    with admin.cursor() as cur:
+        cur.execute(f'CREATE SCHEMA "{schema}"')
+        cur.execute(f'''
+            CREATE TABLE "{schema}".workspaces (
+                id UUID PRIMARY KEY,
+                slug VARCHAR(120) UNIQUE NOT NULL,
+                subscription_id VARCHAR(255),
+                subscription_status VARCHAR(40) DEFAULT 'trialing',
+                subscription_plan VARCHAR(40) DEFAULT 'trial',
+                payment_provider VARCHAR(40)
+            )
+        ''')
+        cur.execute(
+            f'INSERT INTO "{schema}".workspaces (id, slug) VALUES (%s, %s), (%s, %s)',
+            (workspace_a, "workspace-a", workspace_b, "workspace-b"),
+        )
+    admin.close()
+
+    def connect():
+        conn = psycopg2.connect(DSN)
+        with conn.cursor() as cur:
+            cur.execute(f'SET search_path TO "{schema}"')
+        return conn
+
+    monkeypatch.setattr(payments, "get_connection", connect)
+    monkeypatch.setenv("PAYPAL_PLAN_STARTER_ID", "PLAN-STARTER-TEST")
+    yield connect
+    cleanup = psycopg2.connect(DSN)
+    cleanup.autocommit = True
+    with cleanup.cursor() as cur:
+        cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+    cleanup.close()
+
+
+def test_postgres_paypal_subscription_cannot_be_claimed_by_another_workspace(billing_pg_schema):
+    connect = billing_pg_schema
+    subscription = {
+        "id": "SUB-TENANT-ISOLATION",
+        "custom_id": "workspace-a",
+        "status": "ACTIVE",
+        "plan_id": "PLAN-STARTER-TEST",
+    }
+    assert payments._set_active(subscription, "workspace-a") is True
+    assert payments._set_active(
+        {**subscription, "custom_id": "workspace-b"},
+        "workspace-b",
+    ) is False
+
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT slug, subscription_id, subscription_status
+                   FROM workspaces ORDER BY slug"""
+            )
+            rows = cur.fetchall()
+        assert rows == [
+            ("workspace-a", "SUB-TENANT-ISOLATION", "active"),
+            ("workspace-b", None, "trialing"),
+        ]
+    finally:
+        conn.close()
+
+
+def test_postgres_concurrent_paypal_claims_allow_only_one_workspace(billing_pg_schema):
+    from concurrent.futures import ThreadPoolExecutor
+
+    claims = [
+        {
+            "id": "SUB-CONCURRENT-CLAIM",
+            "custom_id": "workspace-a",
+            "status": "ACTIVE",
+            "plan_id": "PLAN-STARTER-TEST",
+        },
+        {
+            "id": "SUB-CONCURRENT-CLAIM",
+            "custom_id": "workspace-b",
+            "status": "ACTIVE",
+            "plan_id": "PLAN-STARTER-TEST",
+        },
+    ]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda item: payments._set_active(item, item["custom_id"]),
+            claims,
+        ))
+    assert sorted(results) == [False, True]
+
+    conn = billing_pg_schema()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM workspaces WHERE subscription_id=%s",
+                ("SUB-CONCURRENT-CLAIM",),
+            )
+            assert cur.fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_postgres_paypal_cancellation_changes_only_owning_workspace(billing_pg_schema):
+    connect = billing_pg_schema
+    subscription = {
+        "id": "SUB-CANCEL-A",
+        "custom_id": "workspace-a",
+        "status": "ACTIVE",
+        "plan_id": "PLAN-STARTER-TEST",
+    }
+    assert payments._set_active(subscription, "workspace-a") is True
+    assert payments._set_inactive(
+        {"id": "SUB-CANCEL-A", "status": "CANCELLED", "custom_id": "workspace-a"},
+        "BILLING.SUBSCRIPTION.CANCELLED",
+    ) is True
+
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT slug, subscription_status
+                   FROM workspaces ORDER BY slug"""
+            )
+            rows = cur.fetchall()
+        assert rows == [
+            ("workspace-a", "cancelled"),
+            ("workspace-b", "trialing"),
+        ]
+    finally:
+        conn.close()

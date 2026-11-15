@@ -25,6 +25,21 @@ def get_database_url():
 # CONEXÃO
 # ============================================================
 
+def _report_orphaned_tenant_rows(cur):
+    """Report legacy records without tenant ownership; never assign them implicitly."""
+    cur.execute("SELECT COUNT(*) FROM social_accounts WHERE workspace_id IS NULL")
+    orphan_social_accounts = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM users WHERE workspace_id IS NULL")
+    orphan_users = cur.fetchone()[0]
+    if orphan_social_accounts or orphan_users:
+        print(
+            "[TENANT OWNERSHIP REVIEW] Registos sem workspace preservados: "
+            f"social_accounts={orphan_social_accounts}, users={orphan_users}. "
+            "Não foi feita atribuição automática."
+        )
+    return orphan_social_accounts, orphan_users
+
+
 def get_connection():
 
     database_url = get_database_url().strip()
@@ -502,23 +517,8 @@ def _initialize_database_locked():
                 """
             )
 
-            cur.execute(
-                """
-                UPDATE social_accounts
-                SET workspace_id = %s
-                WHERE workspace_id IS NULL;
-                """,
-                (workspace_id,),
-            )
-
-            cur.execute(
-                """
-                UPDATE users
-                SET workspace_id = %s
-                WHERE workspace_id IS NULL;
-                """,
-                (workspace_id,),
-            )
+            # Never infer tenant ownership for legacy rows.
+            _report_orphaned_tenant_rows(cur)
 
             cur.execute(
                 """
@@ -633,9 +633,7 @@ def _initialize_database_locked():
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[DATABASE ERROR] Falha na inicialização: {erro}")
-        traceback = __import__("traceback")
-        traceback.print_exc()
+        print(f"[DATABASE ERROR] Falha na inicialização: {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -666,10 +664,8 @@ def initialize_database():
     except Exception as erro:
         print(
             f"[DATABASE ERROR] Falha na inicialização coordenada: "
-            f"{type(erro).__name__}: {erro}"
+            f"{type(erro).__name__}."
         )
-        traceback = __import__("traceback")
-        traceback.print_exc()
         return False
 
     finally:
@@ -691,4 +687,4 @@ def initialize_database():
 try:
     initialize_database()
 except Exception as erro:
-    print(f"[DATABASE WARNING] Inicialização automática ignorada: {erro}")
+    print(f"[DATABASE WARNING] Inicialização automática ignorada: {type(erro).__name__}.")

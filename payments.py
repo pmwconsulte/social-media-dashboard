@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 import requests
 from flask import abort, redirect, request, session, url_for
 from database import get_connection
+from security_rbac import require_permission
 
 PLAN_ENV = {"starter": "PAYPAL_PLAN_STARTER_ID", "pro": "PAYPAL_PLAN_PRO_ID", "business": "PAYPAL_PLAN_BUSINESS_ID"}
 TIMEOUT = 20
@@ -82,6 +83,13 @@ def _set_active(subscription, expected_workspace, conn=None):
 
     try:
         with conn.cursor() as cur:
+            # Serialize claims of the same PayPal subscription across tenants.
+            # The advisory transaction lock closes the check-then-update race
+            # without requiring an immediate production schema migration.
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (sub_id,),
+            )
             cur.execute(
                 "SELECT id FROM workspaces WHERE slug=%s LIMIT 1",
                 (expected_workspace,),
@@ -120,12 +128,20 @@ def _set_active(subscription, expected_workspace, conn=None):
 def _set_inactive(subscription, event_type, conn=None):
     sub_id = subscription.get("id")
     status = {
-        "BILLING.SUBSCRIPTION.CANCELLED": "cancelled",
-        "BILLING.SUBSCRIPTION.SUSPENDED": "suspended",
-        "BILLING.SUBSCRIPTION.EXPIRED": "expired",
+        "BILLING.SUBSCRIPTION.CANCELLED": ("cancelled", "CANCELLED"),
+        "BILLING.SUBSCRIPTION.SUSPENDED": ("suspended", "SUSPENDED"),
+        "BILLING.SUBSCRIPTION.EXPIRED": ("expired", "EXPIRED"),
     }.get(event_type)
 
     if not sub_id or not status:
+        return False
+
+    target_status, provider_status = status
+    # A delayed webhook must not overwrite a newer state confirmed by PayPal.
+    if str(subscription.get("status") or "").upper() != provider_status:
+        return False
+    expected_workspace = str(subscription.get("custom_id") or "").strip()
+    if not expected_workspace:
         return False
 
     owns_connection = conn is None
@@ -137,10 +153,15 @@ def _set_inactive(subscription, event_type, conn=None):
             cur.execute(
                 """UPDATE workspaces
                    SET subscription_status=%s
-                   WHERE subscription_id=%s AND payment_provider='paypal'""",
-                (status, sub_id),
+                   WHERE subscription_id=%s
+                     AND payment_provider='paypal'
+                     AND slug=%s
+                     AND (SELECT COUNT(*) FROM workspaces
+                          WHERE subscription_id=%s
+                            AND payment_provider='paypal')=1""",
+                (target_status, sub_id, expected_workspace, sub_id),
             )
-            changed = cur.rowcount > 0
+            changed = cur.rowcount == 1
 
         if owns_connection:
             conn.commit()
@@ -162,7 +183,8 @@ def register_paypal_routes(server):
     except Exception as exc:
         print(f"[PAYPAL INIT] {type(exc).__name__}")
 
-    @server.get("/billing/paypal/subscribe/<plan_key>")
+    @server.post("/billing/paypal/subscribe/<plan_key>")
+    @require_permission("billing.manage")
     def paypal_subscribe(plan_key):
         if not session.get("authenticated"): return redirect(url_for("login"))
         if not _checkout_enabled(): return "Checkout PayPal desativado. Para testes, ative PAYPAL_CHECKOUT_ENABLED=true em Sandbox.",503
@@ -191,10 +213,11 @@ def register_paypal_routes(server):
             print(f"[PAYPAL CREATE ERROR] {type(exc).__name__}")
             return "NÃ£o foi possÃ­vel iniciar a subscriÃ§Ã£o PayPal.",502
         except Exception as exc:
-            print(f"[PAYPAL CREATE ERROR] {type(exc).__name__}: {exc}")
+            print(f"[PAYPAL CREATE ERROR] {type(exc).__name__}.")
             return "Checkout indisponÃ­vel. Confirme os Plan IDs.",503
 
     @server.get("/billing/paypal/return")
+    @require_permission("billing.manage")
     def paypal_return():
         if not session.get("authenticated"): return redirect(url_for("login"))
         if not _checkout_enabled(): return "Checkout PayPal desativado. Para testes, ative PAYPAL_CHECKOUT_ENABLED=true em Sandbox.",503
@@ -204,10 +227,8 @@ def register_paypal_routes(server):
             sub=_api_request("GET","/v1/billing/subscriptions/"+sub_id)
             slug=session.get("workspace_slug")
             if sub.get("custom_id")!=slug: return "A subscriÃ§Ã£o nÃ£o corresponde ao workspace autenticado.",403
-            # Em modo de teste, o retorno do browser nunca ativa a subscrição na BD.
-            # A ativação deve depender do webhook verificado quando a automação estiver autorizada.
-            if not _enabled(): return redirect("/billing?paypal=pending")
-            if _set_active(sub,slug): return redirect("/billing?paypal=active")
+            # The browser return is informational only. Subscription state is
+            # changed exclusively by a signature-verified PayPal webhook.
             return redirect("/billing?paypal=pending")
         except requests.RequestException as exc:
             print(f"[PAYPAL RETURN ERROR] {type(exc).__name__}")
@@ -293,7 +314,7 @@ def register_paypal_routes(server):
         except Exception as exc:
             if conn is not None:
                 conn.rollback()
-            print(f"[PAYPAL WEBHOOK ERROR] {type(exc).__name__}: {exc}")
+            print(f"[PAYPAL WEBHOOK ERROR] {type(exc).__name__}.")
             return "Erro ao processar evento", 500
 
         finally:

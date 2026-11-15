@@ -9,6 +9,7 @@ import plotly.express as px
 import dash
 
 from dash import html, dcc
+from security_rbac import require_permission
 from flask import Response, has_request_context, request, session, send_from_directory
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -77,6 +78,7 @@ register_facebook_messenger(server)
 
 
 @server.post("/whatsapp/send")
+@require_permission("messaging.reply")
 def whatsapp_send():
     if not session.get("authenticated"):
         return Response("", status=302, headers={"Location": "/login"})
@@ -167,6 +169,7 @@ def whatsapp_send():
 
 
 @server.post("/whatsapp/send-template")
+@require_permission("messaging.reply")
 def whatsapp_send_template():
     """Start a new WhatsApp conversation using a Meta-approved template only."""
     if not session.get("authenticated"):
@@ -256,6 +259,7 @@ def whatsapp_send_template():
 
 
 @server.get("/whatsapp/analytics")
+@require_permission("analytics.read")
 def whatsapp_analytics():
     """Resumo de atendimento WhatsApp baseado exclusivamente em mensagens guardadas."""
     if not session.get("authenticated"):
@@ -323,6 +327,7 @@ a{color:#38bdf8;text-decoration:none;font-weight:700}.muted{color:#94a3b8;margin
 
 
 @server.get("/whatsapp/inbox")
+@require_permission("messaging.read")
 def whatsapp_inbox():
     """Caixa de entrada WhatsApp isolada por workspace autenticado."""
     if not session.get("authenticated"):
@@ -823,8 +828,7 @@ def testar_database():
         finally:
             conn.close()
     except Exception as erro:
-        print(f"[DATABASE ERROR] {erro}")
-        traceback.print_exc()
+        print(f"[DATABASE ERROR] {type(erro).__name__}.")
         return False
 
 
@@ -835,8 +839,7 @@ def inicializar_database():
             print("[DATABASE] Inicialização confirmada.")
         return resultado
     except Exception as erro:
-        print(f"[DATABASE WARNING] {erro}")
-        traceback.print_exc()
+        print(f"[DATABASE WARNING] {type(erro).__name__}.")
         return False
 
 
@@ -870,8 +873,7 @@ def carregar_dados():
         print(f"[DATABASE] {len(dados)} registos carregados.")
         return dados
     except Exception as erro:
-        print(f"[DATABASE ERROR] Erro ao carregar dados: {erro}")
-        traceback.print_exc()
+        print(f"[DATABASE ERROR] Erro ao carregar dados: {type(erro).__name__}.")
         return pd.DataFrame()
     finally:
         if conn:
@@ -914,7 +916,7 @@ def carregar_insights_periodo(periodo_dias):
             "snapshot_date": row[3].isoformat() if row and row[3] else None,
         }
     except Exception as erro:
-        print(f"[DATABASE] Totais oficiais do período indisponíveis: {type(erro).__name__}: {erro}")
+        print(f"[DATABASE] Totais oficiais do período indisponíveis: {type(erro).__name__}.")
         return {"reach": None, "views": None, "interactions": None, "snapshot_date": None}
     finally:
         if conn:
@@ -1016,7 +1018,7 @@ def carregar_insights_facebook(periodo_dias=28):
             "reach_label": "Soma do alcance diário",
         }
     except Exception as erro:
-        print(f"[DATABASE] Insights Facebook indisponíveis: {type(erro).__name__}: {erro}")
+        print(f"[DATABASE] Insights Facebook indisponíveis: {type(erro).__name__}.")
         return {"views": None, "reach": None, "interactions": None, "snapshot_date": None,
                 "reach_label": "Alcance"}
     finally:
@@ -1059,7 +1061,7 @@ def carregar_insights_reels(periodo_dias):
             "snapshot_date": row[3].isoformat() if row and row[3] else None,
         }
     except Exception as erro:
-        print(f"[DATABASE] Insights de Reels indisponíveis: {type(erro).__name__}: {erro}")
+        print(f"[DATABASE] Insights de Reels indisponíveis: {type(erro).__name__}.")
         return {"views": None, "reach": None, "interactions": None, "snapshot_date": None}
     finally:
         if conn:
@@ -1104,9 +1106,8 @@ def carregar_insights_28d():
     except Exception as erro:
         print(
             "[DATABASE] Não foi possível carregar Insights de 28 dias: "
-            f"{type(erro).__name__}: {erro}"
+            f"{type(erro).__name__}."
         )
-        traceback.print_exc()
         return {"reach": None, "views": None, "interactions": None}
     finally:
         if conn:
@@ -2328,13 +2329,13 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
         if avisos_qualidade:
             alerta = "\n".join(avisos_qualidade + [str(alerta)])
     except Exception as erro:
-        print(f"[AI ALERT ERROR] {erro}")
+        print(f"[AI ALERT ERROR] {type(erro).__name__}.")
         alerta = "⚠️ Não foi possível gerar o alerta."
 
     try:
         recomendacao = gerar_recomendacao(dados)
     except Exception as erro:
-        print(f"[AI RECOMMENDATION ERROR] {erro}")
+        print(f"[AI RECOMMENDATION ERROR] {type(erro).__name__}.")
         recomendacao = "💡 Não foi possível gerar a recomendação."
 
     try:
@@ -2364,7 +2365,7 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
                 "que interações e alcance usam o mesmo período de referência.\n"
             )
     except Exception as erro:
-        print(f"[AI REPORT ERROR] {erro}")
+        print(f"[AI REPORT ERROR] {type(erro).__name__}.")
         relatorio = "Relatório executivo indisponível."
 
     fig1 = px.line(
@@ -2420,7 +2421,7 @@ def atualizar(plataforma, periodo_insights, idioma="pt"):
         )
         configurar_grafico(fig4)
     except Exception as erro:
-        print(f"[AI FORECAST ERROR] {erro}")
+        print(f"[AI FORECAST ERROR] {type(erro).__name__}.")
         fig4 = grafico_sem_dados("🤖 Previsão IA")
 
     cards_28d = [
