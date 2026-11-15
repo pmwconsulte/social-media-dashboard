@@ -95,6 +95,15 @@ def post_data(**overrides):
     return data
 
 
+def test_login_post_requires_global_csrf_token(inbox_client):
+    response = inbox_client.post(
+        "/login",
+        data={"username": "someone@example.com", "password": "not-a-real-password"},
+    )
+    assert response.status_code == 400
+    assert "Pedido inválido" in response.get_data(as_text=True)
+
+
 def test_inbox_rejeita_csrf_invalido_sem_enviar(inbox_client, monkeypatch):
     calls = []
     monkeypatch.setattr(auth.requests, "get", lambda *a, **k: conversations_response())
