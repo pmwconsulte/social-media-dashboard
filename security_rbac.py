@@ -30,10 +30,10 @@ ROLE_PERMISSIONS = {
         "messaging.read", "messaging.reply", "publishing.read", "publishing.create",
     }),
     "analyst": frozenset({
-        "workspace.read", "accounts.read", "analytics.read", "reports.read",
+        "workspace.read", "accounts.read", "analytics.read", "reports.read", "publishing.read",
     }),
     "viewer": frozenset({
-        "workspace.read", "accounts.read", "analytics.read", "reports.read",
+        "workspace.read", "accounts.read", "analytics.read", "reports.read", "publishing.read",
         "messaging.read",
     }),
 }
