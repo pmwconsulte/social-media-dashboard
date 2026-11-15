@@ -208,7 +208,7 @@ def test_messenger_account_lookup_is_scoped_to_requested_workspace(monkeypatch):
             return self
         def __exit__(self, *args):
             return False
-        def execute(self, query, params):
+        def execute(self, query, params=None):
             self.query = query
             self.params = params
         def fetchone(self):
