@@ -23,7 +23,7 @@ from flask import (
 from billing import PLANS, evaluate_workspace_access
 from database import get_connection
 from facebook_posts import register_facebook_posts_route
-from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token, has_permission
+from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token, has_permission, refresh_session_identity
 
 
 def _oauth_configured():
@@ -1325,15 +1325,25 @@ def setup_auth(server: Flask):
 
     @server.before_request
     def require_dashboard_login():
-        """Protect the dashboard UI and Dash data/callback endpoints."""
+        """Protect dashboard and callbacks; revalidate active tenant membership."""
         path = request.path
         is_dash_endpoint = path.startswith("/_dash-") and not path.startswith(
             "/_dash-component-suites/"
         )
-        if (path == "/" or is_dash_endpoint) and not session.get("authenticated"):
-            if path == "/":
-                return redirect(url_for("login"))
-            return "Authentication required", 401
+        if path == "/" or is_dash_endpoint:
+            if not session.get("authenticated"):
+                if path == "/":
+                    return redirect(url_for("login"))
+                return "Authentication required", 401
+            try:
+                if not refresh_session_identity(session):
+                    if path == "/":
+                        return redirect(url_for("login"))
+                    return "Authentication required", 401
+            except Exception as erro:
+                session.clear()
+                print(f"[DASHBOARD IDENTITY CHECK] {type(erro).__name__}")
+                return "Authentication service temporarily unavailable", 503
 
     @server.get("/health")
     def health():
