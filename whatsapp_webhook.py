@@ -10,9 +10,9 @@ from database import get_connection
 
 
 def _secret():
-    return (os.getenv("WHATSAPP_APP_SECRET", "").strip()
-            or os.getenv("FACEBOOK_APP_SECRET", "").strip()
-            or os.getenv("INSTAGRAM_APP_SECRET", "").strip())
+    # Verify this webhook only with the secret of the Meta app that owns it.
+    # Cross-product secret fallbacks can make a misconfigured endpoint appear valid.
+    return os.getenv("WHATSAPP_APP_SECRET", "").strip()
 
 
 def _signature_ok(raw):
@@ -25,7 +25,6 @@ def _signature_ok(raw):
 
 
 def _save_messages(payload):
-    slug = os.getenv("WHATSAPP_WORKSPACE_SLUG", "pmw-consultoria-98fdcf3f").strip()
     conn = get_connection()
     saved = 0
     try:
@@ -61,14 +60,8 @@ def _save_messages(payload):
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
             """)
-            # Compatibilidade de instalação single-tenant: regista o número configurado.
-            configured_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
-            if configured_phone_id and slug:
-                cur.execute("""
-                    INSERT INTO whatsapp_phone_number_workspaces (phone_number_id, workspace_id)
-                    SELECT %s, id FROM workspaces WHERE slug=%s
-                    ON CONFLICT (phone_number_id) DO NOTHING
-                """, (configured_phone_id, slug))
+            # Ownership mappings must be provisioned explicitly by a trusted
+            # onboarding/admin flow; never infer a tenant from a global env var.
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS whatsapp_message_status_events (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

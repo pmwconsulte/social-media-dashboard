@@ -422,6 +422,24 @@ def _initialize_database_locked():
             cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(50);")
             cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS subscription_id VARCHAR(255);")
 
+            # Explicit WhatsApp phone-number ownership; no automatic tenant
+            # assignment is performed from global environment variables.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS whatsapp_phone_number_workspaces (
+                    phone_number_id VARCHAR(80) PRIMARY KEY,
+                    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_whatsapp_phone_workspace
+                ON whatsapp_phone_number_workspaces(workspace_id);
+                """
+            )
+
             cur.execute(
                 """
                 INSERT INTO workspaces (name, slug)

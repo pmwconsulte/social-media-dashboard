@@ -61,6 +61,10 @@ from whatsapp_webhook import (
     send_whatsapp_template,
     get_whatsapp_template_status,
 )
+from whatsapp_tenant import (
+    WhatsAppTenantConfigurationError,
+    resolve_workspace_phone_number,
+)
 register_whatsapp_webhooks(server)
 
 # Instagram Platform webhook verification, isolated from OAuth and WhatsApp.
@@ -107,13 +111,28 @@ def whatsapp_send():
             if not last_received or last_received < datetime.now(timezone.utc) - timedelta(hours=24):
                 return Response("A janela de atendimento de 24 horas terminou. É necessário usar um modelo aprovado pela Meta.", status=400)
 
-            # Use the phone number explicitly configured for this Cloud API token.
-            # Inbound webhook metadata may refer to an old or different phone number.
-            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
-            if not phone_id:
-                raise RuntimeError("WHATSAPP_PHONE_NUMBER_ID não está configurado no Render.")
-            if inbound_phone_id and str(inbound_phone_id).strip() != phone_id:
-                print("[WHATSAPP SEND CONFIG] Inbound phone ID differs from configured phone ID; using Render configuration.")
+            # Fail closed: the configured Cloud API number must be explicitly
+            # mapped to this workspace and match the number that received the message.
+            configured_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            cur.execute(
+                """
+                SELECT phone_number_id, workspace_id
+                FROM whatsapp_phone_number_workspaces
+                WHERE phone_number_id=%s
+                """,
+                (configured_phone_id,),
+            )
+            phone_mapping = cur.fetchone()
+            mapped_phone_id, mapped_workspace_id = phone_mapping if phone_mapping else (None, None)
+            phone_id = resolve_workspace_phone_number(
+                configured_phone_id=configured_phone_id,
+                mapped_phone_id=mapped_phone_id,
+                mapped_workspace_id=mapped_workspace_id,
+                workspace_id=workspace[0],
+                inbound_phone_id=inbound_phone_id,
+                configured_workspace_slug=os.getenv("WHATSAPP_WORKSPACE_SLUG", "pmw-consultoria-98fdcf3f").strip(),
+                requested_workspace_slug=workspace_slug,
+            )
             api_message_id = send_whatsapp_text(phone_id, recipient, message_text)
             cur.execute("""
                 INSERT INTO whatsapp_messages
@@ -125,6 +144,11 @@ def whatsapp_send():
             """, (workspace[0], api_message_id, phone_id, recipient, "PMW Dashboard", message_text))
         conn.commit()
         return Response("", status=303, headers={"Location": "/whatsapp/inbox?q=" + quote(recipient)})
+    except WhatsAppTenantConfigurationError as exc:
+        if conn:
+            conn.rollback()
+        print(f"[WHATSAPP SEND BLOCKED] {type(exc).__name__}: {str(exc)[:300]}")
+        return Response(str(exc), status=403, mimetype="text/plain")
     except Exception as exc:
         if conn:
             conn.rollback()
@@ -152,24 +176,6 @@ def whatsapp_send_template():
     if not expected_csrf or not received_csrf or not secrets.compare_digest(expected_csrf, received_csrf):
         return Response("Pedido inválido. Atualize a página e tente novamente.", status=400)
 
-    # Confirm the live Meta approval state; quality_score is not an approval state.
-    template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto").strip()
-    language_code = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT").strip()
-    template_info = get_whatsapp_template_status(template_name, language_code)
-    if template_info.get("status") != "APPROVED":
-        state = template_info.get("status", "UNKNOWN")
-        if state == "PENDING":
-            detail = "A Meta ainda está a analisar o modelo."
-        elif state == "REJECTED":
-            detail = "A Meta rejeitou o modelo. Consulte o motivo no WhatsApp Manager."
-        elif state == "PAUSED":
-            detail = "A Meta pausou o modelo."
-        elif state == "DISABLED":
-            detail = "A Meta desactivou o modelo."
-        else:
-            detail = "Não foi possível confirmar a aprovação do modelo directamente na Meta."
-        return Response(detail + " Estado consultado: " + state + ". O envio permanece bloqueado por segurança.",
-                        status=409, mimetype="text/plain")
     workspace_slug = (session.get("workspace_slug") or "").strip()
     recipient = "".join(ch for ch in (request.form.get("recipient") or "") if ch.isdigit())
     if not recipient or len(recipient) < 8 or len(recipient) > 15:
@@ -182,11 +188,47 @@ def whatsapp_send_template():
             workspace = cur.fetchone()
             if not workspace:
                 return Response("Workspace não encontrado.", status=404)
-            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
-            if not phone_id:
-                raise RuntimeError("WHATSAPP_PHONE_NUMBER_ID não está configurado no Render.")
+            configured_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            cur.execute(
+                """
+                SELECT phone_number_id, workspace_id
+                FROM whatsapp_phone_number_workspaces
+                WHERE phone_number_id=%s
+                """,
+                (configured_phone_id,),
+            )
+            phone_mapping = cur.fetchone()
+            mapped_phone_id, mapped_workspace_id = phone_mapping if phone_mapping else (None, None)
+            phone_id = resolve_workspace_phone_number(
+                configured_phone_id=configured_phone_id,
+                mapped_phone_id=mapped_phone_id,
+                mapped_workspace_id=mapped_workspace_id,
+                workspace_id=workspace[0],
+                configured_workspace_slug=os.getenv("WHATSAPP_WORKSPACE_SLUG", "pmw-consultoria-98fdcf3f").strip(),
+                requested_workspace_slug=workspace_slug,
+            )
+
+            # Confirm template approval only after the workspace owns this number.
             template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto").strip()
             language_code = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT").strip()
+            template_info = get_whatsapp_template_status(template_name, language_code)
+            if template_info.get("status") != "APPROVED":
+                state = template_info.get("status", "UNKNOWN")
+                if state == "PENDING":
+                    detail = "A Meta ainda está a analisar o modelo."
+                elif state == "REJECTED":
+                    detail = "A Meta rejeitou o modelo. Consulte o motivo no WhatsApp Manager."
+                elif state == "PAUSED":
+                    detail = "A Meta pausou o modelo."
+                elif state == "DISABLED":
+                    detail = "A Meta desactivou o modelo."
+                else:
+                    detail = "Não foi possível confirmar a aprovação do modelo directamente na Meta."
+                conn.rollback()
+                return Response(
+                    detail + " Estado consultado: " + state + ". O envio permanece bloqueado por segurança.",
+                    status=409, mimetype="text/plain",
+                )
             api_message_id = send_whatsapp_template(phone_id, recipient, template_name, language_code)
             cur.execute("""
                 INSERT INTO whatsapp_messages
@@ -197,6 +239,11 @@ def whatsapp_send_template():
             """, (workspace[0], api_message_id, phone_id, recipient, "PMW Dashboard", "[Modelo: " + template_name + "]"))
         conn.commit()
         return Response("", status=303, headers={"Location": "/whatsapp/inbox?q=" + quote(recipient)})
+    except WhatsAppTenantConfigurationError as exc:
+        if conn:
+            conn.rollback()
+        print(f"[WHATSAPP TEMPLATE BLOCKED] {type(exc).__name__}: {str(exc)[:300]}")
+        return Response(str(exc), status=403, mimetype="text/plain")
     except Exception as exc:
         if conn:
             conn.rollback()
@@ -286,7 +333,18 @@ def whatsapp_inbox():
     csrf_token = session.setdefault("whatsapp_csrf", secrets.token_urlsafe(32))
     template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "pmw_primeiro_contacto").strip()
     language_code = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "pt_PT").strip()
-    template_info = get_whatsapp_template_status(template_name, language_code)
+    configured_workspace_slug = os.getenv(
+        "WHATSAPP_WORKSPACE_SLUG", "pmw-consultoria-98fdcf3f"
+    ).strip()
+    if workspace_slug and workspace_slug == configured_workspace_slug:
+        template_info = get_whatsapp_template_status(template_name, language_code)
+    else:
+        # Do not query the global Cloud API credential for another tenant.
+        template_info = {
+            "status": "UNKNOWN",
+            "quality_score": None,
+            "error": "WhatsApp ainda não está provisionado para este workspace.",
+        }
     template_approved = template_info.get("status") == "APPROVED"
     conn = None
     try:
