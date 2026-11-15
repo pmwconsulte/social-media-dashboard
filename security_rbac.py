@@ -55,8 +55,56 @@ def require_permission(permission):
         @wraps(view)
         def wrapped(*args, **kwargs):
             from flask import abort, session
+
             if not session.get("authenticated"):
                 abort(401)
+
+            # Revalidate database-backed identities on every protected request.
+            # This makes role changes, workspace reassignment and deactivation
+            # effective without waiting for the browser session to expire.
+            user_id = session.get("user_id")
+            workspace_id = session.get("workspace_id")
+            workspace_slug = session.get("workspace_slug")
+
+            if user_id:
+                conn = None
+                try:
+                    from database import get_connection
+                    conn = get_connection()
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """SELECT u.role, u.workspace_id, COALESCE(u.is_active, TRUE),
+                                      w.slug
+                               FROM users u
+                               JOIN workspaces w ON w.id = u.workspace_id
+                               WHERE u.id = %s
+                               LIMIT 1""",
+                            (user_id,),
+                        )
+                        identity = cur.fetchone()
+                    if not identity:
+                        session.clear()
+                        abort(401)
+                    db_role, db_workspace_id, is_active, db_workspace_slug = identity
+                    if (
+                        not is_active
+                        or str(db_workspace_id) != str(workspace_id)
+                        or str(db_workspace_slug) != str(workspace_slug)
+                    ):
+                        session.clear()
+                        abort(401)
+                    session["role"] = normalize_role(db_role)
+                except Exception:
+                    # Fail closed when identity cannot be revalidated.
+                    session.clear()
+                    abort(503)
+                finally:
+                    if conn:
+                        conn.close()
+            elif session.get("role") != "platform_admin" or not workspace_id or not workspace_slug:
+                session.clear()
+                abort(401)
+
             if not has_permission(session.get("role"), permission):
                 abort(403)
             return view(*args, **kwargs)
