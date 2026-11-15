@@ -230,20 +230,20 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    ("event_type", "expected_status"),
+    ("event_type", "expected_status", "provider_status"),
     [
-        ("BILLING.SUBSCRIPTION.CANCELLED", "cancelled"),
-        ("BILLING.SUBSCRIPTION.SUSPENDED", "suspended"),
-        ("BILLING.SUBSCRIPTION.EXPIRED", "expired"),
+        ("BILLING.SUBSCRIPTION.CANCELLED", "cancelled", "CANCELLED"),
+        ("BILLING.SUBSCRIPTION.SUSPENDED", "suspended", "SUSPENDED"),
+        ("BILLING.SUBSCRIPTION.EXPIRED", "expired", "EXPIRED"),
     ],
 )
 def test_set_inactive_mapeia_estado_corretamente(
-    monkeypatch, event_type, expected_status
+    monkeypatch, event_type, expected_status, provider_status
 ):
     conn = FakeConnection()
     monkeypatch.setattr(payments, "get_connection", lambda: conn)
 
-    subscription = {"id": "SUB-INACTIVE-TEST"}
+    subscription = {"id": "SUB-INACTIVE-TEST", "status": provider_status}
 
     result = payments._set_inactive(subscription, event_type)
 
@@ -251,6 +251,65 @@ def test_set_inactive_mapeia_estado_corretamente(
     assert conn.committed is True
     assert conn.closed is True
     assert conn.fake_cursor.params[0] == expected_status
+
+
+def test_set_inactive_rejeita_evento_antigo_se_paypal_confirma_estado_ativo(monkeypatch):
+    def connection_nao_esperada():
+        pytest.fail("Evento antigo não deve alterar o estado confirmado como ACTIVE")
+    monkeypatch.setattr(payments, "get_connection", connection_nao_esperada)
+    assert payments._set_inactive(
+        {"id": "SUB-STALE", "status": "ACTIVE"},
+        "BILLING.SUBSCRIPTION.CANCELLED",
+    ) is False
+
+
+def test_paypal_browser_return_never_activates_subscription(monkeypatch):
+    import database
+    from flask import Flask
+    from security_rbac import credential_fingerprint
+
+    class IdentityCursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def execute(self, query, params): self.query, self.params = query, params
+        def fetchone(self):
+            return ("owner", "workspace-a-id", True, "workspace-a", "test-password-hash")
+
+    class IdentityConnection:
+        def cursor(self): return IdentityCursor()
+        def close(self): pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: IdentityConnection())
+    monkeypatch.setattr(payments, "_checkout_enabled", lambda: True)
+    monkeypatch.setattr(
+        payments, "_api_request",
+        lambda *args, **kwargs: {
+            "id": "SUB-RETURN-TEST", "custom_id": "workspace-a",
+            "status": "ACTIVE", "plan_id": "PLAN-STARTER-TEST",
+        },
+    )
+    monkeypatch.setattr(
+        payments, "_set_active",
+        lambda *args, **kwargs: pytest.fail("Browser return must not change subscription state"),
+    )
+
+    app = Flask("paypal-return-readonly")
+    app.secret_key = "paypal-return-secret"
+    app.add_url_rule("/login", "login", lambda: "login")
+    payments.register_paypal_routes(app)
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess.update({
+            "authenticated": True, "user_id": "user-a",
+            "workspace_id": "workspace-a-id", "workspace_slug": "workspace-a",
+            "role": "owner",
+            "credential_fingerprint": credential_fingerprint(
+                "test-password-hash", "paypal-return-secret"
+            ),
+        })
+    response = client.get("/billing/paypal/return?subscription_id=SUB-RETURN-TEST")
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/billing?paypal=pending")
 
 
 def test_set_inactive_rejeita_evento_desconhecido(monkeypatch):
