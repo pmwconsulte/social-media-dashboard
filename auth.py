@@ -1669,14 +1669,19 @@ def setup_auth(server: Flask):
                             cur.execute(
                                 """INSERT INTO users
                                    (name, email, password_hash, plan_type, workspace_id, role, is_active)
-                                   VALUES (%s, %s, %s, 'free', %s, 'owner', TRUE);""",
+                                   VALUES (%s, %s, %s, 'free', %s, 'owner', TRUE)
+                                   RETURNING id;""",
                                 (name, email, password_hash, workspace_id),
                             )
+                            user_id = cur.fetchone()[0]
                             conn.commit()
                             session.clear()
                             session["authenticated"] = True
                             session["username"] = email
+                            session["user_id"] = str(user_id)
+                            session["workspace_id"] = str(workspace_id)
                             session["workspace_slug"] = workspace_slug
+                            session["role"] = "owner"
                             session.permanent = True
                             return redirect("/")
                 except Exception as erro:
