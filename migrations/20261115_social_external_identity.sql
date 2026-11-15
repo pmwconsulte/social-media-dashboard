@@ -47,8 +47,16 @@ BEGIN
     END IF;
 END $;
 
--- Backfill only the explicit Facebook-discovered linked identity. Do not infer
--- IDs for direct Instagram OAuth rows from usernames or copy historical rows.
+-- Facebook page IDs are already stored in username by the existing OAuth
+-- contract. Preserve that official identifier during the schema transition.
+UPDATE social_accounts
+SET external_account_id = BTRIM(username)
+WHERE LOWER(platform) = 'facebook'
+  AND external_account_id IS NULL
+  AND NULLIF(BTRIM(username), '') IS NOT NULL;
+
+-- Backfill only the explicit Facebook-discovered linked Instagram identity.
+-- Do not infer IDs for direct Instagram OAuth rows from usernames or copy history.
 UPDATE social_accounts sa
 SET external_account_id = mapping.instagram_account_id
 FROM (
@@ -62,8 +70,18 @@ WHERE sa.id = mapping.instagram_social_account_id
   AND LOWER(COALESCE(sa.connection_status, '')) = 'linked'
   AND sa.external_account_id IS NULL;
 
-DO $$
+DO $
 BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM social_accounts
+        WHERE external_account_id IS NOT NULL
+          AND workspace_id IS NULL
+    ) THEN
+        RAISE EXCEPTION
+            'Migration blocked: external identities without workspace ownership require manual review';
+    END IF;
+
     IF EXISTS (
         SELECT 1
         FROM social_accounts
