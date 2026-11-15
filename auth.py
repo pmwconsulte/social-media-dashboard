@@ -2574,16 +2574,14 @@ def setup_auth(server: Flask):
                 if linked_instagram and linked_instagram.get("id"):
                     ig_username = (linked_instagram.get("username") or
                                    "instagram_" + str(linked_instagram["id"]))
-                    # Reutilizar apenas a identidade já criada para esta mesma Página
-                    # e este mesmo Instagram ligado pelo Facebook Login. Nunca reutilizar
-                    # uma conta Instagram Login, mesmo que o username coincida.
-                    # Resolve the linked identity by Meta's immutable account ID,
-                    # not by username or by the current Page-link row.
+                    # Reutilizar qualquer identidade do mesmo Instagram externo,
+                    # incluindo uma ligação Instagram Login já existente. A associação
+                    # Facebook não altera o estado activo nem as credenciais dessa conta.
+                    # Resolver pelo ID imutável da Meta; nunca pelo username.
                     cur.execute(
                         """SELECT id FROM social_accounts
                            WHERE workspace_id=%s AND LOWER(platform)='instagram'
                              AND external_account_id=%s
-                             AND LOWER(COALESCE(connection_status, ''))='linked'
                            ORDER BY created_at, id LIMIT 2 FOR UPDATE""",
                         (workspace[0], str(linked_instagram["id"])),
                     )
