@@ -502,23 +502,20 @@ def _initialize_database_locked():
                 """
             )
 
-            cur.execute(
-                """
-                UPDATE social_accounts
-                SET workspace_id = %s
-                WHERE workspace_id IS NULL;
-                """,
-                (workspace_id,),
-            )
-
-            cur.execute(
-                """
-                UPDATE users
-                SET workspace_id = %s
-                WHERE workspace_id IS NULL;
-                """,
-                (workspace_id,),
-            )
+            # Never infer tenant ownership for legacy rows. Assigning every
+            # orphan to pmw-default can expose one customer's data to another.
+            # Keep orphan rows untouched and report counts for a reviewed,
+            # evidence-based migration instead of silently reassigning them.
+            cur.execute("SELECT COUNT(*) FROM social_accounts WHERE workspace_id IS NULL")
+            orphan_social_accounts = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM users WHERE workspace_id IS NULL")
+            orphan_users = cur.fetchone()[0]
+            if orphan_social_accounts or orphan_users:
+                print(
+                    "[TENANT OWNERSHIP REVIEW] Registos sem workspace preservados: "
+                    f"social_accounts={orphan_social_accounts}, users={orphan_users}. "
+                    "Não foi feita atribuição automática."
+                )
 
             cur.execute(
                 """
