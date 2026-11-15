@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 import requests
 from flask import abort, redirect, request, session, url_for
 from database import get_connection
+from security_rbac import require_permission
 
 PLAN_ENV = {"starter": "PAYPAL_PLAN_STARTER_ID", "pro": "PAYPAL_PLAN_PRO_ID", "business": "PAYPAL_PLAN_BUSINESS_ID"}
 TIMEOUT = 20
@@ -162,7 +163,8 @@ def register_paypal_routes(server):
     except Exception as exc:
         print(f"[PAYPAL INIT] {type(exc).__name__}")
 
-    @server.get("/billing/paypal/subscribe/<plan_key>")
+    @server.post("/billing/paypal/subscribe/<plan_key>")
+    @require_permission("billing.manage")
     def paypal_subscribe(plan_key):
         if not session.get("authenticated"): return redirect(url_for("login"))
         if not _checkout_enabled(): return "Checkout PayPal desativado. Para testes, ative PAYPAL_CHECKOUT_ENABLED=true em Sandbox.",503
