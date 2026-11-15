@@ -215,6 +215,42 @@ def test_dashboard_and_dash_callbacks_reject_deactivated_database_user(monkeypat
     assert callback_response.status_code == 401
 
 
+def test_password_rotation_invalidates_existing_database_sessions(monkeypatch):
+    import database
+
+    class Cursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return ("owner", "workspace-a-id", True, "workspace-a", "new-password-hash")
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: Connection())
+    app = Flask("credential-rotation-test")
+    app.secret_key = "credential-rotation-secret"
+    identity = {
+        "authenticated": True,
+        "user_id": "user-a",
+        "workspace_id": "workspace-a-id",
+        "workspace_slug": "workspace-a",
+        "role": "owner",
+        "credential_fingerprint": credential_fingerprint("old-password-hash", "credential-rotation-secret"),
+    }
+    with app.app_context():
+        assert refresh_session_identity(identity) is False
+    assert identity == {}
+
+
 def test_database_user_reassignment_to_another_workspace_invalidates_session(monkeypatch):
     import database
 
