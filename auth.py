@@ -1928,6 +1928,11 @@ def setup_auth(server: Flask):
                 )
                 active_accounts = cur.fetchone()[0]
                 encrypted = _encrypt_token(access_token)
+
+                print("[INSTAGRAM IDENTITY DEBUG] workspace_id:", repr(workspace[0]))
+                print("[INSTAGRAM IDENTITY DEBUG] ig_id recebido:", repr(ig_id))
+                print("[INSTAGRAM IDENTITY DEBUG] username recebido:", repr(username))
+
                 try:
                     social_account_id = upsert_social_account(
                         cur,
