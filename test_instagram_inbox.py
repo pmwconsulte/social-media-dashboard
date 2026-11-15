@@ -142,6 +142,54 @@ def test_protected_route_refreshes_role_and_blocks_revoked_permission(monkeypatc
         assert session["role"] == "viewer"
 
 
+def test_dashboard_and_dash_callbacks_reject_deactivated_database_user(monkeypatch):
+    import database
+
+    class InactiveCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.params = params
+        def fetchone(self):
+            return ("owner", "workspace-id", False, "workspace-test")
+
+    class InactiveConnection:
+        def cursor(self):
+            return InactiveCursor()
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setenv("SECRET_KEY", "dashboard-auth-test")
+    monkeypatch.setattr(database, "get_connection", lambda: InactiveConnection())
+    app = Flask("dashboard-auth-test")
+    app.secret_key = "dashboard-auth-test"
+    auth.setup_auth(app)
+
+    @app.get("/")
+    def dashboard():
+        return "dashboard data"
+
+    @app.post("/_dash-update-component")
+    def dash_callback():
+        return "callback data"
+
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["user_id"] = "inactive-user"
+        sess["workspace_id"] = "workspace-id"
+        sess["workspace_slug"] = "workspace-test"
+        sess["role"] = "owner"
+
+    dashboard_response = client.get("/")
+    assert dashboard_response.status_code == 302
+    assert dashboard_response.headers["Location"].endswith("/login")
+    callback_response = client.post("/_dash-update-component")
+    assert callback_response.status_code == 401
+
+
 def test_csrf_helpers_accept_only_current_session_tokens():
     session = {}
     token = issue_csrf_token(session)
