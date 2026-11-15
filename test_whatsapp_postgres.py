@@ -426,6 +426,42 @@ def test_postgres_paypal_subscription_cannot_be_claimed_by_another_workspace(bil
         conn.close()
 
 
+def test_postgres_concurrent_paypal_claims_allow_only_one_workspace(billing_pg_schema):
+    from concurrent.futures import ThreadPoolExecutor
+
+    claims = [
+        {
+            "id": "SUB-CONCURRENT-CLAIM",
+            "custom_id": "workspace-a",
+            "status": "ACTIVE",
+            "plan_id": "PLAN-STARTER-TEST",
+        },
+        {
+            "id": "SUB-CONCURRENT-CLAIM",
+            "custom_id": "workspace-b",
+            "status": "ACTIVE",
+            "plan_id": "PLAN-STARTER-TEST",
+        },
+    ]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda item: payments._set_active(item, item["custom_id"]),
+            claims,
+        ))
+    assert sorted(results) == [False, True]
+
+    conn = billing_pg_schema()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM workspaces WHERE subscription_id=%s",
+                ("SUB-CONCURRENT-CLAIM",),
+            )
+            assert cur.fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
 def test_postgres_paypal_cancellation_changes_only_owning_workspace(billing_pg_schema):
     connect = billing_pg_schema
     subscription = {
