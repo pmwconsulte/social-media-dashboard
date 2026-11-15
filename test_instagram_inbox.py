@@ -29,9 +29,10 @@ class FakeCursor:
 class FakeConnection:
     def __init__(self):
         self.closed = False
+        self.fake_cursor = FakeCursor()
 
     def cursor(self):
-        return FakeCursor()
+        return self.fake_cursor
 
     def close(self):
         self.closed = True
@@ -640,6 +641,19 @@ def test_viewer_cannot_send_instagram_direct_even_with_valid_csrf(inbox_client, 
 
     assert response.status_code == 403
     assert [call[0] for call in calls] == ["get"]
+
+
+def test_instagram_inbox_lists_accounts_only_from_session_workspace(inbox_client, monkeypatch):
+    connection = FakeConnection()
+    monkeypatch.setattr(auth, "get_connection", lambda: connection)
+    monkeypatch.setattr(auth.requests, "get", lambda *a, **k: conversations_response())
+
+    response = inbox_client.get("/instagram/inbox")
+    assert response.status_code == 200
+    assert "JOIN workspaces w ON w.id = sa.workspace_id" in connection.fake_cursor.query
+    assert "WHERE w.slug=%s" in connection.fake_cursor.query
+    assert connection.fake_cursor.params == ("workspace-test",)
+    assert connection.closed is True
 
 
 def test_inbox_rejeita_csrf_invalido_sem_enviar(inbox_client, monkeypatch):
