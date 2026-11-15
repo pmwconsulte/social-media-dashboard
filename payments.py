@@ -197,7 +197,7 @@ def register_paypal_routes(server):
             return "Checkout indisponÃ­vel. Confirme os Plan IDs.",503
 
     @server.get("/billing/paypal/return")
-    @require_permission("billing.read")
+    @require_permission("billing.manage")
     def paypal_return():
         if not session.get("authenticated"): return redirect(url_for("login"))
         if not _checkout_enabled(): return "Checkout PayPal desativado. Para testes, ative PAYPAL_CHECKOUT_ENABLED=true em Sandbox.",503
