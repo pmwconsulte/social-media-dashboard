@@ -449,3 +449,46 @@ def test_webhook_automacao_desativada_responde_202(monkeypatch):
 
     assert response.status_code == 202
     assert chamadas_bd == []
+
+
+def test_viewer_cannot_use_paypal_return_to_change_billing(monkeypatch):
+    from flask import Flask
+    import database
+
+    class IdentityCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+        def fetchone(self):
+            return ("viewer", "workspace-a-id", True, "workspace-a")
+
+    class IdentityConnection:
+        def cursor(self):
+            return IdentityCursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: IdentityConnection())
+    monkeypatch.setattr(payments, "get_connection", lambda: FakeConnection())
+    calls = []
+    monkeypatch.setattr(payments, "_api_request", lambda *a, **k: calls.append((a, k)))
+
+    app = Flask("paypal-rbac-test")
+    app.secret_key = "test-paypal-rbac"
+    app.add_url_rule("/login", "login", lambda: "login")
+    payments.register_paypal_routes(app)
+
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["user_id"] = "user-viewer"
+        sess["workspace_id"] = "workspace-a-id"
+        sess["workspace_slug"] = "workspace-a"
+        sess["role"] = "owner"
+
+    response = client.get("/billing/paypal/return?subscription_id=SUB-TEST")
+    assert response.status_code == 403
+    assert calls == []
