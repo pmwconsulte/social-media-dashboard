@@ -2580,30 +2580,34 @@ def setup_auth(server: Flask):
                     # Reutilizar apenas a identidade já criada para esta mesma Página
                     # e este mesmo Instagram ligado pelo Facebook Login. Nunca reutilizar
                     # uma conta Instagram Login, mesmo que o username coincida.
+                    # Resolve the linked identity by Meta's immutable account ID,
+                    # not by username or by the current Page-link row.
                     cur.execute(
-                        """SELECT fil.instagram_social_account_id
-                           FROM facebook_instagram_links fil
-                           JOIN social_accounts ig ON ig.id=fil.instagram_social_account_id
-                           WHERE fil.social_account_id=%s AND fil.page_id=%s
-                             AND fil.instagram_account_id=%s
-                             AND ig.workspace_id=%s AND ig.platform='Instagram'
-                             AND LOWER(COALESCE(ig.connection_status, ''))='linked'
-                           LIMIT 1""",
-                        (str(social_account_id), page_id, str(linked_instagram["id"]), workspace[0]),
+                        """SELECT id FROM social_accounts
+                           WHERE workspace_id=%s AND LOWER(platform)='instagram'
+                             AND external_account_id=%s
+                             AND LOWER(COALESCE(connection_status, ''))='linked'
+                           ORDER BY created_at, id LIMIT 2 FOR UPDATE""",
+                        (workspace[0], str(linked_instagram["id"])),
                     )
-                    linked_row = cur.fetchone()
-                    if linked_row and linked_row[0]:
-                        instagram_social_account_id = linked_row[0]
+                    linked_rows = cur.fetchall()
+                    if len(linked_rows) > 1:
+                        raise RuntimeError(
+                            "Existem identidades Instagram ligadas duplicadas; reconciliação necessária."
+                        )
+                    if linked_rows:
+                        instagram_social_account_id = linked_rows[0][0]
                     else:
-                        # Identidade complementar da Página: não consome uma vaga
-                        # adicional do plano, pois é parte da mesma ligação social.
+                        # A identidade complementar guarda o ID externo oficial.
+                        # Não consome uma vaga adicional do plano.
                         cur.execute(
                             """INSERT INTO social_accounts
-                               (workspace_id, platform, username, display_name, access_token,
-                                connection_status, is_active, last_sync_at)
-                               VALUES (%s, 'Instagram', %s, %s, NULL, 'linked', TRUE, NOW())
+                               (workspace_id, platform, username, display_name,
+                                external_account_id, access_token, connection_status,
+                                is_active, last_sync_at)
+                               VALUES (%s, 'Instagram', %s, %s, %s, NULL, 'linked', TRUE, NOW())
                                RETURNING id""",
-                            (workspace[0], ig_username, ig_username),
+                            (workspace[0], ig_username, ig_username, str(linked_instagram["id"])),
                         )
                         instagram_social_account_id = cur.fetchone()[0]
                     cur.execute(
