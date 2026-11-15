@@ -403,7 +403,7 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[FACEBOOK INSIGHTS ERROR] {type(erro).__name__}: {erro}")
+        print(f"[FACEBOOK INSIGHTS ERROR] {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -572,7 +572,7 @@ def _sync_instagram_period_snapshots(social_account_id, ig_id, access_token):
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[INSTAGRAM PERÍODO ERROR] Falha ao guardar totais oficiais: {type(erro).__name__}: {erro}")
+        print(f"[INSTAGRAM PERÍODO ERROR] Falha ao guardar totais oficiais: {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -672,7 +672,7 @@ def _sync_instagram_reels_periods(social_account_id, ig_id, access_token):
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[INSTAGRAM REELS ERROR] Não foi possível guardar snapshots: {type(erro).__name__}: {erro}")
+        print(f"[INSTAGRAM REELS ERROR] Não foi possível guardar snapshots: {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -905,7 +905,7 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token, graph_host="
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[INSTAGRAM INSIGHTS ERROR] Falha ao guardar métricas: {type(erro).__name__}: {erro}")
+        print(f"[INSTAGRAM INSIGHTS ERROR] Falha ao guardar métricas: {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -1362,7 +1362,7 @@ def setup_auth(server: Flask):
             finally:
                 conn.close()
         except Exception as erro:
-            print(f"[BILLING ERROR] {erro}")
+            print(f"[BILLING ERROR] {type(erro).__name__}.")
             return "Serviço de faturação temporariamente indisponível.", 503
 
         workspace = access.get("workspace") or {}
@@ -1591,7 +1591,7 @@ def setup_auth(server: Flask):
                     return redirect("/")
                 return redirect(url_for("billing"))
             except Exception as erro:
-                print(f"[BILLING LOGIN ERROR] {erro}")
+                print(f"[BILLING LOGIN ERROR] {type(erro).__name__}.")
                 return redirect(url_for("billing"))
 
         error = None
@@ -1754,7 +1754,7 @@ def setup_auth(server: Flask):
                 except Exception as erro:
                     if conn:
                         conn.rollback()
-                    print(f"[SIGNUP ERROR] {erro}")
+                    print(f"[SIGNUP ERROR] {type(erro).__name__}.")
                     error = "Não foi possível criar a conta. Tente novamente."
                 finally:
                     if conn:
@@ -1791,7 +1791,7 @@ def setup_auth(server: Flask):
             return redirect(authorize_url)
 
         except Exception as erro:
-            print(f"[INSTAGRAM OAUTH START ERROR] {type(erro).__name__}: {erro}")
+            print(f"[INSTAGRAM OAUTH START ERROR] {type(erro).__name__}.")
             return redirect(
                 url_for(
                     "account",
@@ -1923,11 +1923,11 @@ def setup_auth(server: Flask):
             return redirect(url_for("account", message="Instagram conectado. Algumas métricas ainda não estão disponíveis; verifique as permissões e os logs."))
         except (requests.RequestException, ValueError, InvalidToken) as erro:
             if conn: conn.rollback()
-            print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}: {erro}")
+            print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível concluir a ligação ao Instagram."))
         except Exception as erro:
             if conn: conn.rollback()
-            print(f"[INSTAGRAM OAUTH ERROR] {erro}")
+            print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Erro ao configurar a conta Instagram."))
         finally:
             if conn: conn.close()
@@ -2221,7 +2221,7 @@ def setup_auth(server: Flask):
             })
             return redirect(_facebook_authorize_url(state))
         except Exception as erro:
-            print(f"[FACEBOOK OAUTH START ERROR] {type(erro).__name__}: {erro}")
+            print(f"[FACEBOOK OAUTH START ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível iniciar a ligação ao Facebook."))
 
     @server.get("/oauth/facebook/callback")
@@ -2380,10 +2380,10 @@ def setup_auth(server: Flask):
                 return redirect(url_for("account", error="Não foi possível obter tokens válidos para as Páginas selecionáveis."))
             return redirect(url_for("facebook_select_page", selector=selector))
         except (requests.RequestException, ValueError, InvalidToken) as erro:
-            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}: {erro}")
+            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível concluir a autorização do Facebook. Verifique as permissões da aplicação Meta."))
         except Exception as erro:
-            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}: {erro}")
+            print(f"[FACEBOOK OAUTH ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Ocorreu um erro ao preparar as Páginas do Facebook."))
     
     @server.route("/oauth/facebook/select", methods=["GET", "POST"])
@@ -2624,7 +2624,7 @@ def setup_auth(server: Flask):
         except Exception as erro:
             if conn:
                 conn.rollback()
-            print(f"[FACEBOOK PAGE SELECT ERROR] {type(erro).__name__}: {erro}")
+            print(f"[FACEBOOK PAGE SELECT ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível guardar a Página do Facebook. Tente novamente."))
         finally:
             if conn:
@@ -2852,7 +2852,7 @@ def setup_auth(server: Flask):
                     pass
 
             import traceback
-            print(f"[ACCOUNT ERROR] {type(erro).__name__}: {erro}")
+            print(f"[ACCOUNT ERROR] {type(erro).__name__}.")
             traceback.print_exc()
 
             return render_template_string(
@@ -2907,7 +2907,7 @@ def setup_auth(server: Flask):
             return redirect(url_for("account",message="Password alterada com sucesso."))
         except Exception as erro:
             if conn: conn.rollback()
-            print(f"[PASSWORD ERROR] {erro}"); return redirect(url_for("account",error="Não foi possível alterar a password."))
+            print(f"[PASSWORD ERROR] {type(erro).__name__}."); return redirect(url_for("account",error="Não foi possível alterar a password."))
         finally:
             if conn: conn.close()
 
@@ -2994,7 +2994,7 @@ def setup_auth(server: Flask):
         except Exception as erro:
             if conn:
                 conn.rollback()
-            print(f"[SOCIAL ACCOUNT ERROR] {type(erro).__name__}: {erro}")
+            print(f"[SOCIAL ACCOUNT ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível adicionar a conta social."))
         finally:
             if conn:
@@ -3022,7 +3022,7 @@ def setup_auth(server: Flask):
         except Exception as erro:
             if conn:
                 conn.rollback()
-            print(f"[SOCIAL TOGGLE ERROR] {type(erro).__name__}: {erro}")
+            print(f"[SOCIAL TOGGLE ERROR] {type(erro).__name__}.")
             return redirect(url_for("account", error="Não foi possível alterar o estado da conta."))
         finally:
             if conn:
