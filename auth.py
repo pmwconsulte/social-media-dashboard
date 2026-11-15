@@ -1689,6 +1689,7 @@ def setup_auth(server: Flask):
         return render_template_string(SIGNUP_PAGE, error=error)
 
     @server.get("/oauth/instagram")
+    @require_permission("integrations.manage")
     def instagram_oauth():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -2122,6 +2123,7 @@ def setup_auth(server: Flask):
 
 
     @server.get("/oauth/facebook")
+    @require_permission("integrations.manage")
     def facebook_oauth():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -2548,6 +2550,7 @@ def setup_auth(server: Flask):
 
 
     @server.post("/social-accounts/sync")
+    @require_permission("analytics.read")
     def sync_social_accounts():
         """Sincroniza manualmente as contas ligadas ao workspace autenticado."""
         if not session.get("authenticated"):
@@ -2798,6 +2801,7 @@ def setup_auth(server: Flask):
             if conn: conn.close()
 
     @server.post("/social-accounts/add")
+    @require_permission("integrations.manage")
     def add_social_account():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -2886,6 +2890,7 @@ def setup_auth(server: Flask):
                 conn.close()
 
     @server.post("/social-accounts/<account_id>/toggle")
+    @require_permission("accounts.manage")
     def toggle_social_account(account_id):
         if not session.get("authenticated"):
             return redirect(url_for("login"))
