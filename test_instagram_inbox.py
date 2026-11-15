@@ -194,6 +194,41 @@ def test_login_post_requires_global_csrf_token(inbox_client):
     assert "Pedido inválido" in response.get_data(as_text=True)
 
 
+def test_viewer_cannot_send_instagram_direct_even_with_valid_csrf(inbox_client, monkeypatch):
+    import database
+
+    class ViewerCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.params = params
+        def fetchone(self):
+            return ("viewer", "workspace-test-id", True, "workspace-test")
+
+    class ViewerConnection:
+        def cursor(self):
+            return ViewerCursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: ViewerConnection())
+    with inbox_client.session_transaction() as sess:
+        sess["user_id"] = "user-viewer"
+        sess["workspace_id"] = "workspace-test-id"
+        sess["workspace_slug"] = "workspace-test"
+        sess["role"] = "owner"
+
+    calls = []
+    monkeypatch.setattr(auth.requests, "get", lambda *a, **k: calls.append(("get", a, k)))
+    monkeypatch.setattr(auth.requests, "post", lambda *a, **k: calls.append(("post", a, k)))
+    response = inbox_client.post("/instagram/inbox", data=post_data())
+
+    assert response.status_code == 403
+    assert calls == []
+
+
 def test_inbox_rejeita_csrf_invalido_sem_enviar(inbox_client, monkeypatch):
     calls = []
     monkeypatch.setattr(auth.requests, "get", lambda *a, **k: conversations_response())
