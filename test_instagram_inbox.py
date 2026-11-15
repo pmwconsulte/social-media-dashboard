@@ -289,6 +289,67 @@ def test_database_user_reassignment_to_another_workspace_invalidates_session(mon
     assert identity == {}
 
 
+def test_database_user_cannot_escalate_to_platform_admin(monkeypatch):
+    import database
+
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def execute(self, query, params): pass
+        def fetchone(self):
+            return ("platform_admin", "workspace-a-id", True, "workspace-a", "test-password-hash")
+
+    class Connection:
+        def cursor(self): return Cursor()
+        def close(self): pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: Connection())
+    app = Flask("database-platform-admin-deny")
+    app.secret_key = "platform-admin-deny-secret"
+    identity = {
+        "authenticated": True, "user_id": "database-user",
+        "workspace_id": "workspace-a-id", "workspace_slug": "workspace-a",
+        "role": "owner",
+        "credential_fingerprint": credential_fingerprint(
+            "test-password-hash", "platform-admin-deny-secret"
+        ),
+    }
+    with app.app_context():
+        assert refresh_session_identity(identity) is False
+    assert identity == {}
+
+
+def test_environment_admin_session_requires_matching_admin_username(monkeypatch):
+    import database
+
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def execute(self, query, params): pass
+        def fetchone(self): return ("workspace-a-id",)
+
+    class Connection:
+        def cursor(self): return Cursor()
+        def close(self): pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: Connection())
+    monkeypatch.setenv("ADMIN_USERNAME", "platform-operator")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "admin-hash-test")
+    identity = {
+        "authenticated": True, "username": "someone-else", "user_id": None,
+        "workspace_id": "workspace-a-id", "workspace_slug": "workspace-a",
+        "role": "platform_admin",
+        "credential_fingerprint": credential_fingerprint(
+            "admin-hash-test", "environment-admin-secret"
+        ),
+    }
+    app = Flask("environment-admin-user-binding")
+    app.secret_key = "environment-admin-secret"
+    with app.app_context():
+        assert refresh_session_identity(identity) is False
+    assert identity == {}
+
+
 def test_environment_admin_session_is_bound_to_existing_workspace_id(monkeypatch):
     import database
 
