@@ -23,6 +23,7 @@ from flask import (
 from billing import PLANS, evaluate_workspace_access
 from database import get_connection
 from facebook_posts import register_facebook_posts_route
+from security_rbac import normalize_role, require_permission
 
 
 def _oauth_configured():
@@ -1544,6 +1545,9 @@ def setup_auth(server: Flask):
             password = request.form.get("password", "")
             valid = False
             user_workspace_slug = None
+            user_id = None
+            workspace_id = None
+            user_role = "viewer"
 
             configured_username = os.getenv("ADMIN_USERNAME", "").strip()
             password_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
@@ -1558,14 +1562,29 @@ def setup_auth(server: Flask):
                     valid = False
 
             if valid:
+                # The environment administrator is explicitly privileged but
+                # remains bound to the configured default workspace.
+                user_role = "platform_admin"
                 user_workspace_slug = os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+                try:
+                    conn = get_connection()
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT id FROM workspaces WHERE slug=%s LIMIT 1;", (user_workspace_slug,))
+                            workspace_row = cur.fetchone()
+                            workspace_id = workspace_row[0] if workspace_row else None
+                    finally:
+                        conn.close()
+                except Exception as erro:
+                    print(f"[LOGIN WORKSPACE ERROR] {type(erro).__name__}")
+                    valid = False
             else:
                 try:
                     conn = get_connection()
                     try:
                         with conn.cursor() as cur:
                             cur.execute(
-                                """SELECT email, password_hash, workspace_id
+                                """SELECT id, email, password_hash, workspace_id, role
                                    FROM users
                                    WHERE LOWER(email) = LOWER(%s)
                                      AND COALESCE(is_active, TRUE) = TRUE
@@ -1573,24 +1592,32 @@ def setup_auth(server: Flask):
                                 (username,),
                             )
                             row = cur.fetchone()
-                            if row and row[1]:
-                                valid = bcrypt.checkpw(password.encode("utf-8"), row[1].encode("utf-8"))
-                                if valid and row[2]:
-                                    cur.execute("SELECT slug FROM workspaces WHERE id = %s LIMIT 1;", (row[2],))
+                            if row and row[2] and row[3]:
+                                valid = bcrypt.checkpw(password.encode("utf-8"), row[2].encode("utf-8"))
+                                if valid:
+                                    cur.execute("SELECT slug FROM workspaces WHERE id = %s LIMIT 1;", (row[3],))
                                     workspace_row = cur.fetchone()
                                     if workspace_row:
+                                        user_id = str(row[0])
+                                        workspace_id = str(row[3])
                                         user_workspace_slug = workspace_row[0]
+                                        user_role = normalize_role(row[4])
+                                    else:
+                                        valid = False
                     finally:
                         conn.close()
                 except Exception as erro:
-                    print(f"[LOGIN DATABASE ERROR] {erro}")
+                    print(f"[LOGIN DATABASE ERROR] {type(erro).__name__}")
                     valid = False
 
-            if valid:
+            if valid and user_workspace_slug and workspace_id:
                 session.clear()
                 session["authenticated"] = True
                 session["username"] = username
-                session["workspace_slug"] = user_workspace_slug or os.getenv("DEFAULT_WORKSPACE_SLUG", "pmw-default")
+                session["user_id"] = user_id
+                session["workspace_id"] = workspace_id
+                session["workspace_slug"] = user_workspace_slug
+                session["role"] = normalize_role(user_role)
                 session.permanent = True
                 return redirect("/")
 
