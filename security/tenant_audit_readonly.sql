@@ -49,12 +49,16 @@ FROM whatsapp_phone_number_workspaces p
 JOIN workspaces w ON w.id = p.workspace_id
 ORDER BY w.slug, p.phone_number_id;
 
--- 6. Messenger message distribution. No message content or recipient IDs.
-SELECT w.slug, m.direction, m.status, COUNT(*) AS message_count
-FROM facebook_messenger_messages m
-JOIN workspaces w ON w.id = m.workspace_id
-GROUP BY w.slug, m.direction, m.status
-ORDER BY w.slug, m.direction, m.status;
+-- 6. Messenger table availability. It is created when the first valid
+-- Messenger webhook event is processed; do not fail the entire audit if absent.
+SELECT to_regclass('facebook_messenger_messages') AS messenger_messages_table;
+
+-- If the result above is not NULL, run this optional read-only query separately:
+-- SELECT w.slug, m.direction, m.status, COUNT(*) AS message_count
+-- FROM facebook_messenger_messages m
+-- JOIN workspaces w ON w.id = m.workspace_id
+-- GROUP BY w.slug, m.direction, m.status
+-- ORDER BY w.slug, m.direction, m.status;
 
 -- 7. WhatsApp message distribution. No message content or phone numbers.
 SELECT w.slug, m.direction, m.status, COUNT(*) AS message_count
