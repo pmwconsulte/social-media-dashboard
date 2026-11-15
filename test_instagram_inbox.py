@@ -454,6 +454,39 @@ def test_messenger_webhook_rejects_missing_or_wrong_signature(monkeypatch):
         assert not facebook_messenger._verify_signature(b"payload")
 
 
+def test_facebook_oauth_state_requires_same_session_nonce_and_workspace():
+    import auth
+
+    session = {
+        "facebook_oauth_nonce": "nonce-session-a",
+        "workspace_slug": "workspace-a",
+    }
+    assert auth._consume_facebook_oauth_state(
+        {"nonce": "nonce-session-a", "workspace_slug": "workspace-a"},
+        session,
+    ) is True
+    assert "facebook_oauth_nonce" not in session
+
+    replay_session = {
+        "facebook_oauth_nonce": "nonce-session-b",
+        "workspace_slug": "workspace-a",
+    }
+    assert auth._consume_facebook_oauth_state(
+        {"nonce": "nonce-session-a", "workspace_slug": "workspace-a"},
+        replay_session,
+    ) is False
+    assert "facebook_oauth_nonce" not in replay_session
+
+    foreign_workspace_session = {
+        "facebook_oauth_nonce": "nonce-session-c",
+        "workspace_slug": "workspace-b",
+    }
+    assert auth._consume_facebook_oauth_state(
+        {"nonce": "nonce-session-c", "workspace_slug": "workspace-a"},
+        foreign_workspace_session,
+    ) is False
+
+
 def test_facebook_instagram_link_lookup_requires_same_workspace_and_active_link():
     import auth
 
