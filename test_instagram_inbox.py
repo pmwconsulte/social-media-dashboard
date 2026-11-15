@@ -254,6 +254,34 @@ def test_csrf_helpers_accept_only_current_session_tokens():
     assert valid_csrf_token(session, "w" * 43)
 
 
+def test_messenger_webhook_accepts_only_facebook_app_hmac(monkeypatch):
+    import hashlib
+    import hmac
+
+    secret = "facebook-webhook-test-secret"
+    raw = b'{"object":"page","entry":[]}'
+    signature = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    monkeypatch.setenv("FACEBOOK_APP_SECRET", secret)
+    app = Flask("messenger-signature-test")
+    with app.test_request_context(
+        "/webhooks/messenger",
+        headers={"X-Hub-Signature-256": signature},
+    ):
+        assert facebook_messenger._verify_signature(raw)
+
+
+def test_messenger_webhook_rejects_missing_or_wrong_signature(monkeypatch):
+    monkeypatch.setenv("FACEBOOK_APP_SECRET", "facebook-webhook-test-secret")
+    app = Flask("messenger-invalid-signature-test")
+    with app.test_request_context("/webhooks/messenger"):
+        assert not facebook_messenger._verify_signature(b"payload")
+    with app.test_request_context(
+        "/webhooks/messenger",
+        headers={"X-Hub-Signature-256": "sha256=" + ("0" * 64)},
+    ):
+        assert not facebook_messenger._verify_signature(b"payload")
+
+
 def test_messenger_account_lookup_is_scoped_to_requested_workspace(monkeypatch):
     class Cursor:
         def __enter__(self):
