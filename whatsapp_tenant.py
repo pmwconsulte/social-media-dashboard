@@ -17,15 +17,23 @@ def resolve_workspace_phone_number(
     mapped_workspace_id,
     workspace_id,
     inbound_phone_id=None,
+    configured_workspace_slug=None,
+    requested_workspace_slug=None,
 ):
     """Return the configured phone ID only after strict tenant ownership checks."""
     configured = str(configured_phone_id or "").strip()
     mapped = str(mapped_phone_id or "").strip()
     inbound = str(inbound_phone_id or "").strip()
+    configured_slug = str(configured_workspace_slug or "").strip()
+    requested_slug = str(requested_workspace_slug or "").strip()
 
     if not configured:
         raise WhatsAppTenantConfigurationError(
             "WHATSAPP_PHONE_NUMBER_ID não está configurado."
+        )
+    if not configured_slug or not requested_slug or configured_slug != requested_slug:
+        raise WhatsAppTenantConfigurationError(
+            "A Cloud API global só pode ser utilizada pelo workspace explicitamente configurado."
         )
     if not mapped or mapped != configured:
         raise WhatsAppTenantConfigurationError(
