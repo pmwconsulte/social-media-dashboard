@@ -46,6 +46,20 @@ def _linked_instagram_for_facebook(cur, facebook_account_id):
     return cur.fetchone()
 
 
+def _consume_facebook_oauth_state(state_data, session):
+    """Consume a one-time OAuth nonce bound to the initiating browser session."""
+    expected_nonce = session.pop("facebook_oauth_nonce", None)
+    nonce = state_data.get("nonce") if isinstance(state_data, dict) else None
+    workspace_slug = state_data.get("workspace_slug") if isinstance(state_data, dict) else None
+    return bool(
+        isinstance(expected_nonce, str)
+        and isinstance(nonce, str)
+        and secrets.compare_digest(expected_nonce, nonce)
+        and workspace_slug
+        and workspace_slug == session.get("workspace_slug")
+    )
+
+
 def _oauth_configured():
     required = (
         "INSTAGRAM_APP_ID",
@@ -2239,8 +2253,10 @@ def setup_auth(server: Flask):
             # the session cookie surviving the round trip through Facebook.
             from itsdangerous import URLSafeTimedSerializer
             serializer = URLSafeTimedSerializer(server.secret_key, salt="pmw-facebook-oauth-state-v1")
+            nonce = secrets.token_urlsafe(32)
+            session["facebook_oauth_nonce"] = nonce
             state = serializer.dumps({
-                "nonce": secrets.token_urlsafe(32),
+                "nonce": nonce,
                 "workspace_slug": session.get("workspace_slug"),
             })
             return redirect(_facebook_authorize_url(state))
@@ -2265,9 +2281,9 @@ def setup_auth(server: Flask):
             # Do not log the state value; it is a temporary security token.
             print(f"[FACEBOOK OAUTH STATE INVALID] {type(erro).__name__}")
             return redirect(url_for("account", error="A sessão de autorização do Facebook expirou ou não pôde ser validada. Inicie a ligação novamente."))
+        if not _consume_facebook_oauth_state(state_data, session):
+            return redirect(url_for("account", error="A sessão de autorização do Facebook não corresponde à sessão que iniciou a ligação. Inicie novamente.")) 
         workspace_slug = state_data.get("workspace_slug")
-        if not state_data.get("nonce") or workspace_slug != session.get("workspace_slug"):
-            return redirect(url_for("account", error="A sessão de autorização do Facebook não corresponde à conta atual. Inicie a ligação novamente."))
         code = request.args.get("code", "")
         if not code:
             return redirect(url_for("account", error="Código OAuth inválido ou sessão expirada."))
