@@ -1861,6 +1861,7 @@ def setup_auth(server: Flask):
 
 
     @server.route("/instagram/inbox", methods=["GET", "POST"])
+    @require_permission("messaging.read")
     def instagram_inbox():
         """Inbox Instagram isolada por workspace; tokens nunca são enviados ao browser."""
         if not session.get("authenticated"):
@@ -2310,6 +2311,7 @@ def setup_auth(server: Flask):
             return redirect(url_for("account", error="Ocorreu um erro ao preparar as Páginas do Facebook."))
     
     @server.route("/oauth/facebook/select", methods=["GET", "POST"])
+    @require_permission("integrations.manage")
     def facebook_select_page():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
