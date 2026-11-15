@@ -950,7 +950,7 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 <p>O período de teste está ativo. Escolha um plano para consultar as opções de pagamento quando estiver pronto para continuar.</p>
 {% endif %}
 <a class="btn" href="#plans">Ver planos e opções de pagamento</a>
-<a class="btn logout" href="/logout">Sair</a>
+<form method="post" action="/logout" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn logout" type="submit">Sair</button></form>
 </div>
 <div class="plans" id="plans">
 {% for key, item in plans.items() %}
@@ -964,7 +964,7 @@ a.logout{background:#ef4444;color:white;margin-left:8px}
 </ul>
 <div class="payment">
 <strong>Escolha um método de pagamento</strong>
-{% if paypal_ready and key != "trial" %}<div class="actions"><a class="btn" href="/billing/paypal/subscribe/{{ key }}">Subscrever com PayPal (Sandbox)</a></div>{% elif key != "trial" %}<p class="muted">Checkout PayPal automático desativado enquanto decorrem os testes de segurança.</p>{% endif %}
+{% if paypal_ready and key != "trial" %}<div class="actions"><form method="post" action="/billing/paypal/subscribe/{{ key }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn" type="submit">Subscrever com PayPal (Sandbox)</button></form></div>{% elif key != "trial" %}<p class="muted">Checkout PayPal automático desativado enquanto decorrem os testes de segurança.</p>{% endif %}
 <p><strong>PayPal:</strong> pmwconsulte@gmail.com</p>
 <div class="actions">
 <a class="btn" href="https://www.paypal.com/" target="_blank" rel="noopener noreferrer">Abrir PayPal</a>
