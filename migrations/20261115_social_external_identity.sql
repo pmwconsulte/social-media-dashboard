@@ -18,7 +18,34 @@ BEGIN
         RAISE EXCEPTION
             'Migration blocked: one linked social account maps to multiple Instagram external IDs';
     END IF;
-END $$;
+END $;
+
+-- Refuse to attach an external ID to a missing, wrong-platform, wrong-workspace,
+-- or already-conflicting internal identity.
+DO $
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM facebook_instagram_links fil
+        LEFT JOIN social_accounts fb ON fb.id::text = fil.social_account_id
+        LEFT JOIN social_accounts ig ON ig.id = fil.instagram_social_account_id
+        WHERE fil.instagram_social_account_id IS NOT NULL
+          AND (
+              fb.id IS NULL
+              OR ig.id IS NULL
+              OR LOWER(COALESCE(fb.platform, '')) <> 'facebook'
+              OR LOWER(COALESCE(ig.platform, '')) <> 'instagram'
+              OR fb.workspace_id IS DISTINCT FROM ig.workspace_id
+              OR (
+                  ig.external_account_id IS NOT NULL
+                  AND ig.external_account_id <> fil.instagram_account_id
+              )
+          )
+    ) THEN
+        RAISE EXCEPTION
+            'Migration blocked: Facebook/Instagram link has an invalid workspace, platform, or external identity';
+    END IF;
+END $;
 
 -- Backfill only the explicit Facebook-discovered linked identity. Do not infer
 -- IDs for direct Instagram OAuth rows from usernames or copy historical rows.
