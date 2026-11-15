@@ -1744,11 +1744,15 @@ def setup_auth(server: Flask):
             print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}: {erro}")
             return redirect(url_for("account", error="Não foi possível concluir a ligação ao Instagram."))
         except Exception as erro:
-            if conn: conn.rollback()
-            print(f"[INSTAGRAM OAUTH ERROR] {erro}")
+            if conn:
+                conn.rollback()
+            import traceback
+            print(f"[INSTAGRAM OAUTH ERROR] {type(erro).__name__}: {repr(erro)}")
+            traceback.print_exc()
             return redirect(url_for("account", error="Erro ao configurar a conta Instagram."))
         finally:
-            if conn: conn.close()
+            if conn:
+                conn.close()
 
 
     @server.route("/instagram/inbox", methods=["GET", "POST"])
