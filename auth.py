@@ -1532,8 +1532,24 @@ def setup_auth(server: Flask):
             if conn:
                 conn.close()
 
-    @server.post("/logout")
+    @server.route("/logout", methods=["GET", "POST"])
     def logout():
+        if request.method == "GET":
+            # Keep the dashboard logout link working without allowing a
+            # cross-site GET to destroy an authenticated session.
+            return render_template_string(
+                """<!doctype html><html lang="pt"><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <title>Terminar sessão | PMW Dashboard</title>
+                <body style="font-family:Arial;background:#020617;color:#f8fafc;min-height:100vh;display:grid;place-items:center">
+                <main style="background:#111827;padding:28px;border-radius:14px;max-width:420px">
+                <h1>Terminar sessão?</h1><p>Confirme para sair da sua conta PMW.</p>
+                <form method="post" action="/logout">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Terminar sessão</button>
+                <a href="/" style="margin-left:12px;color:#7dd3fc">Cancelar</a>
+                </form></main></body></html>"""
+            )
         # Invalida completamente a sessão atual e remove o cookie no browser.
         session.clear()
         response = redirect(url_for("login", logged_out="1"))
