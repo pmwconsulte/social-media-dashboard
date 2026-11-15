@@ -1,5 +1,5 @@
 import unittest
-from security_rbac import VALID_ROLES, has_permission, normalize_role
+from security_rbac import (VALID_ROLES, has_permission, normalize_role,\n                           issue_csrf_token, valid_csrf_token)
 
 
 class RolePermissionTests(unittest.TestCase):
@@ -36,6 +36,36 @@ class RolePermissionTests(unittest.TestCase):
 
     def test_platform_admin_has_explicit_audit_permission(self):
         self.assertTrue(has_permission("platform_admin", "security.audit"))
+
+    def test_csrf_token_is_stable_for_session(self):
+        session = {}
+        first = issue_csrf_token(session)
+        second = issue_csrf_token(session)
+        self.assertEqual(first, second)
+        self.assertGreaterEqual(len(first), 32)
+
+    def test_csrf_rejects_missing_and_wrong_token(self):
+        session = {"csrf_token": "a" * 43}
+        self.assertFalse(valid_csrf_token(session, ""))
+        self.assertFalse(valid_csrf_token(session, "b" * 43))
+
+    def test_csrf_accepts_existing_integration_tokens(self):
+        session = {
+            "whatsapp_csrf": "w" * 43,
+            "facebook_messenger_csrf": "f" * 64,
+            "instagram_inbox_csrf": "i" * 43,
+        }
+        self.assertTrue(valid_csrf_token(session, "w" * 43))
+        self.assertTrue(valid_csrf_token(session, "f" * 64))
+        self.assertTrue(valid_csrf_token(session, "i" * 43))
+
+    def test_viewer_can_read_facebook_posts_but_not_publish(self):
+        self.assertTrue(has_permission("viewer", "publishing.read"))
+        self.assertFalse(has_permission("viewer", "publishing.create"))
+
+    def test_analyst_can_read_facebook_posts_but_not_publish(self):
+        self.assertTrue(has_permission("analyst", "publishing.read"))
+        self.assertFalse(has_permission("analyst", "publishing.create"))
 
 
 if __name__ == "__main__":
