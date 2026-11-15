@@ -1602,7 +1602,7 @@ def setup_auth(server: Flask):
                         with conn.cursor() as cur:
                             cur.execute("SELECT id FROM workspaces WHERE slug=%s LIMIT 1;", (user_workspace_slug,))
                             workspace_row = cur.fetchone()
-                            workspace_id = workspace_row[0] if workspace_row else None
+                            workspace_id = str(workspace_row[0]) if workspace_row else None
                     finally:
                         conn.close()
                 except Exception as erro:
