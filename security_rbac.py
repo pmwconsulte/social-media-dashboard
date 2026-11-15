@@ -121,7 +121,23 @@ def refresh_session_identity(session):
                 conn.close()
 
     if session.get("role") == "platform_admin" and workspace_id and workspace_slug:
-        return True
+        # Environment-admin sessions are not backed by a users row, but must
+        # still remain bound to the exact workspace ID and slug issued at login.
+        conn = None
+        try:
+            from database import get_connection
+            conn = get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM workspaces WHERE id=%s AND slug=%s LIMIT 1",
+                    (workspace_id, workspace_slug),
+                )
+                workspace = cur.fetchone()
+            if workspace:
+                return True
+        finally:
+            if conn:
+                conn.close()
 
     session.clear()
     return False
