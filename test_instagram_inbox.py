@@ -61,8 +61,28 @@ class FakeResponse:
 
 @pytest.fixture
 def inbox_client(monkeypatch):
+    import database
+
+    class AdminWorkspaceCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return ("workspace-test-id",)
+
+    class AdminWorkspaceConnection:
+        def cursor(self):
+            return AdminWorkspaceCursor()
+        def close(self):
+            pass
+
     monkeypatch.setenv("SECRET_KEY", "test-secret-key")
     monkeypatch.setattr(auth, "get_connection", lambda: FakeConnection())
+    monkeypatch.setattr(database, "get_connection", lambda: AdminWorkspaceConnection())
     monkeypatch.setattr(auth, "_token_cipher", lambda: FakeCipher())
 
     app = Flask(__name__)
