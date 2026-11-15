@@ -18,11 +18,11 @@ BEGIN
         RAISE EXCEPTION
             'Migration blocked: one linked social account maps to multiple Instagram external IDs';
     END IF;
-END $;
+END $$;
 
 -- Refuse to attach an external ID to a missing, wrong-platform, wrong-workspace,
 -- or already-conflicting internal identity.
-DO $
+DO $$
 BEGIN
     IF EXISTS (
         SELECT 1
@@ -45,7 +45,7 @@ BEGIN
         RAISE EXCEPTION
             'Migration blocked: Facebook/Instagram link has an invalid workspace, platform, or external identity';
     END IF;
-END $;
+END $$;
 
 -- Facebook page IDs are already stored in username by the existing OAuth
 -- contract. Preserve that official identifier during the schema transition.
@@ -70,7 +70,7 @@ WHERE sa.id = mapping.instagram_social_account_id
   AND LOWER(COALESCE(sa.connection_status, '')) = 'linked'
   AND sa.external_account_id IS NULL;
 
-DO $
+DO $$
 BEGIN
     IF EXISTS (
         SELECT 1
