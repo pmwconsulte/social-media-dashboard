@@ -4,6 +4,7 @@ import pytest
 from flask import Flask
 
 import auth
+import facebook_messenger
 from security_rbac import issue_csrf_token, valid_csrf_token, has_permission
 from waitlist import register_waitlist
 from security_rbac import require_permission
@@ -199,6 +200,111 @@ def test_csrf_helpers_accept_only_current_session_tokens():
     assert not valid_csrf_token(session, "wrong-token")
     session["whatsapp_csrf"] = "w" * 43
     assert valid_csrf_token(session, "w" * 43)
+
+
+def test_messenger_account_lookup_is_scoped_to_requested_workspace(monkeypatch):
+    class Cursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return None
+
+    class Connection:
+        def __init__(self):
+            self.fake_cursor = Cursor()
+        def cursor(self):
+            return self.fake_cursor
+        def close(self):
+            pass
+
+    conn = Connection()
+    monkeypatch.setattr(facebook_messenger, "get_connection", lambda: conn)
+    result = facebook_messenger._workspace_account("workspace-a", "foreign-account-id")
+    assert result is None
+    assert "JOIN workspaces w ON w.id=sa.workspace_id" in conn.fake_cursor.query
+    assert "WHERE w.slug=%s" in conn.fake_cursor.query
+    assert conn.fake_cursor.params == ("workspace-a", "foreign-account-id", "foreign-account-id")
+
+
+def test_messenger_viewer_cannot_reply_to_inbound_message(monkeypatch):
+    import database
+    from datetime import datetime, timezone
+
+    class IdentityCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+        def fetchone(self):
+            return ("viewer", "workspace-a-id", True, "workspace-a")
+
+    class IdentityConnection:
+        def cursor(self):
+            return IdentityCursor()
+        def close(self):
+            pass
+
+    class MessageCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+        def fetchone(self):
+            return (datetime.now(timezone.utc),)
+
+    class MessageConnection:
+        def cursor(self):
+            return MessageCursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(database, "get_connection", lambda: IdentityConnection())
+    monkeypatch.setattr(facebook_messenger, "get_connection", lambda: MessageConnection())
+    monkeypatch.setattr(
+        facebook_messenger, "_workspace_account",
+        lambda workspace_slug, account_id=None:
+            ("account-a", "page-a", "Page A", "encrypted-token", "workspace-a-id"),
+    )
+    monkeypatch.setattr(facebook_messenger, "_ensure_table", lambda cursor: None)
+    monkeypatch.setattr(
+        facebook_messenger, "_send_reply",
+        lambda *args: pytest.fail("Viewer não pode enviar resposta Messenger"),
+    )
+
+    app = Flask("messenger-rbac-test")
+    app.secret_key = "messenger-rbac-secret"
+    app.add_url_rule("/login", "login", lambda: "login")
+    facebook_messenger.register_facebook_messenger(app)
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["user_id"] = "viewer-id"
+        sess["workspace_id"] = "workspace-a-id"
+        sess["workspace_slug"] = "workspace-a"
+        sess["role"] = "owner"
+        sess["facebook_messenger_csrf"] = "m" * 64
+
+    response = client.post(
+        "/facebook/messenger/inbox",
+        data={
+            "csrf_token": "m" * 64,
+            "account": "account-a",
+            "action": "reply",
+            "recipient": "123456789",
+            "message": "Resposta não autorizada",
+        },
+    )
+    assert response.status_code == 403
 
 
 def test_messenger_role_permissions_separate_reply_from_integration_management():
