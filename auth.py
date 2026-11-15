@@ -60,6 +60,15 @@ def _consume_facebook_oauth_state(state_data, session):
     )
 
 
+def _facebook_oauth_selector_matches(selector, session):
+    expected = session.get("facebook_oauth_selector")
+    return bool(
+        isinstance(selector, str)
+        and isinstance(expected, str)
+        and secrets.compare_digest(selector, expected)
+    )
+
+
 def _oauth_configured():
     required = (
         "INSTAGRAM_APP_ID",
@@ -2367,6 +2376,7 @@ def setup_auth(server: Flask):
                 ))
 
             selector = secrets.token_urlsafe(32)
+            session["facebook_oauth_selector"] = selector
             conn = get_connection()
             try:
                 with conn.cursor() as cur:
@@ -2435,8 +2445,8 @@ def setup_auth(server: Flask):
             return redirect(url_for("login"))
         selector = request.values.get("selector", "").strip()
         workspace_slug = session.get("workspace_slug")
-        if not selector:
-            return redirect(url_for("account", error="Seleção de Página inválida. Inicie a ligação novamente."))
+        if not _facebook_oauth_selector_matches(selector, session):
+            return redirect(url_for("account", error="Seleção de Página inválida ou pertencente a outra sessão. Inicie a ligação novamente."))
 
         conn = None
         try:
@@ -2535,6 +2545,7 @@ def setup_auth(server: Flask):
                     "DELETE FROM facebook_oauth_pending_pages WHERE selector=%s AND workspace_slug=%s",
                     (selector, workspace_slug),
                 )
+                session.pop("facebook_oauth_selector", None)
                 page_token = _token_cipher().decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
 
                 # Descobrir a conta Instagram profissional associada à Página.
