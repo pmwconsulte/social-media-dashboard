@@ -40,6 +40,8 @@ def upsert_social_account(
 
     identity_key = f"social-account:{workspace_id}:{platform.casefold()}:{external_account_id}"
     cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (identity_key,))
+    username_key = f"social-username:{workspace_id}:{platform.casefold()}:{username.casefold()}"
+    cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (username_key,))
 
     cur.execute(
         """SELECT id FROM social_accounts
