@@ -128,12 +128,17 @@ def _set_active(subscription, expected_workspace, conn=None):
 def _set_inactive(subscription, event_type, conn=None):
     sub_id = subscription.get("id")
     status = {
-        "BILLING.SUBSCRIPTION.CANCELLED": "cancelled",
-        "BILLING.SUBSCRIPTION.SUSPENDED": "suspended",
-        "BILLING.SUBSCRIPTION.EXPIRED": "expired",
+        "BILLING.SUBSCRIPTION.CANCELLED": ("cancelled", "CANCELLED"),
+        "BILLING.SUBSCRIPTION.SUSPENDED": ("suspended", "SUSPENDED"),
+        "BILLING.SUBSCRIPTION.EXPIRED": ("expired", "EXPIRED"),
     }.get(event_type)
 
     if not sub_id or not status:
+        return False
+
+    target_status, provider_status = status
+    # A delayed webhook must not overwrite a newer state confirmed by PayPal.
+    if str(subscription.get("status") or "").upper() != provider_status:
         return False
 
     owns_connection = conn is None
@@ -146,7 +151,7 @@ def _set_inactive(subscription, event_type, conn=None):
                 """UPDATE workspaces
                    SET subscription_status=%s
                    WHERE subscription_id=%s AND payment_provider='paypal'""",
-                (status, sub_id),
+                (target_status, sub_id),
             )
             changed = cur.rowcount > 0
 
@@ -214,10 +219,8 @@ def register_paypal_routes(server):
             sub=_api_request("GET","/v1/billing/subscriptions/"+sub_id)
             slug=session.get("workspace_slug")
             if sub.get("custom_id")!=slug: return "A subscriÃ§Ã£o nÃ£o corresponde ao workspace autenticado.",403
-            # Em modo de teste, o retorno do browser nunca ativa a subscrição na BD.
-            # A ativação deve depender do webhook verificado quando a automação estiver autorizada.
-            if not _enabled(): return redirect("/billing?paypal=pending")
-            if _set_active(sub,slug): return redirect("/billing?paypal=active")
+            # The browser return is informational only. Subscription state is
+            # changed exclusively by a signature-verified PayPal webhook.
             return redirect("/billing?paypal=pending")
         except requests.RequestException as exc:
             print(f"[PAYPAL RETURN ERROR] {type(exc).__name__}")
