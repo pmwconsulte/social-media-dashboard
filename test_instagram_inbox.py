@@ -238,12 +238,18 @@ def test_viewer_cannot_send_instagram_direct_even_with_valid_csrf(inbox_client, 
         sess["role"] = "owner"
 
     calls = []
-    monkeypatch.setattr(auth.requests, "get", lambda *a, **k: calls.append(("get", a, k)))
-    monkeypatch.setattr(auth.requests, "post", lambda *a, **k: calls.append(("post", a, k)))
+    def fake_get(*args, **kwargs):
+        calls.append(("get", args, kwargs))
+        return conversations_response()
+    def fake_post(*args, **kwargs):
+        calls.append(("post", args, kwargs))
+        pytest.fail("Um utilizador viewer não pode enviar mensagens Instagram")
+    monkeypatch.setattr(auth.requests, "get", fake_get)
+    monkeypatch.setattr(auth.requests, "post", fake_post)
     response = inbox_client.post("/instagram/inbox", data=post_data())
 
     assert response.status_code == 403
-    assert calls == []
+    assert [call[0] for call in calls] == ["get"]
 
 
 def test_inbox_rejeita_csrf_invalido_sem_enviar(inbox_client, monkeypatch):
