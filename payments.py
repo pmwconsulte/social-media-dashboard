@@ -200,7 +200,7 @@ def register_paypal_routes(server):
             print(f"[PAYPAL CREATE ERROR] {type(exc).__name__}")
             return "NÃ£o foi possÃ­vel iniciar a subscriÃ§Ã£o PayPal.",502
         except Exception as exc:
-            print(f"[PAYPAL CREATE ERROR] {type(exc).__name__}: {exc}")
+            print(f"[PAYPAL CREATE ERROR] {type(exc).__name__}.")
             return "Checkout indisponÃ­vel. Confirme os Plan IDs.",503
 
     @server.get("/billing/paypal/return")
@@ -303,7 +303,7 @@ def register_paypal_routes(server):
         except Exception as exc:
             if conn is not None:
                 conn.rollback()
-            print(f"[PAYPAL WEBHOOK ERROR] {type(exc).__name__}: {exc}")
+            print(f"[PAYPAL WEBHOOK ERROR] {type(exc).__name__}.")
             return "Erro ao processar evento", 500
 
         finally:
