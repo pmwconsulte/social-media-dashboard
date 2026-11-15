@@ -25,6 +25,21 @@ def get_database_url():
 # CONEXÃO
 # ============================================================
 
+def _report_orphaned_tenant_rows(cur):
+    """Report legacy records without tenant ownership; never assign them implicitly."""
+    cur.execute("SELECT COUNT(*) FROM social_accounts WHERE workspace_id IS NULL")
+    orphan_social_accounts = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM users WHERE workspace_id IS NULL")
+    orphan_users = cur.fetchone()[0]
+    if orphan_social_accounts or orphan_users:
+        print(
+            "[TENANT OWNERSHIP REVIEW] Registos sem workspace preservados: "
+            f"social_accounts={orphan_social_accounts}, users={orphan_users}. "
+            "Não foi feita atribuição automática."
+        )
+    return orphan_social_accounts, orphan_users
+
+
 def get_connection():
 
     database_url = get_database_url().strip()
@@ -502,20 +517,8 @@ def _initialize_database_locked():
                 """
             )
 
-            # Never infer tenant ownership for legacy rows. Assigning every
-            # orphan to pmw-default can expose one customer's data to another.
-            # Keep orphan rows untouched and report counts for a reviewed,
-            # evidence-based migration instead of silently reassigning them.
-            cur.execute("SELECT COUNT(*) FROM social_accounts WHERE workspace_id IS NULL")
-            orphan_social_accounts = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM users WHERE workspace_id IS NULL")
-            orphan_users = cur.fetchone()[0]
-            if orphan_social_accounts or orphan_users:
-                print(
-                    "[TENANT OWNERSHIP REVIEW] Registos sem workspace preservados: "
-                    f"social_accounts={orphan_social_accounts}, users={orphan_users}. "
-                    "Não foi feita atribuição automática."
-                )
+            # Never infer tenant ownership for legacy rows.
+            _report_orphaned_tenant_rows(cur)
 
             cur.execute(
                 """
