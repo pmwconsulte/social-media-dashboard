@@ -4,6 +4,7 @@ Permissions are additive and workspace-scoped. This module has no Flask or
 database side effects at import time.
 """
 from functools import wraps
+import secrets
 
 ROLE_PERMISSIONS = {
     "platform_admin": frozenset({
@@ -38,6 +39,34 @@ ROLE_PERMISSIONS = {
 }
 
 VALID_ROLES = frozenset(ROLE_PERMISSIONS)
+
+
+CSRF_SESSION_KEYS = (
+    "csrf_token",
+    "whatsapp_csrf",
+    "facebook_messenger_csrf",
+    "instagram_inbox_csrf",
+)
+
+
+def issue_csrf_token(session, key="csrf_token"):
+    """Return a stable, unpredictable per-session CSRF token."""
+    token = session.get(key)
+    if not isinstance(token, str) or len(token) < 32:
+        token = secrets.token_urlsafe(32)
+        session[key] = token
+    return token
+
+
+def valid_csrf_token(session, supplied):
+    """Accept only a token issued into this same session."""
+    if not isinstance(supplied, str) or not supplied:
+        return False
+    return any(
+        isinstance(session.get(key), str)
+        and secrets.compare_digest(session[key], supplied)
+        for key in CSRF_SESSION_KEYS
+    )
 
 
 def normalize_role(role):
