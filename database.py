@@ -633,9 +633,7 @@ def _initialize_database_locked():
     except Exception as erro:
         if conn:
             conn.rollback()
-        print(f"[DATABASE ERROR] Falha na inicialização: {erro}")
-        traceback = __import__("traceback")
-        traceback.print_exc()
+        print(f"[DATABASE ERROR] Falha na inicialização: {type(erro).__name__}.")
         return False
     finally:
         if conn:
@@ -666,10 +664,8 @@ def initialize_database():
     except Exception as erro:
         print(
             f"[DATABASE ERROR] Falha na inicialização coordenada: "
-            f"{type(erro).__name__}: {erro}"
+            f"{type(erro).__name__}."
         )
-        traceback = __import__("traceback")
-        traceback.print_exc()
         return False
 
     finally:
