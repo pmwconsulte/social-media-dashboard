@@ -185,6 +185,23 @@ def test_waitlist_requires_session_csrf_token():
     assert accepted_csrf.status_code == 400
     assert "endereço de email válido" in accepted_csrf.get_data(as_text=True)
 
+def test_dashboard_logout_link_requires_confirmation_and_post_csrf(inbox_client):
+    response = inbox_client.get("/logout")
+    assert response.status_code == 200
+    assert 'method="post" action="/logout"' in response.get_data(as_text=True)
+    with inbox_client.session_transaction() as sess:
+        assert sess.get("authenticated") is True
+        token = sess.get("csrf_token")
+    rejected = inbox_client.post("/logout", data={"csrf_token": "wrong-token"})
+    assert rejected.status_code == 400
+    with inbox_client.session_transaction() as sess:
+        assert sess.get("authenticated") is True
+    accepted = inbox_client.post("/logout", data={"csrf_token": token})
+    assert accepted.status_code == 302
+    with inbox_client.session_transaction() as sess:
+        assert not sess.get("authenticated")
+
+
 def test_login_post_requires_global_csrf_token(inbox_client):
     response = inbox_client.post(
         "/login",
