@@ -1312,6 +1312,7 @@ def setup_auth(server: Flask):
         return "OK", 200
 
     @server.get("/billing")
+    @require_permission("billing.read")
     def billing():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
@@ -1420,6 +1421,7 @@ def setup_auth(server: Flask):
         return response
 
     @server.get("/diagnostico-dados")
+    @require_permission("analytics.read")
     def diagnostico_dados():
         """Diagnóstico privado e limitado ao workspace da sessão; nunca expõe tokens."""
         if not session.get("authenticated"):
