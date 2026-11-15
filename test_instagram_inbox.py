@@ -1,7 +1,11 @@
+import re
+
 import pytest
 from flask import Flask
 
 import auth
+from security_rbac import issue_csrf_token, valid_csrf_token, has_permission
+from waitlist import register_waitlist
 
 
 class FakeCursor:
@@ -94,6 +98,42 @@ def post_data(**overrides):
     data.update(overrides)
     return data
 
+
+
+def test_csrf_helpers_accept_only_current_session_tokens():
+    session = {}
+    token = issue_csrf_token(session)
+    assert issue_csrf_token(session) == token
+    assert valid_csrf_token(session, token)
+    assert not valid_csrf_token({}, token)
+    assert not valid_csrf_token(session, "wrong-token")
+    session["whatsapp_csrf"] = "w" * 43
+    assert valid_csrf_token(session, "w" * 43)
+
+
+def test_read_only_roles_can_view_posts_but_not_publish():
+    assert has_permission("viewer", "publishing.read")
+    assert has_permission("analyst", "publishing.read")
+    assert not has_permission("viewer", "publishing.create")
+    assert not has_permission("analyst", "publishing.create")
+
+
+def test_waitlist_requires_session_csrf_token():
+    app = Flask("waitlist-csrf-test")
+    app.secret_key = "waitlist-test-secret"
+    app.config.update(TESTING=True)
+    register_waitlist(app)
+    client = app.test_client()
+    page = client.get("/waitlist").get_data(as_text=True)
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    rejected = client.post("/waitlist", data={"email": "x@example.com", "consent": "yes"})
+    assert rejected.status_code == 400
+    accepted_csrf = client.post(
+        "/waitlist",
+        data={"csrf_token": token, "email": "invalid-email", "consent": "yes"},
+    )
+    assert accepted_csrf.status_code == 400
+    assert "endereço de email válido" in accepted_csrf.get_data(as_text=True)
 
 def test_login_post_requires_global_csrf_token(inbox_client):
     response = inbox_client.post(
