@@ -355,11 +355,11 @@ BEGIN
            OR REGEXP_REPLACE(
                 LOWER(COALESCE(v_key_2, '')),
                 '\s+', '', 'g'
-              ) <> 'lower((platform)::text)'
+              ) <> 'lower(platform::text)'
            OR REGEXP_REPLACE(
                 LOWER(COALESCE(v_key_3, '')),
                 '\s+', '', 'g'
-              ) <> 'btrim((external_account_id)::text)'
+              ) <> 'btrim(external_account_id::text)'
            OR REGEXP_REPLACE(
                 LOWER(COALESCE(v_predicate, '')),
                 '\s+', '', 'g'
