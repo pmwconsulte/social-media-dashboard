@@ -363,7 +363,7 @@ BEGIN
            OR REGEXP_REPLACE(
                 LOWER(COALESCE(v_predicate, '')),
                 '\s+', '', 'g'
-              ) <> '(nullif(btrim((external_account_id)::text),''::text)isnotnull)'
+              ) <> '(nullif(btrim((external_account_id)::text),''''::text)isnotnull)'
         THEN
             RAISE EXCEPTION
                 'Migration blocked: existing unique identity index does not match required definition';
