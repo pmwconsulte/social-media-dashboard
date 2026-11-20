@@ -62,4 +62,5 @@ jobs:
           test_facebook_posts.py
           tests/test_security_rbac.py
           tests/test_whatsapp_tenant.py
-          tests/test_social_identity.py
+          test_social_identity.py
+          tests/test_social_identity_policy.py
