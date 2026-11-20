@@ -24,7 +24,11 @@ from billing import PLANS, evaluate_workspace_access
 from database import get_connection
 from facebook_posts import register_facebook_posts_route
 from security_rbac import normalize_role, require_permission, issue_csrf_token, valid_csrf_token, has_permission, refresh_session_identity, credential_fingerprint
-from social_identity import upsert_social_account, SocialIdentityConflict
+from social_identity import (
+    upsert_social_account,
+    link_discovered_social_account,
+    SocialIdentityConflict,
+)
 
 
 def _linked_instagram_for_facebook(cur, facebook_account_id):
@@ -428,10 +432,11 @@ def _sync_facebook_metrics(social_account_id, page_id, page_token):
                     values["unique_viewers_28d"], values["interactions_28d"],
                 ),
             )
-            cur.execute(
-                "UPDATE social_accounts SET last_sync_at=NOW() WHERE id=%s",
-                (social_account_id,),
-            )
+            if insights_available:
+                cur.execute(
+                    "UPDATE social_accounts SET last_sync_at=NOW() WHERE id=%s",
+                    (social_account_id,),
+                )
         conn.commit()
         print(
             "[FACEBOOK INSIGHTS] Sincronização concluída: "
@@ -932,6 +937,11 @@ def _sync_instagram_metrics(social_account_id, ig_id, access_token, graph_host="
                     """,
                     (social_account_id, report_date, reach_28d, views_28d, interactions_28d),
                 )
+            # last_sync_at representa dados efetivamente guardados, nao o OAuth.
+            cur.execute(
+                "UPDATE social_accounts SET last_sync_at=NOW() WHERE id=%s",
+                (social_account_id,),
+            )
         conn.commit()
         available = [
             name for name, value in (
@@ -1852,15 +1862,19 @@ def setup_auth(server: Flask):
     def instagram_oauth_callback():
         if not session.get("authenticated"):
             return redirect(url_for("login"))
-        if request.args.get("error"):
-            return redirect(url_for("account", error="A autorização do Instagram foi cancelada ou recusada."))
+        # Consome sempre o state e o workspace guardados, mesmo quando o
+        # utilizador cancela/recusa a autorização no Instagram.
         state = request.args.get("state", "")
         expected = session.pop("instagram_oauth_state", None)
         workspace_slug = session.pop("instagram_oauth_workspace", None)
         if not state or not expected or not secrets.compare_digest(state, expected):
             return redirect(url_for("account", error="Falha de segurança no estado OAuth. Tente novamente."))
+        if workspace_slug != session.get("workspace_slug"):
+            return redirect(url_for("account", error="Sessão expirada ou workspace alterado. Tente novamente."))
+        if request.args.get("error"):
+            return redirect(url_for("account", error="A autorização do Instagram foi cancelada ou recusada."))
         code = request.args.get("code", "")
-        if not code or workspace_slug != session.get("workspace_slug"):
+        if not code:
             return redirect(url_for("account", error="Código OAuth inválido ou sessão expirada."))
         conn = None
         try:
@@ -1902,10 +1916,13 @@ def setup_auth(server: Flask):
             profile_response.raise_for_status()
             profile = profile_response.json()
             ig_id = str(profile.get("id", ""))
-            username = profile.get("username") or ("instagram_" + ig_id)
-            account_type = str(profile.get("account_type", "")).upper()
+            username = str(profile.get("username") or "").strip()
+
             if not ig_id:
                 raise RuntimeError("Não foi possível obter o ID do Instagram.")
+            if not username:
+                raise RuntimeError("A API do Instagram não devolveu o username da conta.")
+            account_type = str(profile.get("account_type", "")).upper()
             if account_type and account_type not in {"BUSINESS", "CREATOR"}:
                 raise RuntimeError(
                     "A conta Instagram precisa ser profissional (Business ou Creator)."
@@ -1918,15 +1935,57 @@ def setup_auth(server: Flask):
                 if not workspace:
                     raise RuntimeError("Workspace não encontrado.")
 
+                # Serializa novas ligações no workspace para evitar que OAuth
+                # concorrentes ultrapassem o limite por contagens simultâneas.
+                cur.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (f"social-account-limit:{workspace[0]}",),
+                )
+
                 plan_key = workspace[1] or "trial"
                 account_limit = PLANS.get(plan_key, PLANS["trial"])["accounts"]
                 cur.execute(
                     """SELECT COUNT(*) FROM social_accounts
                        WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE
-                         AND LOWER(COALESCE(connection_status, '')) <> 'linked'""",
+                         AND LOWER(BTRIM(COALESCE(connection_status, ''))) <> 'linked'""",
                     (workspace[0],),
                 )
                 active_accounts = cur.fetchone()[0]
+
+                # Só uma identidade que já ocupa uma vaga activa pode ser
+                # reconectada sem consumir outra vaga. Registos inactivos e
+                # ligações passivas descobertas pelo Facebook não bypassam o limite.
+                cur.execute(
+                    """SELECT COUNT(*) FROM social_accounts
+                       WHERE workspace_id=%s
+                         AND LOWER(BTRIM(platform))=LOWER(BTRIM('Instagram'))
+                         AND COALESCE(is_active, TRUE)=TRUE
+                         AND LOWER(BTRIM(COALESCE(connection_status, ''))) <> 'linked'
+                         AND (
+                              BTRIM(COALESCE(external_account_id, ''))=%s
+                              OR (
+                                  LOWER(BTRIM(COALESCE(username, '')))=LOWER(BTRIM(%s))
+                                  AND BTRIM(COALESCE(external_account_id, ''))=''
+                              )
+                          )""",
+                    (workspace[0], ig_id, username),
+                )
+                existing_active_identity_count = cur.fetchone()[0]
+                if (
+                    existing_active_identity_count == 0
+                    and isinstance(account_limit, int)
+                    and active_accounts >= account_limit
+                ):
+                    return redirect(
+                        url_for(
+                            "account",
+                            error=(
+                                f"O plano {PLANS.get(plan_key, PLANS['trial'])['name']} "
+                                f"permite no máximo {account_limit} contas sociais ativas."
+                            ),
+                        )
+                    )
+
                 encrypted = _encrypt_token(access_token)
 
                 print("[INSTAGRAM IDENTITY DEBUG] workspace_id:", repr(workspace[0]))
@@ -2281,7 +2340,7 @@ def setup_auth(server: Flask):
             print(f"[FACEBOOK OAUTH STATE INVALID] {type(erro).__name__}")
             return redirect(url_for("account", error="A sessão de autorização do Facebook expirou ou não pôde ser validada. Inicie a ligação novamente."))
         if not _consume_facebook_oauth_state(state_data, session):
-            return redirect(url_for("account", error="A sessão de autorização do Facebook não corresponde à sessão que iniciou a ligação. Inicie novamente.")) 
+            return redirect(url_for("account", error="A sessão de autorização do Facebook não corresponde à sessão que iniciou a ligação. Inicie novamente."))
         workspace_slug = state_data.get("workspace_slug")
         code = request.args.get("code", "")
         if not code:
@@ -2490,6 +2549,13 @@ def setup_auth(server: Flask):
                 workspace = cur.fetchone()
                 if not workspace:
                     return redirect(url_for("account", error="Workspace não encontrado."))
+                # Usa o mesmo bloqueio transaccional do OAuth Instagram.
+                # O limite de contas é global ao workspace, não à plataforma.
+                cur.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (f"social-account-limit:{workspace[0]}",),
+                )
+
                 plan_key = workspace[1] or "trial"
                 account_limit = PLANS.get(plan_key, PLANS["trial"])["accounts"]
                 cur.execute(
@@ -2578,41 +2644,23 @@ def setup_auth(server: Flask):
                             f"[FACEBOOK INSTAGRAM LINK] HTTP={instagram_link_response.status_code}; "
                             "não foi possível interpretar a resposta."
                         )
+
                 instagram_social_account_id = None
                 if linked_instagram and linked_instagram.get("id"):
-                    ig_username = (linked_instagram.get("username") or
-                                   "instagram_" + str(linked_instagram["id"]))
-                    # Reutilizar qualquer identidade do mesmo Instagram externo,
-                    # incluindo uma ligação Instagram Login já existente. A associação
-                    # Facebook não altera o estado activo nem as credenciais dessa conta.
-                    # Resolver pelo ID imutável da Meta; nunca pelo username.
-                    cur.execute(
-                        """SELECT id FROM social_accounts
-                           WHERE workspace_id=%s AND LOWER(platform)='instagram'
-                             AND external_account_id=%s
-                           ORDER BY created_at, id LIMIT 2 FOR UPDATE""",
-                        (workspace[0], str(linked_instagram["id"])),
+                    ig_username = str(linked_instagram.get("username") or "").strip()
+
+                    # Reutilizar a identidade pelo username no workspace.
+                    # A descoberta Facebook não altera as credenciais
+                    # nem o estado da ligação directa Instagram Login.
+                    instagram_social_account_id = link_discovered_social_account(
+                        cur,
+                        workspace_id=workspace[0],
+                        platform="Instagram",
+                        external_account_id=str(linked_instagram["id"]),
+                        username=ig_username,
+                        display_name=ig_username,
                     )
-                    linked_rows = cur.fetchall()
-                    if len(linked_rows) > 1:
-                        raise RuntimeError(
-                            "Existem identidades Instagram ligadas duplicadas; reconciliação necessária."
-                        )
-                    if linked_rows:
-                        instagram_social_account_id = linked_rows[0][0]
-                    else:
-                        # A identidade complementar guarda o ID externo oficial.
-                        # Não consome uma vaga adicional do plano.
-                        cur.execute(
-                            """INSERT INTO social_accounts
-                               (workspace_id, platform, username, display_name,
-                                external_account_id, access_token, connection_status,
-                                is_active, last_sync_at)
-                               VALUES (%s, 'Instagram', %s, %s, %s, NULL, 'linked', FALSE, NOW())
-                               RETURNING id""",
-                            (workspace[0], ig_username, ig_username, str(linked_instagram["id"])),
-                        )
-                        instagram_social_account_id = cur.fetchone()[0]
+
                     cur.execute(
                         """INSERT INTO facebook_instagram_links
                            (social_account_id, page_id, instagram_account_id,
@@ -2625,9 +2673,11 @@ def setup_auth(server: Flask):
                                instagram_social_account_id=EXCLUDED.instagram_social_account_id,
                                updated_at=NOW()""",
                         (
-                            str(social_account_id), page_id,
+                            str(social_account_id),
+                            page_id,
                             str(linked_instagram["id"]),
-                            ig_username, instagram_social_account_id,
+                            ig_username,
+                            instagram_social_account_id,
                         ),
                     )
                 else:
@@ -2635,6 +2685,7 @@ def setup_auth(server: Flask):
                         "DELETE FROM facebook_instagram_links WHERE social_account_id=%s",
                         (str(social_account_id),),
                     )
+
             # A Página pode descobrir uma conta Instagram profissional sem
             # reativar a integração Instagram que o workspace desativou.
             instagram_enabled = False

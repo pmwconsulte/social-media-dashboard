@@ -684,7 +684,13 @@ def initialize_database():
 
 # Executado também quando o serviço é iniciado por Gunicorn.
 # O bloco if __name__ == '__main__' do app.py não é executado pelo Gunicorn.
-try:
-    initialize_database()
-except Exception as erro:
-    print(f"[DATABASE WARNING] Inicialização automática ignorada: {type(erro).__name__}.")
+# Em ambiente local sem DATABASE_URL, não tentar inicializar PostgreSQL
+# durante a importação deste módulo.
+if os.getenv("DATABASE_URL", "").strip():
+    try:
+        initialize_database()
+    except Exception as erro:
+        print(
+            "[DATABASE WARNING] Inicialização automática ignorada: "
+            f"{type(erro).__name__}."
+        )

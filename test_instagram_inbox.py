@@ -169,6 +169,43 @@ def test_protected_route_refreshes_role_and_blocks_revoked_permission(monkeypatc
             protected_action()
         assert session["role"] == "viewer"
 
+def test_protected_route_clears_session_and_returns_503_when_database_unavailable(monkeypatch):
+    import database
+
+    def connection_failure():
+        raise RuntimeError("Database unavailable")
+
+    monkeypatch.setattr(database, "get_connection", connection_failure)
+
+    app = Flask("rbac-database-failure-test")
+    app.secret_key = "rbac-test-secret"
+
+    @app.get("/protected")
+    @require_permission("messaging.reply")
+    def protected_action():
+        return "allowed"
+
+    client = app.test_client()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["user_id"] = "user-id"
+        sess["workspace_id"] = "workspace-id"
+        sess["workspace_slug"] = "workspace-test"
+        sess["role"] = "owner"
+        sess["credential_fingerprint"] = credential_fingerprint(
+            "test-password-hash",
+            "rbac-test-secret",
+        )
+
+    response = client.get("/protected")
+
+    assert response.status_code == 503
+
+    with client.session_transaction() as sess:
+        assert not sess.get("authenticated")
+        assert not sess.get("user_id")
+
 
 def test_dashboard_and_dash_callbacks_reject_deactivated_database_user(monkeypatch):
     import database
@@ -349,6 +386,38 @@ def test_environment_admin_session_requires_matching_admin_username(monkeypatch)
     app.secret_key = "environment-admin-secret"
     with app.app_context():
         assert refresh_session_identity(identity) is False
+    assert identity == {}
+
+def test_environment_admin_password_hash_rotation_invalidates_existing_session(monkeypatch):
+    import database
+
+    monkeypatch.setenv("ADMIN_USERNAME", "platform-operator")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "new-admin-hash")
+
+    def unexpected_database_connection():
+        pytest.fail("Database must not be accessed after credential mismatch")
+
+    monkeypatch.setattr(database, "get_connection", unexpected_database_connection)
+
+    identity = {
+        "authenticated": True,
+        "username": "platform-operator",
+        "user_id": None,
+        "workspace_id": "workspace-a-id",
+        "workspace_slug": "workspace-a",
+        "role": "platform_admin",
+        "credential_fingerprint": credential_fingerprint(
+            "old-admin-hash",
+            "environment-admin-secret",
+        ),
+    }
+
+    app = Flask("environment-admin-password-rotation")
+    app.secret_key = "environment-admin-secret"
+
+    with app.app_context():
+        assert refresh_session_identity(identity) is False
+
     assert identity == {}
 
 
