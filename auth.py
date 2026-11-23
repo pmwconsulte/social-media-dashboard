@@ -1982,11 +1982,14 @@ def setup_auth(server: Flask):
                         display_name=username,
                         encrypted_token=encrypted,
                     )
-                except SocialIdentityConflict as conflict:
-                    raise RuntimeError(
-                        "A identidade Instagram existente é ambígua. É necessária reconciliação "
-                        "antes de voltar a ligar esta conta."
-                    ) from conflict
+                except SocialIdentityConflict:
+                    conn.rollback()
+                    return redirect(
+                        url_for("account", error=(
+                            "Esta conta Instagram j\u00e1 est\u00e1 registada ou requer "
+                            "reconcilia\u00e7\u00e3o. N\u00e3o foi feita qualquer altera\u00e7\u00e3o."
+                        ))
+                    )
             conn.commit()
             synced = _sync_instagram_metrics(social_account_id, ig_id, access_token)
             if synced:
@@ -2570,11 +2573,14 @@ def setup_auth(server: Flask):
                         display_name=selected[1],
                         encrypted_token=encrypted_token,
                     )
-                except SocialIdentityConflict as conflict:
-                    raise RuntimeError(
-                        "A identidade Facebook existente é ambígua. É necessária reconciliação "
-                        "antes de voltar a ligar esta Página."
-                    ) from conflict
+                except SocialIdentityConflict:
+                    conn.rollback()
+                    return redirect(
+                        url_for("account", error=(
+                            "Esta P\u00e1gina Facebook j\u00e1 est\u00e1 registada ou requer "
+                            "reconcilia\u00e7\u00e3o. N\u00e3o foi feita qualquer altera\u00e7\u00e3o."
+                        ))
+                    )
                 cur.execute(
                     "DELETE FROM facebook_oauth_pending_pages WHERE selector=%s AND workspace_slug=%s",
                     (selector, workspace_slug),

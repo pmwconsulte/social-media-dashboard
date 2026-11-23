@@ -101,62 +101,50 @@ class SocialIdentityTests(unittest.TestCase):
 
     def test_direct_oauth_reuses_active_identity_without_insert(self):
         cur = FakeCursor(external_rows=[self.active_external_row()])
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.kwargs())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
 
-        result = upsert_social_account(cur, **self.kwargs())
-
-        self.assertEqual(result, "direct-id")
-        self.assertTrue(
-            any(q.startswith("update social_accounts") for q, _ in cur.calls)
-        )
-        self.assertFalse(
-            any(q.startswith("insert into social_accounts") for q, _ in cur.calls)
-        )
 
     def test_direct_oauth_refreshes_token_for_active_identity(self):
         cur = FakeCursor(external_rows=[self.active_external_row()])
-        values = self.kwargs()
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.kwargs())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
 
-        upsert_social_account(cur, **values)
-
-        update_calls = [
-            (q, params)
-            for q, params in cur.calls
-            if q.startswith("update social_accounts")
-            and "access_token =" in q
-        ]
-
-        self.assertEqual(len(update_calls), 1)
-        self.assertEqual(update_calls[0][1][3], values["encrypted_token"])
 
     def test_direct_oauth_refreshes_inactive_exact_identity(self):
         cur = FakeCursor(external_rows=[self.inactive_external_row()])
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.kwargs())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
 
-        result = upsert_social_account(cur, **self.kwargs())
-
-        self.assertEqual(result, "direct-id")
-        self.assertTrue(
-            any(q.startswith("update social_accounts") for q, _ in cur.calls)
-        )
 
     def test_direct_oauth_refreshes_non_connected_exact_identity(self):
         cur = FakeCursor(external_rows=[self.disconnected_external_row()])
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.kwargs())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
 
-        result = upsert_social_account(cur, **self.kwargs())
-
-        self.assertEqual(result, "direct-id")
-        self.assertTrue(
-            any(q.startswith("update social_accounts") for q, _ in cur.calls)
-        )
 
     def test_direct_oauth_allows_username_change_for_same_external_id_when_refreshing(self):
         cur = FakeCursor(external_rows=[self.inactive_external_row()])
-
         values = self.kwargs()
         values["username"] = "new-brand"
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **values)
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
 
-        result = upsert_social_account(cur, **values)
-
-        self.assertEqual(result, "direct-id")
 
     def test_direct_oauth_rejects_username_owned_by_different_external_id(self):
         cur = FakeCursor(
@@ -180,15 +168,13 @@ class SocialIdentityTests(unittest.TestCase):
             upsert_social_account(cur, **self.kwargs())
 
     def test_direct_oauth_adopts_unique_legacy_without_external_id(self):
-        cur = FakeCursor(
-            username_rows=[
-                ("legacy-id", None)
-            ]
-        )
+        cur = FakeCursor(username_rows=[("legacy-id", None)])
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.kwargs())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
 
-        result = upsert_social_account(cur, **self.kwargs())
-
-        self.assertEqual(result, "legacy-id")
 
     def test_direct_oauth_rejects_missing_external_identity(self):
         cur = FakeCursor()
@@ -200,15 +186,12 @@ class SocialIdentityTests(unittest.TestCase):
 
     def test_direct_oauth_does_not_deactivate_historical_accounts(self):
         cur = FakeCursor(external_rows=[self.active_external_row()])
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.kwargs())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
 
-        result = upsert_social_account(cur, **self.kwargs())
-
-        self.assertEqual(result, "direct-id")
-        deactivation_calls = [
-            q for q, _ in cur.calls
-            if "set is_active = false" in q
-        ]
-        self.assertEqual(deactivation_calls, [])
 
     # DISCOVERY
 

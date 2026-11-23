@@ -92,29 +92,33 @@ class SocialIdentityTests(unittest.TestCase):
 
     def test_oauth_reconnect_preserves_previous_sync_timestamp(self):
         cur = FakeCursor(external_rows=[("existing-id", "brand", False, "disconnected")])
-        upsert_social_account(cur, **self.oauth_args())
-        update_sql = self.sql_calls(cur, "update social_accounts")[0]
-        self.assertNotIn("last_sync_at =", update_sql)
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.oauth_args())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
+
 
     def test_oauth_prefers_exact_external_id_even_with_duplicate_usernames(self):
         cur = FakeCursor(
             external_rows=[("exact-id", "brand", False, "disconnected")],
-            username_rows=[
-                ("old-account", None),
-                ("other-history", "different-external"),
-            ],
+            username_rows=[("old-account", None), ("other-history", "different-external")],
         )
-        result = upsert_social_account(cur, **self.oauth_args())
-        self.assertEqual(result, "exact-id")
-        update_params = next(
-            params for sql, params in cur.calls
-            if sql.startswith("update social_accounts")
-        )
-        self.assertEqual(update_params[4], "exact-id")
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.oauth_args())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
+
 
     def test_oauth_adopts_one_legacy_username_row_without_external_id(self):
         cur = FakeCursor(username_rows=[("legacy-id", None)])
-        self.assertEqual(upsert_social_account(cur, **self.oauth_args()), "legacy-id")
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.oauth_args())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
+
 
     def test_oauth_rejects_multiple_username_matches_without_exact_external_id(self):
         cur = FakeCursor(
@@ -139,26 +143,22 @@ class SocialIdentityTests(unittest.TestCase):
             upsert_social_account(cur, **self.oauth_args())
 
     def test_oauth_allows_username_change_when_external_id_matches(self):
-        cur = FakeCursor(
-            external_rows=[("row-1", "old-brand", False, "disconnected")]
-        )
-        self.assertEqual(upsert_social_account(cur, **self.oauth_args()), "row-1")
-        update_params = next(
-            params for sql, params in cur.calls
-            if sql.startswith("update social_accounts")
-        )
-        self.assertEqual(update_params[0], "brand")
-        self.assertEqual(update_params[4], "row-1")
+        cur = FakeCursor(external_rows=[("row-1", "old-brand", False, "disconnected")])
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.oauth_args())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
+
 
     def test_oauth_does_not_deactivate_or_delete_historical_rows(self):
-        cur = FakeCursor(
-            external_rows=[("exact-id", "brand", False, "disconnected")]
-        )
-        upsert_social_account(cur, **self.oauth_args())
-        self.assertEqual(self.sql_calls(cur, "delete from social_accounts"), [])
-        updates = self.sql_calls(cur, "update social_accounts")
-        self.assertEqual(len(updates), 1)
-        self.assertNotIn("set is_active = false", updates[0])
+        cur = FakeCursor(external_rows=[("exact-id", "brand", False, "disconnected")])
+        with self.assertRaises(SocialIdentityConflict):
+            upsert_social_account(cur, **self.oauth_args())
+        writes = [q.lower().strip() for q, _ in cur.calls
+                  if q.lower().strip().startswith(("update ", "insert ", "delete "))]
+        self.assertEqual(writes, [])
+
 
     def test_oauth_fails_if_resolved_row_update_did_not_apply(self):
         cur = FakeCursor(

@@ -88,7 +88,7 @@ def upsert_social_account(
     display_name,
     encrypted_token,
 ):
-    """Create or refresh a direct-OAuth account using external ID as identity."""
+    """Create a new direct-OAuth identity; reject every existing identity."""
     workspace_id = _normalize(workspace_id)
     platform = _normalize(platform)
     external_account_id = _normalize(external_account_id)
@@ -98,88 +98,43 @@ def upsert_social_account(
 
     _lock_identity(cur, workspace_id, platform, username, external_account_id)
 
-    # Immutable external identity has priority over mutable username.
     external_rows = _find_external_rows(
         cur, workspace_id, platform, external_account_id
     )
-
     if len(external_rows) > 1:
         raise SocialIdentityConflict(
             "Duplicate external identity; reconciliation is required."
         )
-
     if external_rows:
-        # Reuse the existing identity and refresh its OAuth credentials.
-        account_id = external_rows[0][0]
-    else:
-        username_rows = _find_username_rows(
-            cur, workspace_id, platform, username
+        raise SocialIdentityConflict(
+            "This social identity already exists; a separate reconnection flow is required."
         )
 
-        if len(username_rows) > 1:
-            raise SocialIdentityConflict(
-                "Username matches multiple historical accounts and no exact "
-                "external-ID match exists; reconciliation is required."
-            )
+    username_rows = _find_username_rows(cur, workspace_id, platform, username)
+    if username_rows:
+        raise SocialIdentityConflict(
+            "Username already exists in account records; reconciliation is required."
+        )
 
-        if username_rows:
-            legacy_id, legacy_external_id = username_rows[0]
-
-            if (
-                _normalize(legacy_external_id)
-                and _normalize(legacy_external_id)
-                != _normalize(external_account_id)
-            ):
-                raise SocialIdentityConflict(
-                    "Username belongs to a different external identity; "
-                    "reconciliation is required."
-                )
-
-            account_id = legacy_id
-        else:
-            cur.execute(
-                """INSERT INTO social_accounts
-                   (workspace_id, platform, username, display_name,
-                    external_account_id, access_token, connection_status,
-                    is_active, last_sync_at)
-                   VALUES (%s, %s, %s, %s, %s, %s,
-                           'connected', TRUE, NULL)
-                   RETURNING id""",
-                (
-                    workspace_id, platform, username, display_name,
-                    external_account_id, encrypted_token,
-                ),
-            )
-            inserted = cur.fetchone()
-            if not inserted:
-                raise SocialIdentityConflict(
-                    "The database did not return the newly created account ID."
-                )
-            return inserted[0]
-
-    # Only the resolved row is refreshed. Historical same-username rows remain
-    # untouched: no deactivation, deletion, token overwrite or metric movement.
     cur.execute(
-        """UPDATE social_accounts
-           SET username = %s,
-               display_name = %s,
-               external_account_id = %s,
-               access_token = %s,
-               connection_status = 'connected',
-               is_active = TRUE
-           WHERE id = %s
-             AND workspace_id = %s
-             AND LOWER(BTRIM(platform)) = LOWER(BTRIM(%s))""",
+        """INSERT INTO social_accounts
+           (workspace_id, platform, username, display_name,
+            external_account_id, access_token, connection_status,
+            is_active, last_sync_at)
+           VALUES (%s, %s, %s, %s, %s, %s,
+                   'connected', TRUE, NULL)
+           RETURNING id""",
         (
-            username, display_name, external_account_id, encrypted_token,
-            account_id, workspace_id, platform,
+            workspace_id, platform, username, display_name,
+            external_account_id, encrypted_token,
         ),
     )
-    if cur.rowcount != 1:
+    inserted = cur.fetchone()
+    if not inserted:
         raise SocialIdentityConflict(
-            "Could not refresh the resolved account in the requested workspace."
+            "The database did not return the newly created account ID."
         )
-    return account_id
+    return inserted[0]
 
 
 def link_discovered_social_account(
