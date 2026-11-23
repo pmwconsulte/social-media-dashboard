@@ -91,14 +91,14 @@ class SocialIdentityTests(unittest.TestCase):
         self.assertIn("last_sync_at", insert_sql)
 
     def test_oauth_reconnect_preserves_previous_sync_timestamp(self):
-        cur = FakeCursor(external_rows=[("existing-id", "brand")])
+        cur = FakeCursor(external_rows=[("existing-id", "brand", False, "disconnected")])
         upsert_social_account(cur, **self.oauth_args())
         update_sql = self.sql_calls(cur, "update social_accounts")[0]
         self.assertNotIn("last_sync_at =", update_sql)
 
     def test_oauth_prefers_exact_external_id_even_with_duplicate_usernames(self):
         cur = FakeCursor(
-            external_rows=[("exact-id", "brand")],
+            external_rows=[("exact-id", "brand", False, "disconnected")],
             username_rows=[
                 ("old-account", None),
                 ("other-history", "different-external"),
@@ -130,13 +130,18 @@ class SocialIdentityTests(unittest.TestCase):
 
     def test_oauth_rejects_duplicate_external_id_rows(self):
         cur = FakeCursor(
-            external_rows=[("row-1", "brand"), ("row-2", "brand")]
+            external_rows=[
+                ("row-1", "brand", False, "disconnected"),
+                ("row-2", "brand", False, "disconnected"),
+            ]
         )
         with self.assertRaises(SocialIdentityConflict):
             upsert_social_account(cur, **self.oauth_args())
 
     def test_oauth_allows_username_change_when_external_id_matches(self):
-        cur = FakeCursor(external_rows=[("row-1", "old-brand")])
+        cur = FakeCursor(
+            external_rows=[("row-1", "old-brand", False, "disconnected")]
+        )
         self.assertEqual(upsert_social_account(cur, **self.oauth_args()), "row-1")
         update_params = next(
             params for sql, params in cur.calls
@@ -146,7 +151,9 @@ class SocialIdentityTests(unittest.TestCase):
         self.assertEqual(update_params[4], "row-1")
 
     def test_oauth_does_not_deactivate_or_delete_historical_rows(self):
-        cur = FakeCursor(external_rows=[("exact-id", "brand")])
+        cur = FakeCursor(
+            external_rows=[("exact-id", "brand", False, "disconnected")]
+        )
         upsert_social_account(cur, **self.oauth_args())
         self.assertEqual(self.sql_calls(cur, "delete from social_accounts"), [])
         updates = self.sql_calls(cur, "update social_accounts")
@@ -155,7 +162,7 @@ class SocialIdentityTests(unittest.TestCase):
 
     def test_oauth_fails_if_resolved_row_update_did_not_apply(self):
         cur = FakeCursor(
-            external_rows=[("exact-id", "brand")],
+            external_rows=[("exact-id", "brand", False, "disconnected")],
             update_rowcount=0,
         )
         with self.assertRaises(SocialIdentityConflict):
@@ -163,7 +170,7 @@ class SocialIdentityTests(unittest.TestCase):
 
     def test_discovery_reuses_exact_external_id_despite_duplicate_usernames(self):
         cur = FakeCursor(
-            external_rows=[("exact-id", "brand")],
+            external_rows=[("exact-id", "brand", True, "connected")],
             username_rows=[("old-1", None), ("old-2", None)],
         )
         self.assertEqual(
@@ -190,13 +197,18 @@ class SocialIdentityTests(unittest.TestCase):
 
     def test_discovery_rejects_duplicate_external_ids(self):
         cur = FakeCursor(
-            external_rows=[("row-1", "brand"), ("row-2", "brand")]
+            external_rows=[
+                ("row-1", "brand", True, "connected"),
+                ("row-2", "brand", True, "connected"),
+            ]
         )
         with self.assertRaises(SocialIdentityConflict):
             link_discovered_social_account(cur, **self.discovery_args())
 
     def test_discovery_does_not_conflict_on_username_change_for_same_external_id(self):
-        cur = FakeCursor(external_rows=[("row-1", "old-brand")])
+        cur = FakeCursor(
+            external_rows=[("row-1", "old-brand", True, "connected")]
+        )
         self.assertEqual(
             link_discovered_social_account(cur, **self.discovery_args()), "row-1"
         )
@@ -213,7 +225,9 @@ class SocialIdentityTests(unittest.TestCase):
         self.assertIn("else username end", discovery_update)
 
     def test_discovery_preserves_oauth_credentials_and_state(self):
-        cur = FakeCursor(external_rows=[("oauth-id", "brand")])
+        cur = FakeCursor(
+    external_rows=[("oauth-id", "brand", True, "connected")]
+)
         link_discovered_social_account(
             cur, **self.discovery_args(external_account_id="existing-external")
         )

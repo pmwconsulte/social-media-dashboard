@@ -29,6 +29,7 @@ from social_identity import (
     link_discovered_social_account,
     SocialIdentityConflict,
 )
+from social_account_policy import has_social_account_slot
 
 
 def _linked_instagram_for_facebook(cur, facebook_account_id):
@@ -1334,7 +1335,7 @@ ACCOUNT_PAGE = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><me
 </div>
 <div class="card"><h2>🔗 Contas Sociais</h2><p class="muted">Ligue as suas redes sociais através de autenticação oficial. Não é necessário inserir tokens ou credenciais no dashboard.</p>
 <div style="background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:18px;margin:16px 0"><h3 style="margin-top:0">📷 Instagram</h3><p class="muted">O cliente será redirecionado para o Instagram, fará login e autorizará o acesso. O token é armazenado cifrado no servidor.</p><a class="btn" href="/oauth/instagram">📷 Conectar Instagram</a></div>
-{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td><form method="post" action="/social-accounts/{{ item.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
+{% if social_accounts %}<table><thead><tr><th>Plataforma</th><th>Conta</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in social_accounts %}<tr><td>{{ item.platform }}</td><td>{{ item.display_name or item.username }}</td><td>{{ "🟢 Conectada" if item.connection_status == "connected" and item.is_active else ("🟡 Ativa / Pendente" if item.is_active else "⚪ Desativada") }}</td><td>{% if item.connection_status == "linked" %}<span class="muted">Associada via Facebook</span>{% else %}<form method="post" action="/social-accounts/{{ item.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="{{ 'danger' if item.is_active else '' }}">{{ "Desativar" if item.is_active else "Ativar" }}</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Ainda não existem contas sociais conectadas neste workspace.</p>{% endif %}</div></div></body></html>"""
 
 def setup_auth(server: Flask):
     """Configure secure session authentication for the Dash server."""
@@ -1944,38 +1945,17 @@ def setup_auth(server: Flask):
 
                 plan_key = workspace[1] or "trial"
                 account_limit = PLANS.get(plan_key, PLANS["trial"])["accounts"]
-                cur.execute(
-                    """SELECT COUNT(*) FROM social_accounts
-                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE
-                         AND LOWER(BTRIM(COALESCE(connection_status, ''))) <> 'linked'""",
-                    (workspace[0],),
-                )
-                active_accounts = cur.fetchone()[0]
 
-                # Só uma identidade que já ocupa uma vaga activa pode ser
-                # reconectada sem consumir outra vaga. Registos inactivos e
-                # ligações passivas descobertas pelo Facebook não bypassam o limite.
-                cur.execute(
-                    """SELECT COUNT(*) FROM social_accounts
-                       WHERE workspace_id=%s
-                         AND LOWER(BTRIM(platform))=LOWER(BTRIM('Instagram'))
-                         AND COALESCE(is_active, TRUE)=TRUE
-                         AND LOWER(BTRIM(COALESCE(connection_status, ''))) <> 'linked'
-                         AND (
-                              BTRIM(COALESCE(external_account_id, ''))=%s
-                              OR (
-                                  LOWER(BTRIM(COALESCE(username, '')))=LOWER(BTRIM(%s))
-                                  AND BTRIM(COALESCE(external_account_id, ''))=''
-                              )
-                          )""",
-                    (workspace[0], ig_id, username),
+                has_slot = has_social_account_slot(
+                    cur,
+                    workspace_id=workspace[0],
+                    platform="Instagram",
+                    external_account_id=ig_id,
+                    username=username,
+                    account_limit=account_limit,
                 )
-                existing_active_identity_count = cur.fetchone()[0]
-                if (
-                    existing_active_identity_count == 0
-                    and isinstance(account_limit, int)
-                    and active_accounts >= account_limit
-                ):
+
+                if not has_slot:
                     return redirect(
                         url_for(
                             "account",
@@ -2558,23 +2538,26 @@ def setup_auth(server: Flask):
 
                 plan_key = workspace[1] or "trial"
                 account_limit = PLANS.get(plan_key, PLANS["trial"])["accounts"]
-                cur.execute(
-                    """SELECT COUNT(*) FROM social_accounts
-                       WHERE workspace_id=%s AND COALESCE(is_active, TRUE)=TRUE""",
-                    (workspace[0],),
+
+                has_slot = has_social_account_slot(
+                    cur,
+                    workspace_id=workspace[0],
+                    platform="Facebook",
+                    external_account_id=page_id,
+                    username=page_id,
+                    account_limit=account_limit,
                 )
-                active_accounts = cur.fetchone()[0]
-                cur.execute(
-                    """SELECT id FROM social_accounts
-                       WHERE workspace_id=%s AND platform='Facebook' AND username=%s LIMIT 1""",
-                    (workspace[0], page_id),
-                )
-                existing = cur.fetchone()
-                if not existing and isinstance(account_limit, int) and active_accounts >= account_limit:
-                    return redirect(url_for(
-                        "account",
-                        error=f"O plano {PLANS.get(plan_key, PLANS['trial'])['name']} permite no máximo {account_limit} contas sociais ativas."
-                    ))
+
+                if not has_slot:
+                    return redirect(
+                        url_for(
+                            "account",
+                            error=(
+                                f"O plano {PLANS.get(plan_key, PLANS['trial'])['name']} "
+                                f"permite no máximo {account_limit} contas sociais ativas."
+                            ),
+                        )
+                    )
 
                 encrypted_token = selected[2]
                 try:
@@ -3122,23 +3105,114 @@ def setup_auth(server: Flask):
             conn = get_connection()
             with conn.cursor() as cur:
                 cur.execute(
-                    """UPDATE social_accounts
-                       SET is_active = NOT COALESCE(is_active, TRUE)
-                       WHERE id=%s
-                         AND workspace_id=(SELECT id FROM workspaces WHERE slug=%s)""",
-                    (account_id, session.get("workspace_slug")),
+                    """SELECT id, subscription_plan
+                       FROM workspaces
+                       WHERE slug=%s
+                       LIMIT 1""",
+                    (session.get("workspace_slug"),),
                 )
+                workspace = cur.fetchone()
+
+                if not workspace:
+                    conn.rollback()
+                    return redirect(
+                        url_for("account", error="Workspace nao encontrado.")
+                    )
+
+                workspace_id, plan_key = workspace
+
+                cur.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (f"social-account-limit:{workspace_id}",),
+                )
+
+                cur.execute(
+                    """SELECT platform, username, external_account_id,
+                              COALESCE(is_active, TRUE), connection_status
+                       FROM social_accounts
+                       WHERE id=%s AND workspace_id=%s
+                       FOR UPDATE""",
+                    (account_id, workspace_id),
+                )
+                account = cur.fetchone()
+
+                if not account:
+                    conn.rollback()
+                    return redirect(
+                        url_for("account", error="Conta social nao encontrada.")
+                    )
+
+                platform, username, external_account_id, is_active, status = account
+
+                if str(status or "").strip().lower() == "linked":
+                    conn.rollback()
+                    return redirect(
+                        url_for(
+                            "account",
+                            error="Esta conta esta associada ao Facebook e nao pode ser ativada manualmente.",
+                        )
+                    )
+
+                if is_active:
+                    cur.execute(
+                        """UPDATE social_accounts
+                           SET is_active=FALSE
+                           WHERE id=%s AND workspace_id=%s""",
+                        (account_id, workspace_id),
+                    )
+                else:
+                    normalized_plan = str(plan_key or "trial").strip().lower()
+                    plan_config = PLANS.get(
+                        normalized_plan,
+                        PLANS["trial"],
+                    )
+                    account_limit = plan_config.get("accounts", 0)
+
+                    has_slot = has_social_account_slot(
+                        cur,
+                        workspace_id=workspace_id,
+                        platform=platform,
+                        external_account_id=external_account_id or "",
+                        username=username or "",
+                        account_limit=account_limit,
+                    )
+
+                    if not has_slot:
+                        conn.rollback()
+                        return redirect(
+                            url_for(
+                                "account",
+                                error=(
+                                    f"O plano atual permite ate {account_limit} "
+                                    "contas sociais ativas. Desative outra conta "
+                                    "ou atualize o plano."
+                                ),
+                            )
+                        )
+
+                    cur.execute(
+                        """UPDATE social_accounts
+                           SET is_active=TRUE
+                           WHERE id=%s AND workspace_id=%s""",
+                        (account_id, workspace_id),
+                    )
+
             conn.commit()
             return redirect(url_for("account"))
+
         except Exception as erro:
             if conn:
                 conn.rollback()
             print(f"[SOCIAL TOGGLE ERROR] {type(erro).__name__}.")
-            return redirect(url_for("account", error="Não foi possível alterar o estado da conta."))
+            return redirect(
+                url_for(
+                    "account",
+                    error="Nao foi possivel alterar o estado da conta.",
+                )
+            )
         finally:
             if conn:
                 conn.close()
-
     # Rotas PayPal são registadas no fim da configuração, sem ativar pagamentos por omissão.
     from payments import register_paypal_routes
     register_paypal_routes(server)

@@ -44,7 +44,7 @@ def _lock_identity(cur, workspace_id, platform, username, external_account_id):
 
 def _find_external_rows(cur, workspace_id, platform, external_account_id):
     cur.execute(
-        """SELECT id, username
+        """SELECT id, username, is_active, connection_status
            FROM social_accounts
            WHERE workspace_id = %s
              AND LOWER(BTRIM(platform)) = LOWER(BTRIM(%s))
@@ -102,31 +102,40 @@ def upsert_social_account(
     external_rows = _find_external_rows(
         cur, workspace_id, platform, external_account_id
     )
+
     if len(external_rows) > 1:
         raise SocialIdentityConflict(
             "Duplicate external identity; reconciliation is required."
         )
+
     if external_rows:
-        # The external ID is immutable identity; usernames may legitimately change.
+        # Reuse the existing identity and refresh its OAuth credentials.
         account_id = external_rows[0][0]
     else:
         username_rows = _find_username_rows(
             cur, workspace_id, platform, username
         )
+
         if len(username_rows) > 1:
             raise SocialIdentityConflict(
                 "Username matches multiple historical accounts and no exact "
                 "external-ID match exists; reconciliation is required."
             )
+
         if username_rows:
-            legacy_external_id = _normalize(username_rows[0][1])
-            if legacy_external_id:
+            legacy_id, legacy_external_id = username_rows[0]
+
+            if (
+                _normalize(legacy_external_id)
+                and _normalize(legacy_external_id)
+                != _normalize(external_account_id)
+            ):
                 raise SocialIdentityConflict(
                     "Username belongs to a different external identity; "
-                    "automatic reassignment is blocked."
+                    "reconciliation is required."
                 )
-            # Safe legacy adoption: exactly one row and no stored external ID.
-            account_id = username_rows[0][0]
+
+            account_id = legacy_id
         else:
             cur.execute(
                 """INSERT INTO social_accounts
