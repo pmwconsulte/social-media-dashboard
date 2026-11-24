@@ -3159,49 +3159,24 @@ def setup_auth(server: Flask):
                         )
                     )
 
-                if is_active:
-                    cur.execute(
-                        """UPDATE social_accounts
-                           SET is_active=FALSE
-                           WHERE id=%s AND workspace_id=%s""",
-                        (account_id, workspace_id),
-                    )
-                else:
-                    normalized_plan = str(plan_key or "trial").strip().lower()
-                    plan_config = PLANS.get(
-                        normalized_plan,
-                        PLANS["trial"],
-                    )
-                    account_limit = plan_config.get("accounts", 0)
-
-                    has_slot = has_social_account_slot(
-                        cur,
-                        workspace_id=workspace_id,
-                        platform=platform,
-                        external_account_id=external_account_id or "",
-                        username=username or "",
-                        account_limit=account_limit,
-                    )
-
-                    if not has_slot:
-                        conn.rollback()
-                        return redirect(
-                            url_for(
-                                "account",
-                                error=(
-                                    f"O plano atual permite ate {account_limit} "
-                                    "contas sociais ativas. Desative outra conta "
-                                    "ou atualize o plano."
-                                ),
-                            )
+                if not is_active:
+                    conn.rollback()
+                    return redirect(
+                        url_for(
+                            "account",
+                            error=(
+                                "Contas desativadas nao podem ser reativadas "
+                                "manualmente. Utilize o fluxo de nova conexao OAuth."
+                            ),
                         )
-
-                    cur.execute(
-                        """UPDATE social_accounts
-                           SET is_active=TRUE
-                           WHERE id=%s AND workspace_id=%s""",
-                        (account_id, workspace_id),
                     )
+
+                cur.execute(
+                    """UPDATE social_accounts
+                       SET is_active=FALSE
+                       WHERE id=%s AND workspace_id=%s""",
+                    (account_id, workspace_id),
+                )
 
             conn.commit()
             return redirect(url_for("account"))
