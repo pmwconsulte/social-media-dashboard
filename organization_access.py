@@ -104,3 +104,78 @@ def can_access_workspace_membership(
     if workspace_membership_active is not True:
         return False
     return workspace_role_allows(workspace_role, permission)
+
+
+def user_has_organization_permission(conn, user_id, organization_id, permission):
+    """Check an active organization membership using a caller-owned connection.
+
+    The caller owns transaction and connection lifecycle. Unknown roles and
+    missing memberships fail closed. Custom role permissions are read from DB.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT r.role_key,
+                      COALESCE(
+                          ARRAY_AGG(p.permission_key)
+                              FILTER (WHERE p.permission_key IS NOT NULL),
+                          ARRAY[]::VARCHAR[]
+                      )
+               FROM organization_memberships m
+               JOIN organization_roles r
+                 ON r.id = m.role_id
+                AND r.organization_id = m.organization_id
+               LEFT JOIN organization_role_permissions p
+                 ON p.role_id = r.id
+               WHERE m.user_id = %s
+                 AND m.organization_id = %s
+                 AND m.is_active = TRUE
+               GROUP BY r.role_key
+               LIMIT 1""",
+            (str(user_id), str(organization_id)),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return False
+    role_key, permission_rows = row
+    custom_permissions = frozenset(permission_rows or ())
+    return has_organization_permission(
+        role_key, permission, custom_permissions=custom_permissions
+    )
+
+
+def user_has_workspace_permission(conn, user_id, workspace_id, permission):
+    """Require active org + workspace memberships before checking legacy RBAC.
+
+    This is an opt-in authorization primitive. Existing routes are not switched
+    to it automatically; route-by-route integration requires a separate review.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT w.organization_id,
+                      om.is_active,
+                      wm.is_active,
+                      wm.role_key
+               FROM workspaces w
+               JOIN organization_memberships om
+                 ON om.organization_id = w.organization_id
+                AND om.user_id = %s
+               JOIN workspace_memberships wm
+                 ON wm.workspace_id = w.id
+                AND wm.organization_id = w.organization_id
+                AND wm.user_id = om.user_id
+               WHERE w.id = %s
+               LIMIT 1""",
+            (str(user_id), str(workspace_id)),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return False
+    _organization_id, organization_active, workspace_active, workspace_role = row
+    return can_access_workspace_membership(
+        organization_membership_active=organization_active,
+        workspace_membership_active=workspace_active,
+        workspace_role=workspace_role,
+        permission=permission,
+    )
