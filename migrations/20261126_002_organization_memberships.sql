@@ -5,6 +5,11 @@
 
 BEGIN;
 
+-- Composite key allows PostgreSQL to enforce that a workspace membership and
+-- its organization membership refer to the same organization.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_id_organization
+    ON workspaces(id, organization_id);
+
 CREATE TABLE IF NOT EXISTS organization_roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL
@@ -43,6 +48,8 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_organization_membership_user
         UNIQUE (organization_id, user_id),
+    CONSTRAINT uq_organization_membership_org_user
+        UNIQUE (organization_id, user_id),
     CONSTRAINT fk_organization_membership_role_scope
         FOREIGN KEY (role_id, organization_id)
         REFERENCES organization_roles(id, organization_id)
@@ -55,14 +62,13 @@ CREATE INDEX IF NOT EXISTS idx_organization_memberships_user_active
 CREATE INDEX IF NOT EXISTS idx_organization_memberships_org_active
     ON organization_memberships(organization_id, is_active);
 
--- A user can belong to multiple workspaces in the same organization.
--- This is separate from organization membership and does not grant access by itself.
+-- Both foreign keys enforce that workspace membership belongs to the same
+-- organization membership. Legacy workspace roles remain unchanged.
 CREATE TABLE IF NOT EXISTS workspace_memberships (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL
-        REFERENCES workspaces(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL
-        REFERENCES users(id) ON DELETE CASCADE,
+    organization_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+    user_id UUID NOT NULL,
     role_key VARCHAR(40) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -70,7 +76,15 @@ CREATE TABLE IF NOT EXISTS workspace_memberships (
     CONSTRAINT uq_workspace_membership_user
         UNIQUE (workspace_id, user_id),
     CONSTRAINT ck_workspace_membership_role
-        CHECK (role_key IN ('owner', 'admin', 'editor', 'analyst', 'viewer', 'platform_admin'))
+        CHECK (role_key IN ('owner', 'admin', 'editor', 'analyst', 'viewer', 'platform_admin')),
+    CONSTRAINT fk_workspace_membership_workspace_org
+        FOREIGN KEY (workspace_id, organization_id)
+        REFERENCES workspaces(id, organization_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_workspace_membership_org_user
+        FOREIGN KEY (organization_id, user_id)
+        REFERENCES organization_memberships(organization_id, user_id)
+        ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspace_memberships_user_active
