@@ -25,4 +25,6 @@ DROP TABLE IF EXISTS organization_memberships;
 DROP TABLE IF EXISTS organization_role_permissions;
 DROP TABLE IF EXISTS organization_roles;
 
+DROP INDEX IF EXISTS uq_workspaces_id_organization;
+
 COMMIT;
