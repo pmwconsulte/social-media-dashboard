@@ -60,7 +60,12 @@ class OrganizationMigrationContractTests(unittest.TestCase):
         self.assertNotIn("update workspaces", self.sql)
         self.assertNotIn("update users", self.sql)
 
-    def test_rollback_removes_only_the_new_foundation(self):
+    def test_rollback_refuses_to_drop_existing_organization_data(self):
+        self.assertIn("if exists (select 1 from organizations)", self.rollback_sql)
+        self.assertIn("where organization_id is not null", self.rollback_sql)
+        self.assertIn("rollback blocked", self.rollback_sql)
+
+    def test_rollback_does_not_drop_existing_tenant_data(self):
         self.assertIn("drop column if exists organization_id", self.rollback_sql)
         self.assertIn("drop table if exists organizations", self.rollback_sql)
         self.assertNotIn("drop table workspaces", self.rollback_sql)
