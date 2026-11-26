@@ -42,6 +42,10 @@ class OrganizationMembershipMigrationTests(unittest.TestCase):
         self.assertIn("foreign key (organization_id, user_id)", self.sql)
         self.assertIn("references organization_memberships(organization_id, user_id)", self.sql)
 
+    def test_platform_admin_is_not_a_tenant_workspace_role(self):
+        self.assertIn("check (role_key in ('owner', 'admin', 'editor', 'analyst', 'viewer'))", self.sql)
+        self.assertNotIn("'platform_admin'", self.sql)
+
     def test_legacy_user_roles_are_not_modified(self):
         self.assertNotIn("alter table users", self.sql)
         self.assertNotIn("update users", self.sql)
