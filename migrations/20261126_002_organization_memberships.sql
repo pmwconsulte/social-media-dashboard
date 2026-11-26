@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS workspace_memberships (
     CONSTRAINT uq_workspace_membership_user
         UNIQUE (workspace_id, user_id),
     CONSTRAINT ck_workspace_membership_role
-        CHECK (role_key IN ('owner', 'admin', 'editor', 'analyst', 'viewer', 'platform_admin')),
+        CHECK (role_key IN ('owner', 'admin', 'editor', 'analyst', 'viewer')),
     CONSTRAINT fk_workspace_membership_workspace_org
         FOREIGN KEY (workspace_id, organization_id)
         REFERENCES workspaces(id, organization_id)
