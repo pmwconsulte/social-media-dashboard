@@ -106,6 +106,50 @@ def can_access_workspace_membership(
     return workspace_role_allows(workspace_role, permission)
 
 
+def ensure_system_organization_roles(conn, organization_id):
+    """Create protected preset roles and grant their baseline permissions.
+
+    This function is explicit and caller-invoked; it is never run at import or
+    application startup. The caller owns commit/rollback and connection scope.
+    """
+    role_ids = {}
+    with conn.cursor() as cur:
+        for role_key in sorted(SYSTEM_ORGANIZATION_ROLES):
+            cur.execute(
+                """INSERT INTO organization_roles
+                       (organization_id, role_key, display_name, is_system)
+                   VALUES (%s, %s, %s, TRUE)
+                   ON CONFLICT (organization_id, role_key) DO NOTHING
+                   RETURNING id, is_system""",
+                (str(organization_id), role_key, role_key.replace("_", " ").title()),
+            )
+            row = cur.fetchone()
+            if row is None:
+                cur.execute(
+                    """SELECT id, is_system
+                       FROM organization_roles
+                       WHERE organization_id = %s AND role_key = %s
+                       LIMIT 1""",
+                    (str(organization_id), role_key),
+                )
+                row = cur.fetchone()
+            if not row or row[1] is not True:
+                raise RuntimeError(
+                    "Protected organization role is missing or marked as custom."
+                )
+            role_id = row[0]
+            role_ids[role_key] = role_id
+            for permission in sorted(ORGANIZATION_ROLE_PERMISSIONS[role_key]):
+                cur.execute(
+                    """INSERT INTO organization_role_permissions
+                           (role_id, permission_key)
+                       VALUES (%s, %s)
+                       ON CONFLICT (role_id, permission_key) DO NOTHING""",
+                    (role_id, permission),
+                )
+    return role_ids
+
+
 def user_has_organization_permission(conn, user_id, organization_id, permission):
     """Check an active organization membership using a caller-owned connection.
 
