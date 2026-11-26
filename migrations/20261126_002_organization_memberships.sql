@@ -46,8 +46,6 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_organization_membership_user
-        UNIQUE (organization_id, user_id),
     CONSTRAINT uq_organization_membership_org_user
         UNIQUE (organization_id, user_id),
     CONSTRAINT fk_organization_membership_role_scope
