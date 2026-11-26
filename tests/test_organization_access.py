@@ -79,5 +79,104 @@ class OrganizationRoleTests(unittest.TestCase):
         self.assertNotIn("billing_manager", __import__("security_rbac").VALID_ROLES)
 
 
+class _FakeCursor:
+    def __init__(self, row):
+        self.row = row
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def execute(self, query, params):
+        self.query = query
+        self.params = params
+
+    def fetchone(self):
+        return self.row
+
+
+class _FakeConnection:
+    def __init__(self, row):
+        self.fake_cursor = _FakeCursor(row)
+
+    def cursor(self):
+        return self.fake_cursor
+
+
+class OrganizationAccessQueryTests(unittest.TestCase):
+    def test_missing_organization_membership_denies_permission(self):
+        from organization_access import user_has_organization_permission
+        conn = _FakeConnection(None)
+        self.assertFalse(
+            user_has_organization_permission(conn, "user-id", "org-id", "organization.read")
+        )
+
+    def test_system_organization_role_uses_protected_permissions(self):
+        from organization_access import user_has_organization_permission
+        conn = _FakeConnection(("billing_manager", []))
+        self.assertTrue(
+            user_has_organization_permission(
+                conn, "user-id", "org-id", "organization.billing.manage"
+            )
+        )
+        self.assertFalse(
+            user_has_organization_permission(
+                conn, "user-id", "org-id", "organization.members.manage"
+            )
+        )
+
+    def test_custom_role_permissions_are_loaded_from_database(self):
+        from organization_access import user_has_organization_permission
+        conn = _FakeConnection(("custom_auditor", ["security.audit"]))
+        self.assertTrue(
+            user_has_organization_permission(
+                conn, "user-id", "org-id", "security.audit"
+            )
+        )
+        self.assertFalse(
+            user_has_organization_permission(
+                conn, "user-id", "org-id", "organization.billing.manage"
+            )
+        )
+
+    def test_workspace_access_requires_explicit_dual_membership(self):
+        from organization_access import user_has_workspace_permission
+        conn = _FakeConnection(None)
+        self.assertFalse(
+            user_has_workspace_permission(
+                conn, "user-id", "workspace-id", "analytics.read"
+            )
+        )
+
+    def test_workspace_access_checks_organization_workspace_and_legacy_roles(self):
+        from organization_access import user_has_workspace_permission
+        conn = _FakeConnection((
+            "org-id", True, True, "viewer", "member", []
+        ))
+        self.assertTrue(
+            user_has_workspace_permission(
+                conn, "user-id", "workspace-id", "analytics.read"
+            )
+        )
+        self.assertFalse(
+            user_has_workspace_permission(
+                conn, "user-id", "workspace-id", "accounts.manage"
+            )
+        )
+
+    def test_workspace_access_requires_organization_workspace_list_permission(self):
+        from organization_access import user_has_workspace_permission
+        conn = _FakeConnection((
+            "org-id", True, True, "owner", "custom_restricted", []
+        ))
+        self.assertFalse(
+            user_has_workspace_permission(
+                conn, "user-id", "workspace-id", "analytics.read"
+            )
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
