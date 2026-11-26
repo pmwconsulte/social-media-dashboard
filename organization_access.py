@@ -155,16 +155,29 @@ def user_has_workspace_permission(conn, user_id, workspace_id, permission):
             """SELECT w.organization_id,
                       om.is_active,
                       wm.is_active,
-                      wm.role_key
+                      wm.role_key,
+                      r.role_key,
+                      COALESCE(
+                          ARRAY_AGG(p.permission_key)
+                              FILTER (WHERE p.permission_key IS NOT NULL),
+                          ARRAY[]::VARCHAR[]
+                      )
                FROM workspaces w
                JOIN organization_memberships om
                  ON om.organization_id = w.organization_id
                 AND om.user_id = %s
+               JOIN organization_roles r
+                 ON r.id = om.role_id
+                AND r.organization_id = om.organization_id
+               LEFT JOIN organization_role_permissions p
+                 ON p.role_id = r.id
                JOIN workspace_memberships wm
                  ON wm.workspace_id = w.id
                 AND wm.organization_id = w.organization_id
                 AND wm.user_id = om.user_id
                WHERE w.id = %s
+               GROUP BY w.organization_id, om.is_active, wm.is_active,
+                        wm.role_key, r.role_key
                LIMIT 1""",
             (str(user_id), str(workspace_id)),
         )
@@ -172,7 +185,20 @@ def user_has_workspace_permission(conn, user_id, workspace_id, permission):
 
     if not row:
         return False
-    _organization_id, organization_active, workspace_active, workspace_role = row
+    (
+        _organization_id,
+        organization_active,
+        workspace_active,
+        workspace_role,
+        organization_role,
+        organization_permissions,
+    ) = row
+    if not has_organization_permission(
+        organization_role,
+        "workspace.list",
+        custom_permissions=frozenset(organization_permissions or ()),
+    ):
+        return False
     return can_access_workspace_membership(
         organization_membership_active=organization_active,
         workspace_membership_active=workspace_active,
